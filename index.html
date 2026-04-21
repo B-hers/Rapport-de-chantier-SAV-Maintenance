@@ -258,14 +258,15 @@ async function supaCreate(ref, label, data) {
       },
       body: JSON.stringify({ ref: ref, label: label || "", data: data, updated_at: new Date().toISOString() })
     });
+    if (!res.ok) { console.error("[Contrôle] supaCreate HTTP", res.status, await res.text()); return null; }
     var rows = await res.json();
     return (rows && rows.length > 0) ? rows[0] : null;
-  } catch(e) { return null; }
+  } catch(e) { console.error("[Contrôle] supaCreate error", e); return null; }
 }
 
 async function supaUpdate(id, data) {
   try {
-    await fetch(SUPA_URL + "/rest/v1/feuilles_controle?id=eq." + id, {
+    var res = await fetch(SUPA_URL + "/rest/v1/feuilles_controle?id=eq." + id, {
       method: "PATCH",
       headers: {
         "apikey": SUPA_KEY, "Authorization": "Bearer " + SUPA_KEY,
@@ -273,8 +274,9 @@ async function supaUpdate(id, data) {
       },
       body: JSON.stringify({ data: data, updated_at: new Date().toISOString() })
     });
+    if (!res.ok) { console.error("[Contrôle] supaUpdate HTTP", res.status, await res.text()); return false; }
     return true;
-  } catch(e) { return false; }
+  } catch(e) { console.error("[Contrôle] supaUpdate error", e); return false; }
 }
 
 async function supaDeleteSheet(id) {
@@ -2611,23 +2613,26 @@ function App() {
       var params = new URLSearchParams(window.location.search);
       var urlRef = params.get("ref");
       if (!urlRef) return;
+      isLoadingData.current = true; // AVANT tout setData pour éviter la race condition
       setData(function(prev) {
         var n = Object.assign({}, prev);
         n.meta = Object.assign({}, prev.meta, { ref: urlRef });
         return n;
       });
       loadData(urlRef);
-    } catch(e) {}
+    } catch(e) { isLoadingData.current = false; }
   }, []);
 
   // Auto-save on data change (debounce 2s)
   useEffect(function() {
+    // Ne pas sauvegarder pendant un chargement (guard vérifié dès le départ)
+    if (isLoadingData.current) return;
     var ref = data.meta.ref;
     if (!ref) { setSaveStatus("idle"); return; }
     if (debounceRef.current) clearTimeout(debounceRef.current);
     setSaveStatus("saving");
     debounceRef.current = setTimeout(async function() {
-      // Ne pas sauvegarder pendant un chargement
+      // Double vérification au moment du déclenchement réel
       if (isLoadingData.current) { setSaveStatus("idle"); return; }
       var ok = false;
       if (currentSheetId) {
@@ -2663,7 +2668,7 @@ function App() {
     }
     setLoading(false);
     // Laisser React faire le rendu avant de réactiver la sauvegarde
-    setTimeout(function(){ isLoadingData.current = false; }, 500);
+    setTimeout(function(){ isLoadingData.current = false; }, 3000);
   }
 
   // Charger une feuille spécifique par id (depuis SheetSelector)
@@ -2676,7 +2681,7 @@ function App() {
       setCurrentSheetId(id);
     }
     setLoading(false);
-    setTimeout(function(){ isLoadingData.current = false; }, 500);
+    setTimeout(function(){ isLoadingData.current = false; }, 3000);
   }
 
   // Pre-fill from feuilles_chantier
