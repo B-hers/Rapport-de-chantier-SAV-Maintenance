@@ -2533,8 +2533,14 @@ function HeaderSection({ data, setData, onLoad, onPrefill, prefillMsg, loading }
           <label style={{ fontSize: 12, color: MUTED, fontWeight: 500, marginBottom: 4, display: "block" }}>Référence chantier *</label>
           <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
             <input type="text" value={refInput} onChange={function(e){ setRefInput(e.target.value); }}
-              onBlur={function(){ setMeta("ref", refInput); if(refInput) onLoad(refInput); }}
-              onKeyDown={function(e){ if(e.key==="Enter"){ setMeta("ref",refInput); if(refInput) onLoad(refInput); } }}
+              onBlur={function(){
+                setMeta("ref", refInput);
+                if(refInput) onLoad(refInput);
+              }}
+              onKeyDown={function(e){ if(e.key==="Enter"){
+                setMeta("ref",refInput);
+                if(refInput) onLoad(refInput);
+              } }}
               placeholder="WG-2025-0123" style={{ flex: 1 }} />
             {loading && <span style={{ fontSize: 11, color: MUTED }}>⏳</span>}
           </div>
@@ -2589,12 +2595,28 @@ function App() {
   var [prefillMsg, setPrefillMsg] = useState("");
   var debounceRef = useRef(null);
   var lastSavedRef = useRef(null);
+  var isLoadingData = useRef(false); // guard : empêche la sauvegarde pendant le chargement
 
   // Load user from localStorage
   useEffect(function() {
     try {
       var stored = localStorage.getItem("wge_user");
       if (stored) { var u = JSON.parse(stored); if (u && u.name) setUser(u); }
+    } catch(e) {}
+  }, []);
+
+  // Lire ?ref= dans l'URL au chargement de la page
+  useEffect(function() {
+    try {
+      var params = new URLSearchParams(window.location.search);
+      var urlRef = params.get("ref");
+      if (!urlRef) return;
+      setData(function(prev) {
+        var n = Object.assign({}, prev);
+        n.meta = Object.assign({}, prev.meta, { ref: urlRef });
+        return n;
+      });
+      loadData(urlRef);
     } catch(e) {}
   }, []);
 
@@ -2605,6 +2627,8 @@ function App() {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     setSaveStatus("saving");
     debounceRef.current = setTimeout(async function() {
+      // Ne pas sauvegarder pendant un chargement
+      if (isLoadingData.current) { setSaveStatus("idle"); return; }
       var ok = false;
       if (currentSheetId) {
         ok = await supaUpdate(currentSheetId, data);
@@ -2624,6 +2648,9 @@ function App() {
   async function loadData(ref) {
     if (!ref) return;
     setLoading(true);
+    isLoadingData.current = true;
+    // Mettre la ref dans l'URL
+    try { window.history.replaceState(null, "", "?ref=" + encodeURIComponent(ref)); } catch(e) {}
     var list = await supaLoadList(ref);
     if (list.length > 0) {
       var row = await supaLoadById(list[0].id);
@@ -2635,6 +2662,21 @@ function App() {
       setCurrentSheetId(null);
     }
     setLoading(false);
+    // Laisser React faire le rendu avant de réactiver la sauvegarde
+    setTimeout(function(){ isLoadingData.current = false; }, 500);
+  }
+
+  // Charger une feuille spécifique par id (depuis SheetSelector)
+  async function loadSheetById(id) {
+    isLoadingData.current = true;
+    setLoading(true);
+    var row = await supaLoadById(id);
+    if (row && row.data) {
+      setData(deepMerge(makeDefaultData(), row.data));
+      setCurrentSheetId(id);
+    }
+    setLoading(false);
+    setTimeout(function(){ isLoadingData.current = false; }, 500);
   }
 
   // Pre-fill from feuilles_chantier
@@ -2697,15 +2739,7 @@ function App() {
       <SheetSelector
         refChantier={data.meta.ref}
         currentId={currentSheetId}
-        onSelect={async function(id) {
-          setLoading(true);
-          var row = await supaLoadById(id);
-          if (row && row.data) {
-            setData(deepMerge(makeDefaultData(), row.data));
-            setCurrentSheetId(id);
-          }
-          setLoading(false);
-        }}
+        onSelect={function(id) { loadSheetById(id); }}
         onNew={function(id, label) {
           var fresh = makeDefaultData();
           fresh.meta.ref = data.meta.ref;
