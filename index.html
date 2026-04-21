@@ -1,0 +1,2236 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Feuille de Contrôle Chantier — We Green Energy</title>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone@7.23.10/babel.min.js"></script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f4f4f0; color: #1a1a1a; font-size: 14px; }
+input, select, textarea { font-family: inherit; font-size: 13px; padding: 6px 10px; border: 1px solid #d0d0c8; border-radius: 6px; background: #fff; color: #1a1a1a; outline: none; transition: border-color 0.15s; width: 100%; }
+input:focus, select:focus, textarea:focus { border-color: #1B6B3A; }
+button { font-family: inherit; cursor: pointer; }
+@media print {
+  @page { size: A4 portrait; margin: 12mm 14mm; }
+  body { background: white; margin: 0; font-size: 11px; }
+  #no-print, .no-print { display: none !important; }
+  .print-only { display: block !important; }
+  .check-item { break-inside: avoid; }
+  img { max-width: 100%; }
+  .photo-grid-print { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  .photo-grid-print img { width: 100%; height: 160px; object-fit: cover; border-radius: 4px; }
+}
+.print-only { display: none; }
+@media (max-width: 640px) {
+  body { font-size: 15px; }
+  input, select, textarea { font-size: 16px !important; padding: 11px 12px; border-radius: 8px; }
+  select { appearance: none; -webkit-appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23666' stroke-width='1.5' fill='none'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; padding-right: 36px; }
+  button { min-height: 44px; padding: 10px 16px; }
+  * { -webkit-tap-highlight-color: transparent; }
+}
+</style>
+</head>
+<body>
+
+<div id="wge-login" style="display:none; min-height:100vh; align-items:center; justify-content:center; background:#f4f4f0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+  <div style="background:#fff; border-radius:16px; padding:32px 40px; box-shadow:0 4px 32px rgba(0,0,0,0.10); display:flex; flex-direction:column; align-items:center; gap:0; max-width:380px; width:92%; box-sizing:border-box;">
+    <div style="font-size:40px; margin-bottom:10px">🌿</div>
+    <div style="font-weight:700; font-size:18px; color:#1B6B3A; margin-bottom:2px">We Green Energy</div>
+    <div style="font-weight:600; font-size:14px; color:#1a1a1a; margin-bottom:18px">Feuille de Contrôle Chantier</div>
+
+    <!-- Tabs -->
+    <div style="display:flex; width:100%; border-bottom:2px solid #e8e8e4; margin-bottom:22px;">
+      <button id="tab-wge" onclick="wgeTab('wge')" style="flex:1; padding:9px 4px; border:none; background:none; font-weight:700; font-size:13px; color:#1B6B3A; border-bottom:2.5px solid #1B6B3A; margin-bottom:-2px; cursor:pointer; font-family:inherit;">🌿 Équipe WGE</button>
+      <button id="tab-st" onclick="wgeTab('st')" style="flex:1; padding:9px 4px; border:none; background:none; font-weight:400; font-size:13px; color:#888; border-bottom:2.5px solid transparent; margin-bottom:-2px; cursor:pointer; font-family:inherit;">🔧 Sous-traitant</button>
+    </div>
+
+    <!-- Panel WGE -->
+    <div id="panel-wge" style="width:100%; display:flex; flex-direction:column; align-items:center; gap:14px;">
+      <div style="font-size:13px; color:#888; text-align:center; line-height:1.6">Connectez-vous avec votre compte<br><strong style="color:#1B6B3A">@we-green.be</strong></div>
+      <div id="wge-google-btn" style="min-height:44px; display:flex; align-items:center; justify-content:center; width:100%;">
+        <div style="font-size:13px; color:#aaa">⏳ Chargement…</div>
+      </div>
+    </div>
+
+    <!-- Panel Sous-traitant -->
+    <div id="panel-st" style="width:100%; display:none; flex-direction:column; gap:12px;">
+      <div style="font-size:13px; color:#888; text-align:center; margin-bottom:4px">Identifiez-vous pour accéder au chantier</div>
+
+      <!-- Nom / Société -->
+      <div>
+        <label style="font-size:12px; color:#666; font-weight:500; display:block; margin-bottom:5px">Nom / Société</label>
+        <select id="st-select" onchange="wgeStSelectChange()" style="width:100%; padding:9px 12px; border:1px solid #d0d0c8; border-radius:8px; font-size:14px; font-family:inherit; background:#fff; color:#1a1a1a; appearance:none; -webkit-appearance:none; background-image:url('data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2212%22 height=%228%22 viewBox=%220 0 12 8%22%3E%3Cpath d=%22M1 1l5 5 5-5%22 stroke=%22%23666%22 stroke-width=%221.5%22 fill=%22none%22/%3E%3C/svg%3E'); background-repeat:no-repeat; background-position:right 12px center; padding-right:32px;">
+          <option value="">— Sélectionner —</option>
+          <option value="Sildjan (Green Future)">Sildjan — Green Future</option>
+          <option value="Ronaldo (Instasol)">Ronaldo — Instasol</option>
+          <option value="Manu (DM Électricité)">Manu — DM Électricité</option>
+          <option value="Fast-Elec (Christophe)">Fast-Elec — Christophe &amp; team</option>
+          <option value="__autre__">Autre — saisir le nom</option>
+        </select>
+        <input id="st-name-input" type="text" placeholder="Votre nom ou société…" style="width:100%; padding:9px 12px; border:1px solid #d0d0c8; border-radius:8px; font-size:14px; font-family:inherit; margin-top:8px; display:none; box-sizing:border-box;" />
+      </div>
+
+      <!-- Code d'accès -->
+      <div>
+        <label style="font-size:12px; color:#666; font-weight:500; display:block; margin-bottom:5px">Code d'accès</label>
+        <input id="st-password" type="password" placeholder="Code fourni par We Green" style="width:100%; padding:9px 12px; border:1px solid #d0d0c8; border-radius:8px; font-size:14px; font-family:inherit; box-sizing:border-box;" onkeydown="if(event.key==='Enter') wgeStLogin()" />
+      </div>
+
+      <button onclick="wgeStLogin()" style="width:100%; padding:11px; background:#1B6B3A; color:#fff; border:none; border-radius:8px; font-size:14px; font-weight:600; cursor:pointer; font-family:inherit; margin-top:2px;">Accéder →</button>
+    </div>
+
+    <div id="wge-login-error" style="font-size:12px; color:#c0392b; display:none; margin-top:8px; text-align:center;"></div>
+    <div style="font-size:11px; color:#ddd; text-align:center; margin-top:10px">Réservé à l'équipe et aux partenaires We Green</div>
+  </div>
+</div>
+
+<div id="root" style="display:none"></div>
+
+<script>
+(function() {
+  var GOOGLE_CLIENT_ID_PLAIN = "765677431332-2leuvo90bvhnmid77hml6cj230av8eao.apps.googleusercontent.com";
+  var ALLOWED_DOMAIN_PLAIN = "we-green.be";
+  // Code d'accès sous-traitants — identification uniquement, pas de protection de données sensibles
+  var ST_CODE = "0479627511";
+
+  function parseJwtPlain(token) {
+    try { return JSON.parse(window.atob(token.split(".")[1].replace(/-/g,"+").replace(/_/g,"/"))); } catch(e) { return {}; }
+  }
+  function showErr(msg) {
+    var el = document.getElementById("wge-login-error");
+    if (el) { el.textContent = msg; el.style.display = msg ? "block" : "none"; }
+  }
+  function showApp() {
+    var login = document.getElementById("wge-login"); var root = document.getElementById("root");
+    if (login) login.style.display = "none"; if (root) root.style.display = "";
+  }
+  function showLogin() {
+    var login = document.getElementById("wge-login"); var root = document.getElementById("root");
+    if (login) login.style.display = "flex"; if (root) root.style.display = "none";
+    showErr("");
+    function initGSI() {
+      if (!window.google || !window.google.accounts) { setTimeout(initGSI, 200); return; }
+      try {
+        google.accounts.id.initialize({
+          client_id: GOOGLE_CLIENT_ID_PLAIN,
+          callback: function(response) {
+            var payload = parseJwtPlain(response.credential);
+            if (!payload.email || !payload.email.endsWith("@" + ALLOWED_DOMAIN_PLAIN)) {
+              showErr("⛔ Accès réservé aux membres @" + ALLOWED_DOMAIN_PLAIN); return;
+            }
+            var u = { email: payload.email, name: payload.name || payload.email.split("@")[0], picture: payload.picture || "", type: "wge" };
+            try { localStorage.setItem("wge_user", JSON.stringify(u)); } catch(e) {}
+            showApp();
+          },
+          hd: ALLOWED_DOMAIN_PLAIN
+        });
+        var btnEl = document.getElementById("wge-google-btn");
+        if (btnEl) { btnEl.innerHTML = ""; google.accounts.id.renderButton(btnEl, { theme: "outline", size: "large", text: "signin_with", shape: "rectangular", width: 280, locale: "fr" }); }
+      } catch(e) { setTimeout(initGSI, 400); }
+    }
+    initGSI();
+  }
+
+  // Tab switching
+  window.wgeTab = function(tab) {
+    var isWge = tab === "wge";
+    document.getElementById("panel-wge").style.display = isWge ? "flex" : "none";
+    document.getElementById("panel-st").style.display = isWge ? "none" : "flex";
+    document.getElementById("tab-wge").style.fontWeight = isWge ? "700" : "400";
+    document.getElementById("tab-wge").style.color = isWge ? "#1B6B3A" : "#888";
+    document.getElementById("tab-wge").style.borderBottom = isWge ? "2.5px solid #1B6B3A" : "2.5px solid transparent";
+    document.getElementById("tab-st").style.fontWeight = isWge ? "400" : "700";
+    document.getElementById("tab-st").style.color = isWge ? "#888" : "#1B6B3A";
+    document.getElementById("tab-st").style.borderBottom = isWge ? "2.5px solid transparent" : "2.5px solid #1B6B3A";
+    showErr("");
+  };
+
+  // Sous-traitant : afficher le champ texte si "Autre"
+  window.wgeStSelectChange = function() {
+    var sel = document.getElementById("st-select");
+    var inp = document.getElementById("st-name-input");
+    if (sel && inp) inp.style.display = sel.value === "__autre__" ? "block" : "none";
+  };
+
+  // Sous-traitant : login
+  window.wgeStLogin = function() {
+    var sel = document.getElementById("st-select");
+    var inp = document.getElementById("st-name-input");
+    var pwd = document.getElementById("st-password");
+    if (!sel || !pwd) return;
+    var name = sel.value === "__autre__" ? (inp ? inp.value.trim() : "") : sel.value;
+    if (!name) { showErr("⚠ Veuillez sélectionner ou saisir un nom."); return; }
+    if (!pwd.value) { showErr("⚠ Veuillez entrer le code d'accès."); return; }
+    var codeEntered = pwd.value.replace(/[\s\-\.]/g, "");
+    var codeRef = ST_CODE.replace(/[\s\-\.]/g, "");
+    if (codeEntered !== codeRef) { showErr("⛔ Code d'accès incorrect."); return; }
+    var u = { email: "sous-traitant@externe", name: name, picture: "", type: "contractor" };
+    try { localStorage.setItem("wge_user", JSON.stringify(u)); } catch(e) {}
+    showApp();
+  };
+
+  window.wgeSignOut = function() {
+    try { localStorage.removeItem("wge_user"); } catch(e) {}
+    try { if (window.google && window.google.accounts) google.accounts.id.disableAutoSelect(); } catch(e) {}
+    showLogin();
+  };
+
+  // Restore session
+  try {
+    var stored = localStorage.getItem("wge_user");
+    if (stored) {
+      var u = JSON.parse(stored);
+      if (u && u.name && (
+        (u.type === "wge" && u.email && u.email.endsWith("@" + ALLOWED_DOMAIN_PLAIN)) ||
+        (u.type === "contractor" && u.name) ||
+        (!u.type && u.email && u.email.endsWith("@" + ALLOWED_DOMAIN_PLAIN)) // rétrocompat anciennes sessions
+      )) { showApp(); return; }
+    }
+  } catch(e) {}
+  showLogin();
+})();
+</script>
+<script type="text/babel">
+const LOGO_SRC = "data:image/png;base64,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";
+const { useState, useRef, useEffect, useCallback } = React;
+
+// ── Couleurs ──────────────────────────────────────────
+const GREEN = "#1B6B3A", GREEN_LIGHT = "#f0f7f2", GREEN_MID = "#d4ead9", BORDER = "#d8d8d0", BG = "#f4f4f0", WHITE = "#fff", MUTED = "#666";
+const DC_COLOR = "#3498db", DC_LIGHT = "#e8f4fd", DC_BORDER = "#aed6f1";
+const AC_COLOR = "#e74c3c", AC_LIGHT = "#fdecea", AC_BORDER = "#f1948a";
+const OK_COLOR = "#27ae60", NOK_COLOR = "#e74c3c", NA_COLOR = "#999";
+
+// ── Project Managers ──────────────────────────────────
+const SH = {
+  fontSize: 12, fontWeight: 700, color: GREEN,
+  textTransform: "uppercase", letterSpacing: "0.07em",
+  paddingBottom: 10, borderBottom: "2px solid "+GREEN_MID,
+  marginBottom: 16, display: "flex", alignItems: "center", gap: 7
+};
+const SUBH = { fontSize: 11, fontWeight: 600, color: MUTED, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 7 };
+const LBL = { fontSize: 12, color: MUTED, fontWeight: 500, marginBottom: 4, display: "block" };
+const G2 = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 12 };
+const G3 = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12 };
+
+const PM_LIST = ["Alexander Vos","Benjamin Hers","Dominic Rousselle","Enguerrand de Formanoir","Hugues Léglise","Nassim Fekreche","Nelson Hohlweg","Romain Janssens","Teresa Rousselle","Thibaut Cougnet","Valentin Dabauvalle","Viktor A","Wajdi Habib","Wissam Elhage","Yohan Poullain"];
+
+// ── Supabase ──────────────────────────────────────────
+const SUPA_URL = "https://brodjywccrirlzplovxg.supabase.co";
+const SUPA_KEY = "sb_publishable_T4Syy3Nq5mLK0yqOUNgtEg_od2WUXEY";
+const GOOGLE_CLIENT_ID = "765677431332-2leuvo90bvhnmid77hml6cj230av8eao.apps.googleusercontent.com";
+const ALLOWED_DOMAIN = "we-green.be";
+
+async function supaLoad(ref) {
+  try {
+    var res = await fetch(SUPA_URL + "/rest/v1/feuilles_controle?ref=eq." + encodeURIComponent(ref) + "&select=data,updated_at", {
+      headers: { "apikey": SUPA_KEY, "Authorization": "Bearer " + SUPA_KEY }
+    });
+    var rows = await res.json();
+    if (rows && rows.length > 0) return rows[0];
+  } catch(e) {}
+  return null;
+}
+
+async function supaSave(ref, data) {
+  try {
+    await fetch(SUPA_URL + "/rest/v1/feuilles_controle", {
+      method: "POST",
+      headers: { "apikey": SUPA_KEY, "Authorization": "Bearer " + SUPA_KEY, "Content-Type": "application/json", "Prefer": "resolution=merge-duplicates" },
+      body: JSON.stringify({ ref: ref, data: data, updated_at: new Date().toISOString() })
+    });
+    return true;
+  } catch(e) { return false; }
+}
+
+async function supaLoadChantier(ref) {
+  try {
+    var res = await fetch(SUPA_URL + "/rest/v1/feuilles_chantier?ref=eq." + encodeURIComponent(ref) + "&select=data", {
+      headers: { "apikey": SUPA_KEY, "Authorization": "Bearer " + SUPA_KEY }
+    });
+    var rows = await res.json();
+    if (rows && rows.length > 0) return rows[0].data;
+  } catch(e) {}
+  return null;
+}
+
+// ── Checklists DC (restructuré) ────────────────────────────────────────────
+const DC_SECTIONS = [
+  {
+    key: "structures", label: "1 · Structures de montage", icon: "🔩",
+    rules: [
+      { title: "Crochets", items: ["Espacement max 80–100 cm", "Minimum 3 vis par crochet", "Dernier crochet à max 40 cm du rail", "Rebord de tuile disqué (crochet ne soulève pas la tuile)"] },
+      { title: "Rails", items: ["Placés à max 20 cm des extrémités des PV", "Horizontaux si panneaux en paysage (croisé si nécessaire)", "Planitude vérifiée", "Boulons crochet-rail bien serrés (pince M10)"] },
+      { title: "Finition", items: ["Bouts de rail coupés à 5 cm de la clame de fin (ni plus ni moins)", "Bouchons de rails posés"] },
+      { title: "Interdits ❌", items: ["Aucun tirefond sur ardoise — joint en plomb obligatoire", "Morceaux de rails non lancés depuis la toiture", "Bouts de rails non abandonnés sous les panneaux"] },
+    ],
+    items: [
+      { key: "structuresConformes", label: "Structures conformes (crochets, rails, planitude, fixations)" },
+      { key: "etancheiteStructures", label: "Étanchéité des crochets / pénétrations toiture OK" },
+    ],
+    numericFields: [
+      { key: "nbCrochets", label: "Nombre de crochets posés", placeholder: "ex: 42" },
+      { key: "nbRails", label: "Nombre de rails posés", placeholder: "ex: 8" },
+    ],
+    photoCats: [
+      { key: "structures_general", label: "Vue générale structures sans panneaux" },
+      { key: "crochets_detail", label: "Détail crochets (espacement + vis)" },
+      { key: "rails_detail", label: "Détail rails (planitude + fixations)" },
+    ]
+  },
+  {
+    key: "cablage_dc", label: "2 · Câblage DC & Tubage", icon: "🔌",
+    rules: [
+      { title: "Câbles DC", items: ["Câbles tirés par strings (toiture → onduleur)", "Câble de terre tiré", "Tubes de protection posés + étanchéité vérifiée (pas d'eau dans la gaine)", "Câbles colsonnés sous les rails — aucun contact crochet/tuile", "Étanchéité de tous les percements (façade + toiture) vérifiée"] },
+      { title: "MC4", items: ["Câble dénudé à 6 cm", "Cosse sertie avec la bonne pince (attention cosse femelle/mâle)", "Chaque MC4 bien serré et verrouillé"] },
+      { title: "Tubage", items: ["Forage effectué de l'extérieur vers l'intérieur", "Boucle réalisée à l'entrée dans la maison (écoulement des eaux)"] },
+      { title: "Interdits ❌", items: ["Aucun câble ne pend sous les PV", "Aucun contact câble-toiture ou câble-crochet", "Aucun câble enroulé autour des rails"] },
+    ],
+    items: [
+      { key: "cablageConformes", label: "Câblage DC conforme (colsonnage, protection, terre)" },
+      { key: "mc4OK", label: "Connexions MC4 serrées et verrouillées" },
+      { key: "etancheitePercements", label: "Étanchéité de tous les percements vérifiée" },
+      { key: "tubageOK", label: "Tubage conforme (boucle d'entrée maison, étanchéité)" },
+    ],
+    photoCats: [
+      { key: "cablage_sous_pv", label: "Câblage DC sous les panneaux (colsonnage)" },
+      { key: "chemin_cables", label: "Chemin de câbles — tubage — entrée maison" },
+    ]
+  },
+  {
+    key: "placement_pv", label: "3 · Placement des PV", icon: "☀️",
+    rules: [
+      { title: "Placement & fixation", items: ["Bonnes clames de milieu et de fin utilisées", "Alignement des PV vérifié (rapport à la toiture)", "Câbles PV colsonnés (ne pendent pas)"] },
+      { title: "Interdits ❌", items: ["Personne n'a marché sur les PV", "PV non griffés lors de la manipulation", "Clames de milieu non utilisées comme clames de fin"] },
+    ],
+    items: [
+      { key: "pvConformes", label: "PV correctement placés, fixés et alignés" },
+      { key: "clamesOK", label: "Clames de milieu et de fin correctes" },
+    ],
+    numericFields: [
+      { key: "nbPV", label: "Nombre de PV posés", placeholder: "ex: 24" },
+      { key: "puissanceDC", label: "Puissance totale DC (kWc)", placeholder: "ex: 12.48" },
+    ],
+    photoCats: [
+      { key: "vue_generale_pv", label: "Vue générale toiture terminée (panneaux posés)" },
+      { key: "drone_ph", label: "📡 Vue drone (si disponible)" },
+    ]
+  },
+  {
+    key: "strings", label: "4 · Strings", icon: "🔢",
+    rules: [
+      { title: "Règles strings", items: ["Couleurs respectées : Positif = Rouge, Négatif = Noir", "Strings numérotés conformément au schéma unifilaire", "Strings vérifiés avec le gestionnaire de projet", "Boucles minimisées (protection onduleur contre surtensions)"] },
+    ],
+    items: [
+      { key: "stringsConformes", label: "Strings conformes au schéma unifilaire" },
+      { key: "couleursOK", label: "Couleurs câbles respectées (Rouge +, Noir −)" },
+    ],
+    numericFields: [{ key: "nbStrings", label: "Nombre de strings", placeholder: "ex: 3" }],
+    selectFields: [{ key: "schemaConforme", label: "Schéma unifilaire conforme ?", options: ["OUI","NON"] }],
+    hasStringPhotos: true,
+    photoCats: [
+      { key: "schema_strings_global", label: "Schéma global des strings (vue d'ensemble)" },
+    ]
+  },
+  {
+    key: "clotureDC", label: "5 · Clôture chantier DC", icon: "🔒",
+    items: [
+      { key: "materielRecupere", label: "Tout le matériel et outils récupérés (rien laissé sur le chantier)" },
+      { key: "nettoyage", label: "Nettoyage effectué — aucun déchet laissé (rails, câbles, colsons, cartons, plastiques, cigarettes)" },
+      { key: "clientOK", label: "Client informé / site rendu propre" },
+    ]
+  },
+];
+
+// ── Checklists AC ─────────────────────────────────────
+const AC_SECTIONS = [
+  { key: "preChantierAC", label: "1 · Pré-chantier AC", icon: "🔍", items: [
+    { key: "feuilleVerifieeAC", label: "Feuille de chantier vérifiée (partie AC)" },
+    { key: "materielCharge", label: "Matériel électrique chargé et complet" },
+  ]},
+  { key: "verificationDC", label: "2 · Vérification DC reçu", icon: "🔌", items: [
+    { key: "stringsIdentifies", label: "Strings identifiés et numérotés" },
+    { key: "mc4SerresAC", label: "MC4 tous bien serrés" },
+    { key: "cablesDCAmenes", label: "Câbles DC correctement amenés à l'emplacement onduleur" },
+    { key: "stringsSchemaAC", label: "Strings vérifiés avec le schéma unifilaire" },
+  ]},
+  { key: "cablageAC", label: "4 · Câblage AC", icon: "⚡", items: [
+    { key: "sectionAdaptee", label: "Section de câble AC adaptée (conforme au schéma)" },
+    { key: "cablePE", label: "Câble de protection (PE) posé" },
+    { key: "disjoncteurAC", label: "Disjoncteur AC de protection posé" },
+    { key: "parafoudre", label: "Parafoudre posé si requis" },
+    { key: "cableTube", label: "Câble AC correctement tubé / chemin de câble" },
+  ], numericFields: [{ key: "ampDisjAC", label: "Valeur disjoncteur AC (A)", placeholder: "ex: 16" }]},
+  { key: "tableau", label: "5 · Tableau électrique (TGBT/TD)", icon: "🔋", items: [
+    { key: "disjoncteurDedie", label: "Disjoncteur dédié PV installé dans le tableau" },
+    { key: "etiquetage", label: "Étiquetage clair (circuit PV identifié)" },
+    { key: "schemaJour", label: "Schéma électrique à jour / conforme" },
+    { key: "differentielVerifie", label: "Différentiel vérifié" },
+    { key: "risqueSurchauffe", label: "Pas de risque de surchauffe (espace autour onduleur, manuels pas au-dessus)" },
+  ]},
+  { key: "miseEnService", label: "6 · Mise en service", icon: "🚀", items: [
+    { key: "testProduction", label: "Test de production réalisé" },
+    { key: "puissanceVerifiee", label: "Puissance de départ vérifiée (cohérente avec le nombre de PV)" },
+    { key: "monitoringApp", label: "Monitoring / app client configurée (si applicable)" },
+    { key: "clientInforme", label: "Client informé du fonctionnement" },
+  ], numericFields: [{ key: "puissanceDemarrage", label: "Puissance relevée au démarrage", placeholder: "ex: 4200 W" }],
+     timeFields: [{ key: "heureMiseEnService", label: "Heure de mise en service" }]},
+  { key: "clotureAC", label: "7 · Clôture chantier AC", icon: "🔒", items: [
+    { key: "materielRecupereAC", label: "Tout le matériel et outils récupérés" },
+    { key: "accessoiresLaisses", label: "Accessoires, manuels, notices laissés sur place (PAS au-dessus de l'onduleur)" },
+    { key: "nettoyageAC", label: "Nettoyage effectué (câbles, colsons, poussières onduleur, plastiques, cigarettes)" },
+    { key: "materielRetourne", label: "Matériel électrique non utilisé retourné au dépôt (disjoncteur, diff…)" },
+    { key: "gestionnairePrevenu", label: "Gestionnaire de stock / ingénieur électrique prévenus si matériel non utilisé" },
+  ]},
+];
+
+// ── Onduleur items ─────────────────────────────────────
+const ONDULEUR_ITEMS = [
+  { key: "fixationOK", label: "Onduleur fixé solidement" },
+  { key: "connexionsDC", label: "Connexions DC effectuées (polarité vérifiée)" },
+  { key: "connexionsAC", label: "Connexions AC effectuées" },
+  { key: "miseATerre", label: "Mise à la terre effectuée" },
+  { key: "parametrage", label: "Paramétrage onduleur effectué" },
+  { key: "productionOK", label: "Production vérifiée (onduleur démarre et produit)" },
+  { key: "monitoringOK", label: "Affichage / monitoring fonctionnel" },
+];
+
+// ── Photos ────────────────────────────────────────────
+// DC_PHOTO_CATS are now embedded per-section in DC_SECTIONS[].photoCats
+
+const AC_PHOTO_CATS = [
+  { key: "compteur_avant", label: "1a. Compteur & disjoncteur général (AVANT)", hiRes: true },
+  { key: "compteur_apres", label: "1b. Compteur & disjoncteur général (APRÈS)", hiRes: true },
+  { key: "tgbt_avant", label: "2a. Tableau TGBT (AVANT)", hiRes: true },
+  { key: "tgbt_apres", label: "2b. Tableau TGBT (APRÈS)", hiRes: true },
+  { key: "td_ph", label: "3. TD si applicable", hiRes: true },
+  { key: "schema_elec", label: "4. Schéma électrique client", hiRes: true },
+  { key: "onduleur_ac", label: "5. Onduleur installé (vue générale + connexions)", hiRes: true },
+  { key: "cablage_ac", label: "6. Câblage AC (chemin de câble, section)", hiRes: true },
+  { key: "extra_ac", label: "7. Photos supplémentaires AC", hiRes: true },
+];
+
+// ── Data factory ──────────────────────────────────────
+function makeDefaultDCItems() {
+  var d = {};
+  DC_SECTIONS.forEach(function(s) {
+    d[s.key] = {};
+    (s.items||[]).forEach(function(it) { d[s.key][it.key] = null; d[s.key][it.key+"Remarque"] = ""; });
+    (s.numericFields||[]).forEach(function(f) { d[s.key][f.key] = ""; });
+    (s.selectFields||[]).forEach(function(f) { d[s.key][f.key] = ""; });
+    (s.timeFields||[]).forEach(function(f) { d[s.key][f.key] = ""; });
+  });
+  return d;
+}
+function makeDefaultACItems() {
+  var d = {};
+  AC_SECTIONS.forEach(function(s) {
+    d[s.key] = {};
+    (s.items||[]).forEach(function(it) { d[s.key][it.key] = null; d[s.key][it.key+"Remarque"] = ""; });
+    (s.numericFields||[]).forEach(function(f) { d[s.key][f.key] = ""; });
+    (s.timeFields||[]).forEach(function(f) { d[s.key][f.key] = ""; });
+  });
+  return d;
+}
+function makeDefaultOnduleur() {
+  var o = { marque: "", serie: "", emplacement: "" };
+  ONDULEUR_ITEMS.forEach(function(it) { o[it.key] = null; o[it.key+"Remarque"] = ""; });
+  return o;
+}
+function makeDefaultDCPhotos() {
+  var p = {};
+  DC_SECTIONS.forEach(function(s) {
+    (s.photoCats||[]).forEach(function(c) { p[c.key] = []; });
+  });
+  // String photos stored dynamically as string_ph_0, string_ph_1, etc.
+  p["extra_dc"] = [];
+  return p;
+}
+function makeDefaultACPhotos() { var p = {}; AC_PHOTO_CATS.forEach(function(c) { p[c.key] = []; }); return p; }
+function makeDefaultData() {
+  return {
+    meta: { ref: "", client: "", adresse: "", dateControle: "", controleur: "", equipe: "", pm: "" },
+    dc: { items: makeDefaultDCItems(), photos: makeDefaultDCPhotos(), stringTensions: {}, observations: "", signatureName: "", heureFin: "" },
+    ac: { onduleurs: [makeDefaultOnduleur()], items: makeDefaultACItems(), photos: makeDefaultACPhotos(), observations: "", signatureName: "", heureFin: "" }
+  };
+}
+
+function deepMerge(target, source) {
+  if (!source) return target;
+  var result = Object.assign({}, target);
+  Object.keys(source).forEach(function(k) {
+    if (source[k] !== null && typeof source[k] === "object" && !Array.isArray(source[k])) {
+      result[k] = deepMerge(target[k] || {}, source[k]);
+    } else { result[k] = source[k]; }
+  });
+  return result;
+}
+
+function setByPath(obj, path, value) {
+  var parts = path.split(".");
+  if (parts.length === 1) { var r = Object.assign({}, obj); r[path] = value; return r; }
+  var r = Object.assign({}, obj);
+  r[parts[0]] = setByPath(obj[parts[0]] || {}, parts.slice(1).join("."), value);
+  return r;
+}
+
+// ── Completion ────────────────────────────────────────
+function calcDCCompletion(data) {
+  var total = 0, done = 0, nokCount = 0;
+  DC_SECTIONS.forEach(function(s) {
+    var sData = ((data.dc||{}).items||{})[s.key] || {};
+    (s.items||[]).forEach(function(it) {
+      total++;
+      var v = sData[it.key];
+      if (v === "OK" || v === "NA") done++;
+      if (v === "NOK") nokCount++;
+    });
+  });
+  return { total: total, done: done, nokCount: nokCount, pct: total > 0 ? Math.round(done/total*100) : 0 };
+}
+function calcACCompletion(data) {
+  var total = 0, done = 0, nokCount = 0;
+  AC_SECTIONS.forEach(function(s) {
+    var sData = ((data.ac||{}).items||{})[s.key] || {};
+    (s.items||[]).forEach(function(it) {
+      total++;
+      var v = sData[it.key];
+      if (v === "OK" || v === "NA") done++;
+      if (v === "NOK") nokCount++;
+    });
+  });
+  ((data.ac||{}).onduleurs||[]).forEach(function(o) {
+    ONDULEUR_ITEMS.forEach(function(it) {
+      total++;
+      if (o[it.key] === "OK" || o[it.key] === "NA") done++;
+      if (o[it.key] === "NOK") nokCount++;
+    });
+  });
+  return { total: total, done: done, nokCount: nokCount, pct: total > 0 ? Math.round(done/total*100) : 0 };
+}
+
+// ── Collect NOK items ─────────────────────────────────
+function collectNOK(data) {
+  var items = [];
+  DC_SECTIONS.forEach(function(s) {
+    var sData = ((data.dc||{}).items||{})[s.key] || {};
+    (s.items||[]).forEach(function(it) {
+      if (sData[it.key] === "NOK") items.push({ tab: "DC", section: s.label, label: it.label, remark: sData[it.key+"Remarque"]||"" });
+    });
+  });
+  AC_SECTIONS.forEach(function(s) {
+    var sData = ((data.ac||{}).items||{})[s.key] || {};
+    (s.items||[]).forEach(function(it) {
+      if (sData[it.key] === "NOK") items.push({ tab: "AC", section: s.label, label: it.label, remark: sData[it.key+"Remarque"]||"" });
+    });
+  });
+  ((data.ac||{}).onduleurs||[]).forEach(function(o, i) {
+    ONDULEUR_ITEMS.forEach(function(it) {
+      if (o[it.key] === "NOK") items.push({ tab: "AC", section: "Onduleur "+(i+1), label: it.label, remark: o[it.key+"Remarque"]||"" });
+    });
+  });
+  return items;
+}
+
+
+function AnnotationModal({ imageUrl, onSave, onClose }) {
+  var canvasRef = useRef();
+  var containerRef = useRef();
+  var textInputRef = useRef();
+  var [tool, setTool] = useState("free");
+  var [color, setColor] = useState("#e74c3c");
+  var [thickness, setThickness] = useState(4);
+  var [fontSize, setFontSize] = useState(24);
+  var [history, setHistory] = useState([]);
+  var [textInput, setTextInput] = useState(null); // {x,y,screenX,screenY}
+  var drawing = useRef(false);
+  var startPos = useRef({ x: 0, y: 0 });
+  var snapshot = useRef(null);
+  var zoom = useRef(1);
+  var lastPinchDist = useRef(null);
+  var isPinching = useRef(false);
+  var [zoomLevel, setZoomLevel] = useState(1);
+
+  var COLORS = ["#e74c3c","#f39c12","#27ae60","#2980b9","#9b59b6","#ffffff","#1a1a1a"];
+  var TOOLS = [["free","✏️ Libre"],["line","📏 Droit"],["rect","▭ Rect"],["text","🔤 Texte"],["eraser","🧹 Gomme"]];
+
+  // cssScale: display scale (1 = fit screen, 2 = 200%, etc.)
+  var [cssScale, setCssScale] = useState(1);
+  var initScale = useRef(1); // natural fit-screen scale (px/px)
+
+  useEffect(function() {
+    var canvas = canvasRef.current;
+    if (!canvas) return;
+    var img = new Image();
+    img.onload = function() {
+      // Canvas at FULL image resolution — CSS handles display scaling
+      canvas.width = img.width;
+      canvas.height = img.height;
+      var ctx = canvas.getContext("2d");
+      ctx.drawImage(img, 0, 0, img.width, img.height);
+      setHistory([ctx.getImageData(0, 0, canvas.width, canvas.height)]);
+      // Compute natural fit-screen CSS width (px)
+      var maxW = window.innerWidth * 0.98;
+      var maxH = window.innerHeight * 0.72;
+      var scale = Math.min(maxW / img.width, maxH / img.height, 1);
+      initScale.current = scale;
+      zoom.current = 1;
+      setCssScale(1);
+      setZoomLevel(100);
+      canvas.style.width = Math.round(img.width * scale) + "px";
+      canvas.style.height = "auto";
+    };
+    img.src = imageUrl;
+  }, []);
+
+  function applyZoom(factor) {
+    var canvas = canvasRef.current;
+    if (!canvas) return;
+    var newZoom = Math.min(Math.max(zoom.current * factor, 0.5), 6);
+    zoom.current = newZoom;
+    setZoomLevel(Math.round(newZoom * 100));
+    var img = canvas; // use canvas natural dims
+    canvas.style.width = Math.round(canvas.width * initScale.current * newZoom) + "px";
+    canvas.style.height = "auto";
+  }
+
+  // Focus text input when it appears
+  useEffect(function() {
+    if (textInput && textInputRef.current) textInputRef.current.focus();
+  }, [textInput]);
+
+  function getPos(e) {
+    var canvas = canvasRef.current;
+    var rect = canvas.getBoundingClientRect();
+    var scaleX = canvas.width / rect.width;
+    var scaleY = canvas.height / rect.height;
+    var clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    var clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    return { x: (clientX - rect.left) * scaleX, y: (clientY - rect.top) * scaleY, screenX: clientX - rect.left, screenY: clientY - rect.top };
+  }
+
+  function commitText(txt) {
+    if (!txt || !txt.trim() || !textInput) { setTextInput(null); return; }
+    var canvas = canvasRef.current;
+    var ctx = canvas.getContext("2d");
+    var scaledFontSize = fontSize * (canvas.width / canvas.getBoundingClientRect().width);
+    ctx.font = "bold " + scaledFontSize + "px Arial, sans-serif";
+    ctx.fillStyle = color;
+    ctx.strokeStyle = (color === "#ffffff" || color === "#f39c12") ? "#333" : "rgba(0,0,0,0.4)";
+    ctx.lineWidth = scaledFontSize / 14;
+    ctx.strokeText(txt.trim(), textInput.x, textInput.y);
+    ctx.fillText(txt.trim(), textInput.x, textInput.y);
+    setHistory(function(prev) { return prev.concat([ctx.getImageData(0, 0, canvas.width, canvas.height)]); });
+    setTextInput(null);
+  }
+
+  function onStart(e) {
+    e.preventDefault();
+    if (e.touches && e.touches.length === 2) { isPinching.current = true; return; }
+    if (isPinching.current) return;
+    if (tool === "text") {
+      var pos = getPos(e);
+      setTextInput({ x: pos.x, y: pos.y, screenX: pos.screenX, screenY: pos.screenY - fontSize });
+      return;
+    }
+    var canvas = canvasRef.current;
+    var ctx = canvas.getContext("2d");
+    var pos = getPos(e);
+    drawing.current = true;
+    startPos.current = pos;
+    snapshot.current = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    ctx.beginPath();
+    ctx.moveTo(pos.x, pos.y);
+  }
+
+  function onMove(e) {
+    e.preventDefault();
+    if (e.touches && e.touches.length === 2) {
+      isPinching.current = true; drawing.current = false;
+      var dx = e.touches[0].clientX - e.touches[1].clientX;
+      var dy = e.touches[0].clientY - e.touches[1].clientY;
+      var dist = Math.sqrt(dx*dx + dy*dy);
+      if (lastPinchDist.current !== null) {
+        var delta = dist / lastPinchDist.current;
+        var newZoom = Math.min(Math.max(zoom.current * delta, 0.5), 6);
+        zoom.current = newZoom;
+        setZoomLevel(Math.round(newZoom * 100));
+        if (canvasRef.current) {
+          canvasRef.current.style.width = Math.round(canvasRef.current.width * initScale.current * newZoom) + "px";
+          canvasRef.current.style.height = "auto";
+        }
+      }
+      lastPinchDist.current = dist; return;
+    }
+    lastPinchDist.current = null;
+    if (!drawing.current) return;
+    var canvas = canvasRef.current; var ctx = canvas.getContext("2d"); var pos = getPos(e);
+    ctx.lineWidth = tool === "eraser" ? thickness * 6 : thickness;
+    ctx.lineCap = "round"; ctx.lineJoin = "round";
+    if (tool === "eraser") {
+      ctx.globalCompositeOperation = "destination-out";
+      ctx.beginPath(); ctx.arc(pos.x, pos.y, thickness * 4, 0, Math.PI * 2); ctx.fill();
+      ctx.globalCompositeOperation = "source-over";
+    } else if (tool === "free") {
+      ctx.strokeStyle = color; ctx.globalCompositeOperation = "source-over";
+      ctx.lineTo(pos.x, pos.y); ctx.stroke();
+    } else if (tool === "line") {
+      ctx.strokeStyle = color; ctx.putImageData(snapshot.current, 0, 0);
+      ctx.globalCompositeOperation = "source-over";
+      ctx.beginPath(); ctx.moveTo(startPos.current.x, startPos.current.y); ctx.lineTo(pos.x, pos.y); ctx.stroke();
+    } else if (tool === "rect") {
+      ctx.strokeStyle = color; ctx.putImageData(snapshot.current, 0, 0);
+      ctx.globalCompositeOperation = "source-over";
+      var rx = startPos.current.x, ry = startPos.current.y, rw = pos.x - rx, rh = pos.y - ry;
+      ctx.strokeRect(rx, ry, rw, rh);
+    }
+  }
+
+  function onEnd(e) {
+    if (e.touches && e.touches.length < 2) { isPinching.current = false; lastPinchDist.current = null; }
+    if (!drawing.current) return;
+    drawing.current = false;
+    var canvas = canvasRef.current; var ctx = canvas.getContext("2d");
+    setHistory(function(prev) { return prev.concat([ctx.getImageData(0, 0, canvas.width, canvas.height)]); });
+  }
+
+  function undo() {
+    if (history.length <= 1) return;
+    var newHist = history.slice(0, -1); setHistory(newHist);
+    var canvas = canvasRef.current; var ctx = canvas.getContext("2d");
+    ctx.putImageData(newHist[newHist.length - 1], 0, 0);
+  }
+
+  function save() {
+    var canvas = canvasRef.current;
+    var out = document.createElement("canvas"); out.width = canvas.width; out.height = canvas.height;
+    var ctx2 = out.getContext("2d"); ctx2.fillStyle = "#fff"; ctx2.fillRect(0, 0, out.width, out.height); ctx2.drawImage(canvas, 0, 0);
+    onSave(out.toDataURL("image/jpeg", 0.97));
+  }
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.95)", zIndex: 9999, display: "flex", flexDirection: "column", alignItems: "center", overflow: "hidden", touchAction: "none" }}>
+      {/* Toolbar */}
+      <div style={{ display: "flex", gap: 5, alignItems: "center", flexWrap: "wrap", justifyContent: "center", padding: "8px 10px", background: "#1a1a1a", width: "100%", boxSizing: "border-box" }}>
+        {TOOLS.map(function(t) { return (
+          <button key={t[0]} onClick={function() { setTool(t[0]); setTextInput(null); }}
+            style={{ padding: "6px 11px", borderRadius: 7, border: "none", background: tool === t[0] ? GREEN : "#333", color: "#fff", fontSize: 12, cursor: "pointer", fontWeight: tool === t[0] ? 700 : 400 }}>
+            {t[1]}
+          </button>
+        ); })}
+        <div style={{ width: 1, height: 26, background: "#444" }} />
+        {/* Colors */}
+        {COLORS.map(function(col) { return (
+          <div key={col} onClick={function() { setColor(col); if (tool === "eraser") setTool("free"); }}
+            style={{ width: 24, height: 24, borderRadius: "50%", background: col, border: color === col && tool !== "eraser" ? "3px solid #fff" : "2px solid #555", cursor: "pointer", flexShrink: 0 }} />
+        ); })}
+        <div style={{ width: 1, height: 26, background: "#444" }} />
+        {/* Thickness dots */}
+        {[2,4,8].map(function(t) { return (
+          <div key={t} onClick={function() { setThickness(t); }}
+            style={{ width: t*3+8, height: t*3+8, minWidth: 10, minHeight: 10, borderRadius: "50%", background: thickness === t ? "#fff" : "#555", cursor: "pointer", flexShrink: 0 }} />
+        ); })}
+        {/* Font size (text tool) */}
+        {tool === "text" && <>
+          <div style={{ width: 1, height: 26, background: "#444" }} />
+          <span style={{ color: "#aaa", fontSize: 11 }}>Taille :</span>
+          {[12,18,24,32,44].map(function(s) { return (
+            <button key={s} onClick={function() { setFontSize(s); }}
+              style={{ padding: "4px 8px", borderRadius: 6, border: "none", background: fontSize === s ? GREEN : "#333", color: "#fff", fontSize: 11, cursor: "pointer", fontWeight: fontSize === s ? 700 : 400 }}>
+              {s}
+            </button>
+          ); })}
+        </>}
+        <div style={{ width: 1, height: 26, background: "#444" }} />
+        <button onClick={undo} style={{ padding: "6px 10px", borderRadius: 7, border: "none", background: "#333", color: "#fff", fontSize: 13, cursor: "pointer" }}>↩</button>
+        <div style={{ width: 1, height: 26, background: "#444" }} />
+        <button onClick={function(){ applyZoom(1.3); }} title="Zoom +" style={{ padding: "6px 10px", borderRadius: 7, border: "none", background: "#333", color: "#fff", fontSize: 13, cursor: "pointer" }}>🔍+</button>
+        <span style={{ color: "#aaa", fontSize: 11, minWidth: 34, textAlign: "center" }}>{zoomLevel}%</span>
+        <button onClick={function(){ applyZoom(1/1.3); }} title="Zoom −" style={{ padding: "6px 10px", borderRadius: 7, border: "none", background: "#333", color: "#fff", fontSize: 13, cursor: "pointer" }}>🔍−</button>
+        <div style={{ width: 1, height: 26, background: "#444" }} />
+        <button onClick={save} style={{ padding: "6px 14px", borderRadius: 7, border: "none", background: GREEN, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>✓ Sauver</button>
+        <button onClick={onClose} style={{ padding: "6px 10px", borderRadius: 7, border: "none", background: "#555", color: "#fff", fontSize: 13, cursor: "pointer" }}>✕</button>
+      </div>
+      {/* Legend */}
+      <div style={{ display: "flex", gap: 12, alignItems: "center", padding: "4px 10px", background: "#111", fontSize: 11, color: "#aaa", flexWrap: "wrap", justifyContent: "center", width: "100%", boxSizing: "border-box" }}>
+        {[["#e74c3c","DC"],["#27ae60","AC"],["#2980b9","Onduleur"],["#f39c12","Borne"]].map(function(item) { return (
+          <span key={item[0]} style={{ display: "flex", alignItems: "center", gap: 3 }}>
+            <span style={{ width: 10, height: 10, borderRadius: "50%", background: item[0], display: "inline-block" }} />{item[1]}
+          </span>
+        ); })}
+        <span style={{ color: "#666" }}>· Pincer pour zoomer</span>
+        {zoomLevel !== 100 && <button onClick={function(){ zoom.current=1; setZoomLevel(100); if(canvasRef.current){ canvasRef.current.style.width=Math.round(canvasRef.current.width*initScale.current)+"px"; canvasRef.current.style.height="auto"; } }} style={{ padding: "2px 8px", borderRadius: 5, border: "none", background: "#555", color: "#fff", fontSize: 11, cursor: "pointer" }}>🔍 {zoomLevel}% ✕</button>}
+      </div>
+      {/* Canvas area */}
+      <div style={{ flex: 1, overflow: "auto", display: "flex", alignItems: "flex-start", justifyContent: "center", width: "100%", position: "relative", minHeight: 0 }}>
+        <div ref={containerRef} style={{ position: "relative", width: "100%", maxWidth: "100%" }}>
+          <canvas ref={canvasRef}
+            onMouseDown={onStart} onMouseMove={onMove} onMouseUp={onEnd} onMouseLeave={onEnd}
+            onTouchStart={onStart} onTouchMove={onMove} onTouchEnd={onEnd}
+            style={{ cursor: tool === "eraser" ? "cell" : tool === "text" ? "text" : "crosshair", borderRadius: 6, touchAction: "none", display: "block", height: "auto" }} />
+          {/* Text input overlay */}
+          {textInput && (
+            <input ref={textInputRef} type="text" placeholder="Tapez le texte…"
+              onKeyDown={function(e){ if (e.key === "Enter") commitText(e.target.value); if (e.key === "Escape") setTextInput(null); }}
+              onBlur={function(e){ commitText(e.target.value); }}
+              style={{
+                position: "absolute", left: textInput.screenX, top: Math.max(0, textInput.screenY),
+                minWidth: 140, background: "rgba(0,0,0,0.75)", color: color,
+                border: "1.5px solid " + color, borderRadius: 4, padding: "3px 7px",
+                fontSize: fontSize + "px", fontWeight: "bold", fontFamily: "Arial, sans-serif",
+                outline: "none", zIndex: 10
+              }} />
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+var _crossDrag = null; // cross-zone native drag tracker
+function PhotoZone({ catKey, label, items, onAdd, onDelete, onUpdate, onReorder, onReceiveCross, onMoveTo, allSections, hasNote, note, onNoteChange, hiRes }) {
+  const [drag, setDrag] = React.useState(false);
+  const [dragIdx, setDragIdx] = React.useState(null);
+  const [overIdx, setOverIdx] = React.useState(null);
+  const [crossOver, setCrossOver] = React.useState(false);
+  const [annotating, setAnnotating] = React.useState(null);
+  const [previewIdx, setPreviewIdx] = React.useState(null);
+  const [previewZoomed, setPreviewZoomed] = React.useState(false);
+  const [touchDragIdx, setTouchDragIdx] = React.useState(null);
+  const [touchOverIdx, setTouchOverIdx] = React.useState(null);
+  const tdxRef = React.useRef(null);
+  const toxRef = React.useRef(null);
+  const refFile = React.useRef();
+  const refCamera = React.useRef();
+  const zoneRef = React.useRef();
+  const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+
+  // Compression: DC 1600px/0.82 — AC + strings + schémas 2400px/0.92
+  const compressImg = function(blob, isHiRes) { return new Promise(function(res) {
+    const img = new Image(); const objUrl = URL.createObjectURL(blob);
+    img.onload = function() {
+      const MAX = isHiRes ? 2400 : 1600; const QUALITY = isHiRes ? 0.92 : 0.82;
+      let w = img.width, h = img.height;
+      if (w > h) { if (w > MAX) { h = Math.round(h*MAX/w); w = MAX; } }
+      else { if (h > MAX) { w = Math.round(w*MAX/h); h = MAX; } }
+      const canvas = document.createElement("canvas"); canvas.width = w; canvas.height = h;
+      const ctx = canvas.getContext("2d");
+      ctx.fillStyle = "#fff"; ctx.fillRect(0,0,w,h); ctx.drawImage(img,0,0,w,h);
+      URL.revokeObjectURL(objUrl); res(canvas.toDataURL("image/jpeg", QUALITY));
+    };
+    img.onerror = function() { URL.revokeObjectURL(objUrl); res(null); };
+    img.src = objUrl;
+  }); };
+
+  const handleFiles = async function(files) {
+    const arr = Array.from(files).filter(function(f) { return f.type.startsWith("image/") || f.type === "application/pdf"; });
+    const result = [];
+    for (let i=0; i<arr.length; i++) {
+      const f = arr[i];
+      const url = f.type.startsWith("image/") ? await compressImg(f, hiRes) : null;
+      result.push({ name: f.name, url, type: f.type });
+    }
+    onAdd(result);
+  };
+
+  const handlePaste = async function(e) {
+    const imgs = Array.from((e.clipboardData && e.clipboardData.items)||[]).filter(function(i){ return i.type.startsWith("image/"); });
+    if (!imgs.length) return; e.preventDefault();
+    const result = [];
+    for (let i=0; i<imgs.length; i++) { const blob = imgs[i].getAsFile(); result.push({ name: "colle_"+Date.now()+".jpg", url: await compressImg(blob, hiRes), type: blob.type }); }
+    onAdd(result);
+  };
+
+  // ── Desktop drag within zone ──────────────────────────────────────────
+  function hdStart(i) { _crossDrag = { fromKey: catKey, fromIdx: i }; setDragIdx(i); }
+  function hdOver(e, i) { e.preventDefault(); setOverIdx(i); }
+  function hdDrop(e, i) {
+    e.preventDefault();
+    if (_crossDrag && _crossDrag.fromKey !== catKey) { onReceiveCross(_crossDrag.fromKey, _crossDrag.fromIdx); }
+    else if (dragIdx !== null && dragIdx !== i) { onReorder(dragIdx, i); }
+    setDragIdx(null); setOverIdx(null); _crossDrag = null;
+  }
+  function hdEnd() { setDragIdx(null); setOverIdx(null); _crossDrag = null; }
+
+  // ── Zone-level drag (cross-section receive) ───────────────────────────
+  function zoneOver(e) {
+    e.preventDefault();
+    if (_crossDrag && _crossDrag.fromKey !== catKey) { setCrossOver(true); return; }
+    if (!_crossDrag) setDrag(true);
+  }
+  function zoneLeave(e) {
+    if (!zoneRef.current.contains(e.relatedTarget)) { setDrag(false); setCrossOver(false); }
+  }
+  function zoneDrop(e) {
+    e.preventDefault(); setDrag(false); setCrossOver(false);
+    if (_crossDrag && _crossDrag.fromKey !== catKey) { onReceiveCross(_crossDrag.fromKey, _crossDrag.fromIdx); _crossDrag = null; return; }
+    _crossDrag = null;
+    if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) handleFiles(e.dataTransfer.files);
+  }
+
+  // ── Touch drag within zone ────────────────────────────────────────────
+  function htStart(i) { tdxRef.current=i; toxRef.current=null; setTouchDragIdx(i); setTouchOverIdx(null); }
+  function htMove(e) {
+    if (tdxRef.current===null) return; e.preventDefault();
+    const t=e.touches[0]; const el=document.elementFromPoint(t.clientX,t.clientY); if(!el) return;
+    const c2=el.closest("[data-photo-idx]"); if(!c2) return;
+    const idx=parseInt(c2.getAttribute("data-photo-idx"));
+    if (!isNaN(idx) && idx!==tdxRef.current) { toxRef.current=idx; setTouchOverIdx(idx); }
+  }
+  function htEnd() {
+    const from=tdxRef.current; const to=toxRef.current;
+    tdxRef.current=null; toxRef.current=null; setTouchDragIdx(null); setTouchOverIdx(null);
+    if (from!==null && to!==null && from!==to) onReorder(from,to);
+  }
+
+  // ── Lightbox helpers ──────────────────────────────────────────────────
+  function openPrev() { setPreviewIdx(function(i){ return i>0?i-1:i; }); setPreviewZoomed(false); }
+  function openNext() { setPreviewIdx(function(i){ return i<items.length-1?i+1:i; }); setPreviewZoomed(false); }
+  function closePreview() { setPreviewIdx(null); setPreviewZoomed(false); }
+
+  React.useEffect(function() {
+    if (previewIdx===null) return;
+    function onKey(e) {
+      if (e.key==="ArrowLeft") openPrev();
+      if (e.key==="ArrowRight") openNext();
+      if (e.key==="Escape") closePreview();
+    }
+    window.addEventListener("keydown", onKey);
+    return function() { window.removeEventListener("keydown", onKey); };
+  }, [previewIdx, items.length]);
+
+  var borderStyle = crossOver ? "2px dashed #2980b9" : drag ? "1.5px dashed "+GREEN : "1.5px dashed "+BORDER;
+  var bgStyle = crossOver ? "#e8f4fd" : drag ? GREEN_LIGHT : BG;
+
+  return (
+    <div style={{ marginBottom: 8 }}>
+      {/* Label */}
+      <div style={{ ...LBL, cursor:"pointer", userSelect:"none", marginBottom:6, display:"flex", alignItems:"center", gap:4 }}
+        onClick={function(){ zoneRef.current && zoneRef.current.focus(); }} title="Cliquer puis Ctrl+V pour coller">
+        <span>{label}</span>
+        {hiRes && <span style={{ fontSize:9, color:"#c0392b", fontWeight:700, background:"#fdecea", padding:"1px 5px", borderRadius:3 }}>HD</span>}
+        {items.length>0 && <span style={{ color:GREEN, fontWeight:700, marginLeft:2 }}>({items.length})</span>}
+        <span style={{ fontSize:10, color:MUTED, fontWeight:400, marginLeft:4 }}>↵ coller</span>
+        {crossOver && <span style={{ fontSize:10, color:"#2980b9", fontWeight:700, marginLeft:4 }}>↓ Déposer ici</span>}
+      </div>
+
+      {/* Drop zone */}
+      <div ref={zoneRef} tabIndex={0} onPaste={handlePaste}
+        onDragOver={zoneOver} onDragLeave={zoneLeave} onDrop={zoneDrop}
+        style={{ border: borderStyle, background: bgStyle, borderRadius:8, padding:8, minHeight:60, outline:"none", transition:"border-color 0.12s, background 0.12s" }}>
+
+        {/* Mobile capture buttons */}
+        {isMobile ? (
+          <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginBottom:items.length>0?8:0 }}>
+            <button onClick={function(){ refCamera.current && refCamera.current.click(); }}
+              style={{ flex:1, minWidth:120, background:GREEN, color:WHITE, border:"none", borderRadius:8, padding:"10px 12px", fontSize:14, fontWeight:600, display:"flex", alignItems:"center", justifyContent:"center", gap:6 }}>📷 Photo</button>
+            <button onClick={function(){ refFile.current && refFile.current.click(); }}
+              style={{ flex:1, minWidth:100, background:WHITE, color:GREEN, border:"1.5px solid "+GREEN, borderRadius:8, padding:"10px 12px", fontSize:14, fontWeight:600, display:"flex", alignItems:"center", justifyContent:"center", gap:6 }}>🖼 Galerie</button>
+          </div>
+        ) : (
+          items.length===0 && (
+            <div style={{ height:44, display:"flex", alignItems:"center", justifyContent:"center", gap:10 }}>
+              <span onClick={function(){ refFile.current && refFile.current.click(); }} style={{ fontSize:12, color:GREEN, cursor:"pointer", textDecoration:"underline" }}>Parcourir</span>
+              <span style={{ fontSize:12, color:"#ccc" }}>|</span>
+              <span style={{ fontSize:12, color:"#aaa" }}>Drop ici</span>
+              <span style={{ fontSize:12, color:"#ccc" }}>|</span>
+              <span style={{ fontSize:12, color:"#aaa" }}>Ctrl+V</span>
+            </div>
+          )
+        )}
+
+        {/* Thumbnails */}
+        {items.length>0 && (
+          <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
+            {items.map(function(item,i) { return (
+              <div key={i} data-photo-idx={i} draggable={true}
+                onDragStart={function(){ hdStart(i); }}
+                onDragOver={function(e){ hdOver(e,i); }}
+                onDrop={function(e){ hdDrop(e,i); }}
+                onDragEnd={hdEnd}
+                style={{ opacity:(dragIdx===i||touchDragIdx===i)?0.35:1,
+                  outline:(overIdx===i||touchOverIdx===i)?"2px solid "+GREEN:"none",
+                  borderRadius:8, background:WHITE, border:"1px solid "+BORDER, overflow:"hidden",
+                  width:isMobile?120:104, boxShadow:touchDragIdx===i?"0 4px 14px rgba(0,0,0,0.18)":"none" }}>
+                {/* Drag handle */}
+                <div title="Glisser pour réordonner ou déplacer vers une autre section"
+                  onTouchStart={function(){ htStart(i); }} onTouchMove={htMove} onTouchEnd={htEnd}
+                  style={{ cursor:"grab", textAlign:"center", padding:"3px 0", background:"#f0f0ec", borderBottom:"1px solid "+BORDER, color:"#bbb", fontSize:13, userSelect:"none", touchAction:"none", letterSpacing:2 }}>⠿</div>
+                {/* Image */}
+                {item.url
+                  ? <img src={item.url} alt={item.name} style={{ width:"100%", height:isMobile?90:75, objectFit:"cover", display:"block", cursor:"pointer" }} onClick={function(e){ e.stopPropagation(); setPreviewIdx(i); setPreviewZoomed(false); }} />
+                  : <div style={{ width:"100%", height:isMobile?90:75, display:"flex", alignItems:"center", justifyContent:"center", background:BG, fontSize:11, color:MUTED }}>PDF</div>}
+                {/* Action bar — row 1: 4 main actions */}
+                <div style={{ display:"flex", borderTop:"1px solid "+BORDER }}>
+                  {item.url && <button title="Agrandir" onClick={function(e){ e.stopPropagation(); setPreviewIdx(i); setPreviewZoomed(false); }}
+                    style={{ flex:1, background:"none", border:"none", borderRight:"1px solid "+BORDER, cursor:"pointer", fontSize:isMobile?18:15, padding:"6px 0", color:"#555" }}>🔍</button>}
+                  {item.url && <button title="Annoter / dessiner / écrire" onClick={function(e){ e.stopPropagation(); setAnnotating(i); }}
+                    style={{ flex:1, background:"none", border:"none", borderRight:"1px solid "+BORDER, cursor:"pointer", fontSize:isMobile?18:15, padding:"6px 0", color:"#2980b9" }}>✏️</button>}
+                  {item.url && <a title="Télécharger" href={item.url} download={item.name||"photo.jpg"} onClick={function(e){ e.stopPropagation(); }}
+                    style={{ flex:1, background:"none", border:"none", borderRight:"1px solid "+BORDER, cursor:"pointer", fontSize:isMobile?18:15, padding:"6px 0", color:"#27ae60", textAlign:"center", textDecoration:"none", display:"block" }}>⬇️</a>}
+                  <button title="Supprimer cette photo" onClick={function(e){ e.stopPropagation(); if(window.confirm("Supprimer cette photo ?\nCette action est irréversible.")) onDelete(i); }}
+                    style={{ flex:1, background:"#fdecea", border:"none", cursor:"pointer", fontSize:isMobile?15:13, padding:"6px 0", color:"#c0392b", fontWeight:700 }}>×</button>
+                </div>
+                {/* Action bar — row 2: move to another section */}
+                <div style={{ borderTop:"1px solid "+BORDER }}>
+                  <select key={"mv-"+i+"-"+items.length} title="Déplacer vers une autre section"
+                    onChange={function(e){ e.stopPropagation(); var tk=e.target.value; if(tk&&tk!=="0") onMoveTo(i,tk); }}
+                    onClick={function(e){ e.stopPropagation(); }}
+                    style={{ width:"100%", border:"none", background:"#fafaf8", fontSize:11, color:MUTED, cursor:"pointer", outline:"none", padding:"4px 6px", fontFamily:"inherit" }}>
+                    <option value="0">↗ Déplacer vers…</option>
+                    {allSections.map(function(s){ return <option key={s.key} value={s.key}>{s.label.replace(/^\d+\.\s*/,"")}</option>; })}
+                  </select>
+                </div>
+              </div>
+            ); })}
+            <div onClick={function(){ refFile.current && refFile.current.click(); }}
+              style={{ width:isMobile?120:104, height:isMobile?128:108, display:"flex", alignItems:"center", justifyContent:"center", border:"1.5px dashed "+BORDER, borderRadius:8, cursor:"pointer", fontSize:24, color:MUTED }}>+</div>
+          </div>
+        )}
+      </div>
+
+      {hasNote && <textarea value={note||""} onChange={function(e){ onNoteChange(e.target.value); }} placeholder="Notes…" rows={2} style={{ width:"100%", marginTop:6, fontSize:13, resize:"vertical", boxSizing:"border-box" }} />}
+
+      {/* ── Lightbox ────────────────────────────────────────────────────── */}
+      {previewIdx!==null && items[previewIdx] && items[previewIdx].url && (
+        <div onClick={function(e){ if(e.target===e.currentTarget && !previewZoomed) closePreview(); }}
+          style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.93)", zIndex:9998, display:"flex", flexDirection:"column" }}>
+
+          {/* Top bar */}
+          <div style={{ display:"flex", alignItems:"center", gap:8, padding:"10px 14px", background:"rgba(0,0,0,0.65)", flexShrink:0, flexWrap:"wrap" }}>
+            <span style={{ color:"rgba(255,255,255,0.75)", fontSize:13, flex:1, minWidth:0, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+              <strong style={{ color:"#fff" }}>{label}</strong>
+              {items.length>1 && <span style={{ color:"rgba(255,255,255,0.5)", marginLeft:8 }}>{previewIdx+1} / {items.length}</span>}
+            </span>
+            <a href={items[previewIdx].url} download={items[previewIdx].name||"photo.jpg"} onClick={function(e){ e.stopPropagation(); }}
+              style={{ padding:"6px 12px", borderRadius:6, background:"#27ae60", color:"#fff", fontSize:13, textDecoration:"none", fontWeight:600, whiteSpace:"nowrap" }}>⬇ Télécharger</a>
+            <button onClick={function(e){ e.stopPropagation(); var idx=previewIdx; closePreview(); setAnnotating(idx); }}
+              style={{ padding:"6px 12px", borderRadius:6, background:"#2980b9", color:"#fff", border:"none", fontSize:13, cursor:"pointer", fontWeight:600, whiteSpace:"nowrap" }}>✏️ Modifier</button>
+            {!isMobile && <button onClick={function(e){ e.stopPropagation(); setPreviewZoomed(function(z){return !z;}); }}
+              title={previewZoomed?"Cliquer pour dézoomer":"Cliquer sur l'image pour zoomer"}
+              style={{ padding:"6px 10px", borderRadius:6, background:previewZoomed?"#444":"#333", color:"#fff", border:"none", fontSize:13, cursor:"pointer" }}>
+              {previewZoomed?"🔍 −":"🔍 +"}</button>}
+            <button onClick={function(e){ e.stopPropagation(); closePreview(); }}
+              style={{ padding:"6px 10px", borderRadius:6, background:"#555", color:"#fff", border:"none", fontSize:18, lineHeight:1, cursor:"pointer" }}>✕</button>
+          </div>
+
+          {/* Image area */}
+          <div style={{ flex:1, overflow:previewZoomed?"auto":"hidden", display:"flex", alignItems:previewZoomed?"flex-start":"center", justifyContent:previewZoomed?"flex-start":"center", position:"relative", minHeight:0 }}>
+            {previewIdx>0 && (
+              <button onClick={function(e){ e.stopPropagation(); openPrev(); }}
+                style={{ position:"absolute", left:10, top:"50%", transform:"translateY(-50%)", background:"rgba(255,255,255,0.14)", border:"none", borderRadius:"50%", width:48, height:48, color:"#fff", fontSize:28, cursor:"pointer", zIndex:2, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>‹</button>
+            )}
+            {previewIdx<items.length-1 && (
+              <button onClick={function(e){ e.stopPropagation(); openNext(); }}
+                style={{ position:"absolute", right:10, top:"50%", transform:"translateY(-50%)", background:"rgba(255,255,255,0.14)", border:"none", borderRadius:"50%", width:48, height:48, color:"#fff", fontSize:28, cursor:"pointer", zIndex:2, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>›</button>
+            )}
+            <img src={items[previewIdx].url}
+              onClick={function(e){ if(!isMobile){ e.stopPropagation(); setPreviewZoomed(function(z){return !z;}); } }}
+              style={{ maxWidth:previewZoomed?"none":"92vw", maxHeight:previewZoomed?"none":"calc(100vh - 110px)", width:"auto", height:"auto",
+                objectFit:"contain", display:"block", borderRadius:previewZoomed?0:4,
+                cursor:isMobile?"default":(previewZoomed?"zoom-out":"zoom-in") }} alt="" />
+          </div>
+
+          {/* Thumbnails strip */}
+          {items.length>1 && (
+            <div style={{ display:"flex", gap:5, padding:"8px 12px", background:"rgba(0,0,0,0.55)", overflowX:"auto", flexShrink:0 }}>
+              {items.map(function(it,idx){ return it.url?(
+                <img key={idx} src={it.url} onClick={function(e){ e.stopPropagation(); setPreviewIdx(idx); setPreviewZoomed(false); }}
+                  style={{ width:54, height:42, objectFit:"cover", borderRadius:4, cursor:"pointer", flexShrink:0,
+                    border:idx===previewIdx?"2.5px solid "+GREEN:"2px solid transparent", opacity:idx===previewIdx?1:0.65 }} alt="" />
+              ):null; })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Annotation modal */}
+      {annotating!==null && items[annotating] && items[annotating].url && (
+        <AnnotationModal imageUrl={items[annotating].url}
+          onSave={function(newUrl){ onUpdate(annotating,newUrl); setAnnotating(null); }}
+          onClose={function(){ setAnnotating(null); }} />
+      )}
+
+      <input ref={refCamera} type="file" multiple accept="image/*" capture="environment" style={{ display:"none" }} onChange={function(e){ if(e.target.files&&e.target.files.length) handleFiles(e.target.files); }} />
+      <input ref={refFile} type="file" multiple accept="image/*,application/pdf,.heic,.heif" style={{ display:"none" }} onChange={function(e){ if(e.target.files&&e.target.files.length) handleFiles(e.target.files); }} />
+    </div>
+  );
+}
+function StringRow({ idx, row, onChange, onRemove, maxOnd }) {
+  return (
+    <div style={{ display: "flex", gap: 8, alignItems: "flex-start", padding: "10px 0", borderBottom: `1px solid ${BORDER}` }}>
+      <div style={{ fontSize: 12, fontWeight: 700, color: GREEN, minWidth: 52, paddingTop: 26 }}>STR {idx + 1}</div>
+      <div style={{ display: "grid", gridTemplateColumns: "90px 80px 1fr", gap: 8, flex: 1, alignItems: "end" }}>
+        <div>
+          <label style={LBL}>Onduleur</label>
+          <select value={row.onduleur} onChange={e => onChange({ ...row, onduleur: e.target.value })} style={{ width: "100%" }}>
+            {Array.from({ length: maxOnd }, (_, i) => <option key={i + 1} value={String(i + 1)}>{i + 1}</option>)}
+          </select>
+        </div>
+        <div>
+          <label style={LBL}>Nbr PV</label>
+          <input type="number" min="1" value={row.count} onChange={e => onChange({ ...row, count: e.target.value })} style={{ width: "100%" }} placeholder="10" />
+        </div>
+        <div>
+          <label style={LBL}>Orientation</label>
+          <div style={{ display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center" }}>
+            {ORIENTS.map(o => <button key={o} onClick={() => onChange({ ...row, orient: o, orientLibre: "" })} style={{ ...chipSt(row.orient === o), padding: "3px 8px", fontSize: 12 }}>{o}</button>)}
+            <button onClick={() => onChange({ ...row, orient: "Libre" })} style={{ ...chipSt(row.orient === "Libre"), padding: "3px 8px", fontSize: 12 }}>Libre</button>
+            {row.orient === "Libre" && <input value={row.orientLibre || ""} onChange={e => onChange({ ...row, orientLibre: e.target.value })} placeholder="ex: Nord-Est" style={{ width: 90, fontSize: 12, padding: "3px 6px" }} />}
+          </div>
+        </div>
+      </div>
+      <button onClick={onRemove} style={{ fontSize: 20, color: MUTED, background: "none", border: "none", cursor: "pointer", padding: "4px 0", marginTop: 22 }}>×</button>
+    </div>
+  );
+}
+
+function PreviewDoc({ data }) {
+  const tv = v => v || "—";
+  const strLabel = s => `${s.count || "?"} × PV ${s.orient === "Libre" ? (s.orientLibre || "?") : s.orient || "?"}`;
+  // groupedStrings moved into installations.map in preview
+  return (
+    <div id="preview-doc" style={{ maxWidth: 700, margin: "0 auto", padding: "1rem 0.75rem", fontSize: 14, lineHeight: 1.6, color: TEXT }}>
+      {data.calepinage && data.calepinage.image && (
+        <div style={{ marginBottom: 20, borderRadius: 8, overflow: "hidden", border: `1px solid ${BORDER}`, background: "#fafaf8" }}>
+          <img src={data.calepinage.image} alt="Calepinage" style={{ width: "100%", maxHeight: "420px", objectFit: "contain", display: "block", padding: "8px" }} />
+        </div>
+      )}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24, paddingBottom: 16, borderBottom: `2px solid ${GREEN}` }}>
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: GREEN, textTransform: "uppercase", letterSpacing: "0.08em" }}>We Green Energy</div>
+          <div style={{ fontSize: 22, fontWeight: 600 }}>Feuille de chantier PV</div>
+        </div>
+        <div style={{ textAlign: "right", fontSize: 13, color: MUTED }}>
+          <div>{data.date || "Date non définie"}</div>
+          <div style={{ fontWeight: 600, color: TEXT }}>{tv(data.weGreen.manager)}</div>
+          {data.weGreen.tel && <div>{data.weGreen.tel}</div>}
+          {data.weGreen.email && <div style={{ color: GREEN }}>{data.weGreen.email}</div>}
+        </div>
+      </div>
+
+      <div style={{ ...G2, marginBottom: 18 }}>
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: GREEN, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>Client</div>
+          <table className="preview-table"><tbody>
+            <tr><th>Nom</th><td>{tv(data.client.nom)}</td></tr>
+            <tr><th>Adresse</th><td>{tv(data.client.adresse)}</td></tr>
+            <tr><th>Téléphone</th><td>{tv(data.client.tel)}</td></tr>
+            <tr><th>Email</th><td>{tv(data.client.email)}</td></tr>
+          </tbody></table>
+        </div>
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: GREEN, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>Logistique</div>
+          <table className="preview-table"><tbody>
+            <tr><th>Parking</th><td>{tv(data.logistique.parking)}</td></tr>
+            <tr><th>Haut. corniche</th><td>{data.logistique.hauteurCorniche ? data.logistique.hauteurCorniche + " m" : "—"}</td></tr>
+            <tr><th>Haut. toit plat</th><td>{data.logistique.hauteurToitPlat ? data.logistique.hauteurToitPlat + " m" : "—"}</td></tr>
+            <tr><th>Accès toiture</th><td>{data.logistique.acces === "Autre" ? (data.logistique.autreAcces || "Autre") : tv(data.logistique.acces)}</td></tr>
+            {[["lift","LIFT"],["nacelle","Nacelle"],["manitou","Manitou"],["grue","Grue"]].filter(([k]) => data.logistique[k] === "OUI").length > 0 && <tr><th>Engins</th><td>{[["lift","LIFT"],["nacelle","Nacelle"],["manitou","Manitou"],["grue","Grue"]].filter(function(p){ return data.logistique[p[0]] === "OUI"; }).map(function(p){ return p[1]; }).join(", ")}</td></tr>}
+            <tr><th>Tuiles réserve</th><td>{tv(data.logistique.tuileReserve)}</td></tr>
+          </tbody></table>
+        </div>
+      </div>
+
+            {data.installations.map(function(inst, instIdx) {
+        var t = inst.tech;
+        var strs = inst.strings;
+        var tv2 = function(v){ return v || "—"; };
+        return (
+          <div key={instIdx} style={{ marginBottom: 18, pageBreakBefore: instIdx === 0 ? "always" : "avoid", breakBefore: instIdx === 0 ? "always" : "avoid" }}>
+            {data.installations.length > 1 && (
+              <div style={{ background: GREEN, color: "#fff", borderRadius: 6, padding: "3px 14px", fontWeight: 700, fontSize: 13, marginBottom: 10, display: "inline-block" }}>
+                Installation {instIdx + 1}
+              </div>
+            )}
+            <div style={{ fontSize: 11, fontWeight: 700, color: GREEN, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>Informations techniques</div>
+            <table className="preview-table"><tbody>
+              <tr><th>Panneaux</th><td>{[t.panneaux.type, t.panneaux.nbr && t.panneaux.nbr + " pcs", t.panneaux.kWc && t.panneaux.kWc + " kWc"].filter(Boolean).join(" — ") || "—"}</td></tr>
+              {t.panneaux2 && t.panneaux2.active && (t.panneaux2.type || t.panneaux2.nbr) && (
+                <tr><th>Panneaux 2</th><td>{[t.panneaux2.type, t.panneaux2.nbr && t.panneaux2.nbr + " pcs", t.panneaux2.kWc && t.panneaux2.kWc + " kWc"].filter(Boolean).join(" — ") || "—"}</td></tr>
+              )}
+              <tr><th>Toiture</th><td>{[t.toiture.main, t.toiture.main === "Plat" && t.toiture.orientPlat, t.toiture.main === "Incliné" && t.toiture.sub.join(", ")].filter(Boolean).join(" — ") || "—"}{t.toiture2 && t.toiture2.active && t.toiture2.main ? (" + " + [t.toiture2.main, t.toiture2.main === "Plat" && t.toiture2.orientPlat, t.toiture2.main === "Incliné" && (t.toiture2.sub||[]).join(", ")].filter(Boolean).join(" — ")) : ""}</td></tr>
+              {t.onduleurs.map(function(o, i) { return <tr key={i}><th>Onduleur {i + 1}</th><td>{[o.type, o.kva && o.kva + " kVA"].filter(Boolean).join(" — ") || "—"}</td></tr>; })}
+              <tr><th>Energy meter</th><td>{tv2(t.energyMeter)}</td></tr>
+              <tr><th>Batterie</th><td>{t.batterie.inclus === "OUI" ? [t.batterie.qty && t.batterie.qty + "×", t.batterie.kwh && t.batterie.kwh + " kWh", t.batterie.type].filter(Boolean).join(" ") || "OUI" : tv2(t.batterie.inclus)}</td></tr>
+              <tr><th>Borne recharge</th><td>{t.borne.inclus === "OUI" ? [t.borne.qty && t.borne.qty + "×", t.borne.type].filter(Boolean).join(" ") || "OUI" : tv2(t.borne.inclus)}</td></tr>
+              {t.accessoires && <tr><th>Accessoires</th><td>{t.accessoires}</td></tr>}
+              {t.ems && t.ems.inclus === "OUI" && <tr><th>EMS</th><td>{t.ems.modele || "OUI"}</td></tr>}
+              {t.compteurVert === "OUI" && <tr><th>Compteur vert</th><td>OUI</td></tr>}
+              {t.greenbox === "OUI" && <tr><th>Greenbox</th><td>OUI</td></tr>}
+              <tr><th>Réseau</th><td>{tv2(t.reseau)}</td></tr>
+              <tr><th>Disjoncteur général</th><td>{t.amperageDisj ? t.amperageDisj + " A" : "—"}</td></tr>
+              <tr><th>Compteur réseau</th><td>{[t.compteur.serie && "N° " + t.compteur.serie, t.compteur.ean && "EAN: " + t.compteur.ean].filter(Boolean).join(" — ") || "—"}</td></tr>
+              <tr><th>Branchement onduleur</th><td>{tv2(t.branchementOnduleur)}</td></tr>
+              <tr><th>Distances</th><td>{[t.distances.onduleurTGBT && "Ond→TGBT: " + t.distances.onduleurTGBT + "m", t.distances.onduleurTD && "Ond→TD: " + t.distances.onduleurTD + "m", t.distances.borneTGBT && "Borne→TGBT: " + t.distances.borneTGBT + "m"].filter(Boolean).join(" | ") || "—"}</td></tr>
+            </tbody></table>
+            {strs.length > 0 && (
+              <div style={{ marginTop: 10 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: GREEN, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>Configuration de strings</div>
+                <table className="preview-table">
+                  <thead><tr>{["String","Onduleur","Panneaux","Orientation"].map(function(h){ return <th key={h} style={{ background: GREEN, color: WHITE }}>{h}</th>; })}</tr></thead>
+                  <tbody>
+                    {strs.map(function(s, i) { return <tr key={i}><td style={{ fontWeight: 600 }}>STR {i+1}</td><td>Onduleur {s.onduleur}</td><td>{s.count || "—"}</td><td>{s.orient === "Libre" ? (s.orientLibre || "—") : (s.orient || "—")}</td></tr>; })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        );
+      })}
+
+      {data.comments && (
+        <div style={{ marginBottom: 18 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: GREEN, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Commentaires</div>
+          <div style={{ padding: "10px 14px", background: BG, borderRadius: 6, border: "1px solid " + BORDER, fontSize: 13, whiteSpace: "pre-wrap" }}>{data.comments}</div>
+        </div>
+      )}
+
+      {data.pmNote && (
+        <div style={{ marginBottom: 18 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: GREEN, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Note du Project Manager</div>
+          <div style={{ padding: "10px 14px", background: "#fffdf0", borderRadius: 6, border: "1px solid #e8e0b0", fontSize: 13, whiteSpace: "pre-wrap", color: TEXT }}>{data.pmNote}</div>
+        </div>
+      )}
+
+      {PHOTO_CATS.some(c => data.photos[c.key] && data.photos[c.key].length > 0) && (
+        <div style={{ marginBottom: 18 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: GREEN, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 12 }}>Photos</div>
+          {PHOTO_CATS.filter(c => (data.photos[c.key] && Array.isArray(data.photos[c.key]) && data.photos[c.key].length > 0) || (c.key === "td" && data.tdNote)).map(c => (
+            <div key={c.key} style={{ marginBottom: 14, pageBreakInside: "avoid", breakInside: "avoid" }}>
+              <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8, color: TEXT }}>{c.label}</div>
+              {c.key === "td" && data.tdNote && <div style={{ fontSize: 12, color: MUTED, padding: "4px 8px", background: "#f9f9f7", borderRadius: 4, marginBottom: 6, border: `1px solid ${BORDER}` }}>{data.tdNote}</div>}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10, pageBreakInside: "avoid", breakInside: "avoid" }}>
+                {data.photos[c.key].map((item, i) => item.url
+                  ? <img key={i} src={item.url} alt={item.name} style={{ width: "100%", maxHeight: 280, pageBreakInside: "avoid", breakInside: "avoid", objectFit: "contain", background: "#f8f8f6", borderRadius: 6, border: `1px solid ${BORDER}` }} />
+                  : <div key={i} style={{ minHeight: 100, display: "flex", alignItems: "center", justifyContent: "center", background: BG, borderRadius: 6, border: `1px solid ${BORDER}`, fontSize: 13, color: MUTED }}>📄 PDF</div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function makeEmptyInst() {
+  return {
+    tech: {
+      panneaux: { type: "", nbr: "", kWc: "" },
+      panneaux2: { active: false, type: "", nbr: "", kWc: "" },
+      configStrings: "",
+      toiture: { main: null, sub: [], orientPlat: null, autreText: "" },
+      toiture2: { active: false, main: null, sub: [], orientPlat: null, autreText: "" },
+      onduleurs: [{ type: "", kva: "" }],
+      energyMeter: null,
+      batterie: { inclus: null, qty: "1", kwh: "", type: "" },
+      borne: { inclus: null, qty: "1", type: "" },
+      ems: { inclus: null, modele: "" },
+      compteurVert: null,
+      greenbox: null,
+      accessoires: "",
+      reseau: null,
+      amperageDisj: "",
+      compteur: { serie: "", ean: "" },
+      branchementOnduleur: null,
+      distances: { onduleurTGBT: "", onduleurTD: "", borneTGBT: "" }
+    },
+    strings: [{ onduleur: "1", count: "", orient: "Sud", orientLibre: "" }]
+  };
+}
+
+function InstallationBlock(props) {
+  var tech = props.tech;
+  var strings = props.strings;
+  var instIdx = props.instIdx;
+  var total = props.total;
+  var onSetT = props.onSetT;
+  var onSetTech = props.onSetTech;
+  var onAddString = props.onAddString;
+  var onUpdString = props.onUpdString;
+  var onDelString = props.onDelString;
+  var onRemove = props.onRemove;
+
+  function setT(path, val) { onSetT(instIdx, path, val); }
+  function setTech(updater) { onSetTech(instIdx, updater); }
+
+  return (
+    <div>
+      {/* Banner */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8, marginTop: instIdx > 0 ? 16 : 0 }}>
+        <div style={{ background: `linear-gradient(90deg, ${GREEN} 0%, #2e8b57 100%)`, color: "#fff", borderRadius: 8, padding: "5px 18px", fontWeight: 700, fontSize: 14, letterSpacing: "0.04em", display: "inline-flex", alignItems: "center", gap: 8 }}>
+          ⚡ Installation {instIdx + 1}
+        </div>
+        {total > 1 && (
+          <button onClick={function() { onRemove(instIdx); }} style={{ background: "none", border: "1px solid #e74c3c", color: "#e74c3c", borderRadius: 6, padding: "3px 10px", fontSize: 12, cursor: "pointer" }}>
+            Supprimer
+          </button>
+        )}
+      </div>
+
+      {/* Tech card */}
+      <div style={CARD}>
+        <div style={SH}><span>🔧</span> Informations techniques</div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+
+          <div><div style={SUBH}>Panneaux</div>
+            {/* Panneau 1 */}
+            <div style={G3}>
+              <Field label="Type / Modèle" value={tech.panneaux.type} onChange={function(v){ setT("panneaux.type", v); }} placeholder="Ex: Jinko 415Wc" />
+              <Field label="Nombre" value={tech.panneaux.nbr} onChange={function(v){ setT("panneaux.nbr", v); }} type="number" />
+              <Field label="Puissance totale" value={tech.panneaux.kWc} onChange={function(v){ setT("panneaux.kWc", v); }} type="number" unit="kWc" />
+            </div>
+            {/* Panneau 2 */}
+            {tech.panneaux2 && tech.panneaux2.active ? (
+              <div style={{ marginTop: 10, padding: "10px 12px", background: "#f9f9f7", borderRadius: 8, border: "1px dashed " + BORDER, position: "relative" }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: MUTED, textTransform: "uppercase", marginBottom: 8 }}>2ème type de panneaux</div>
+                <button onClick={function(){ setT("panneaux2.active", false); setT("panneaux2.type", ""); setT("panneaux2.nbr", ""); setT("panneaux2.kWc", ""); }}
+                  style={{ position: "absolute", top: 8, right: 8, background: "none", border: "none", fontSize: 18, color: MUTED, cursor: "pointer", lineHeight: 1 }}>×</button>
+                <div style={G3}>
+                  <Field label="Type / Modèle" value={tech.panneaux2.type} onChange={function(v){ setT("panneaux2.type", v); }} placeholder="Ex: Trina 450Wc" />
+                  <Field label="Nombre" value={tech.panneaux2.nbr} onChange={function(v){ setT("panneaux2.nbr", v); }} type="number" />
+                  <Field label="Puissance totale" value={tech.panneaux2.kWc} onChange={function(v){ setT("panneaux2.kWc", v); }} type="number" unit="kWc" />
+                </div>
+              </div>
+            ) : (
+              <button onClick={function(){ setT("panneaux2.active", true); }}
+                style={{ marginTop: 8, fontSize: 12, color: GREEN, background: "none", border: "1px dashed " + GREEN_MID, borderRadius: 6, padding: "4px 12px", cursor: "pointer" }}>
+                + 2ème type de panneaux
+              </button>
+            )}
+          </div>
+
+          <div><div style={SUBH}>Toiture</div>
+            {/* Toiture 1 */}
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
+              {["Plat", "Incliné"].map(function(t) { return <Chip key={t} label={t} selected={tech.toiture.main === t} onClick={function(){ setT("toiture.main", tech.toiture.main === t ? null : t); }} />; })}
+            </div>
+            {tech.toiture.main === "Plat" && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 8 }}>
+                <div>
+                  <div style={{ fontSize: 11, color: MUTED, marginBottom: 5 }}>Orientation des panneaux</div>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    {["Sud", "Est-Ouest"].map(function(o) { return <Chip key={o} label={o} selected={tech.toiture.orientPlat === o} onClick={function(){ setT("toiture.orientPlat", tech.toiture.orientPlat === o ? null : o); }} />; })}
+                  </div>
+                </div>
+              </div>
+            )}
+            {tech.toiture.main === "Incliné" && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 8 }}>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                  {["Tuile", "Ardoise", "Panneaux sandwich", "Zinc", "Bac acier", "Autre"].map(function(t) {
+                    return <Chip key={t} label={t} selected={tech.toiture.sub.includes(t)} onClick={function(){
+                      var sub = tech.toiture.sub;
+                      setT("toiture.sub", sub.includes(t) ? sub.filter(function(x){ return x !== t; }) : sub.concat([t]));
+                    }} />;
+                  })}
+                </div>
+                {tech.toiture.sub.includes("Autre") && (
+                  <input value={tech.toiture.autreText || ""} onChange={function(e){ setT("toiture.autreText", e.target.value); }} placeholder="Préciser le type de toiture" style={{ fontSize: 13, padding: "5px 8px", borderRadius: 6, border: "1px solid " + BORDER, width: "100%", boxSizing: "border-box" }} />
+                )}
+              </div>
+            )}
+            {/* Toiture 2 */}
+            {tech.toiture2 && tech.toiture2.active ? (
+              <div style={{ marginTop: 6, padding: "10px 12px", background: "#f9f9f7", borderRadius: 8, border: "1px dashed " + BORDER, position: "relative" }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: MUTED, textTransform: "uppercase", marginBottom: 8 }}>2ème type de toiture</div>
+                <button onClick={function(){ setT("toiture2.active", false); setT("toiture2.main", null); setT("toiture2.sub", []); setT("toiture2.orientPlat", null); setT("toiture2.autreText", ""); }}
+                  style={{ position: "absolute", top: 8, right: 8, background: "none", border: "none", fontSize: 18, color: MUTED, cursor: "pointer", lineHeight: 1 }}>×</button>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
+                  {["Plat", "Incliné"].map(function(t) { return <Chip key={t} label={t} selected={tech.toiture2.main === t} onClick={function(){ setT("toiture2.main", tech.toiture2.main === t ? null : t); }} />; })}
+                </div>
+                {tech.toiture2.main === "Plat" && (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    <div style={{ fontSize: 11, color: MUTED, marginBottom: 5 }}>Orientation des panneaux</div>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      {["Sud", "Est-Ouest"].map(function(o) { return <Chip key={o} label={o} selected={tech.toiture2.orientPlat === o} onClick={function(){ setT("toiture2.orientPlat", tech.toiture2.orientPlat === o ? null : o); }} />; })}
+                    </div>
+                  </div>
+                )}
+                {tech.toiture2.main === "Incliné" && (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                      {["Tuile", "Ardoise", "Panneaux sandwich", "Zinc", "Bac acier", "Autre"].map(function(t) {
+                        return <Chip key={t} label={t} selected={(tech.toiture2.sub||[]).includes(t)} onClick={function(){
+                          var sub = tech.toiture2.sub || [];
+                          setT("toiture2.sub", sub.includes(t) ? sub.filter(function(x){ return x !== t; }) : sub.concat([t]));
+                        }} />;
+                      })}
+                    </div>
+                    {(tech.toiture2.sub||[]).includes("Autre") && (
+                      <input value={tech.toiture2.autreText || ""} onChange={function(e){ setT("toiture2.autreText", e.target.value); }} placeholder="Préciser le type de toiture" style={{ fontSize: 13, padding: "5px 8px", borderRadius: 6, border: "1px solid " + BORDER, width: "100%", boxSizing: "border-box" }} />
+                    )}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <button onClick={function(){ setT("toiture2.active", true); }}
+                style={{ marginTop: 6, fontSize: 12, color: GREEN, background: "none", border: "1px dashed " + GREEN_MID, borderRadius: 6, padding: "4px 12px", cursor: "pointer" }}>
+                + 2ème type de toiture
+              </button>
+            )}
+          </div>
+
+          <div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div style={SUBH}>Onduleur(s)</div>
+              <button onClick={function(){ setTech(function(p){ return Object.assign({}, p, { onduleurs: p.onduleurs.concat([{ type: "", kva: "" }]) }); }); }} style={{ fontSize: 12, color: GREEN, background: "none", border: "1px solid " + GREEN_MID, borderRadius: 6, padding: "3px 10px", cursor: "pointer" }}>+ Ajouter</button>
+            </div>
+            {tech.onduleurs.map(function(ond, i) { return (
+              <div key={i} style={{ display: "grid", gridTemplateColumns: "1fr 130px 24px", gap: 8, alignItems: "flex-end", marginTop: 6 }}>
+                <Field label={"Onduleur " + (i+1) + " — Type / Modèle"} value={ond.type} onChange={function(v){ setTech(function(p){ return Object.assign({}, p, { onduleurs: p.onduleurs.map(function(o,idx){ return idx===i ? Object.assign({},o,{type:v}) : o; }) }); }); }} placeholder="Ex: Deye SUN-8K" />
+                <Field label="Puissance" value={ond.kva} onChange={function(v){ setTech(function(p){ return Object.assign({}, p, { onduleurs: p.onduleurs.map(function(o,idx){ return idx===i ? Object.assign({},o,{kva:v}) : o; }) }); }); }} type="number" unit="kVA" />
+                {tech.onduleurs.length > 1 && <button onClick={function(){ setTech(function(p){ return Object.assign({}, p, { onduleurs: p.onduleurs.filter(function(_,idx){ return idx!==i; }) }); }); }} style={{ fontSize: 20, color: MUTED, background: "none", border: "none", cursor: "pointer", paddingBottom: 4 }}>×</button>}
+              </div>
+            ); })}
+          </div>
+
+          <div style={G3}>
+            <div><div style={{ fontSize: 12, color: MUTED, fontWeight: 500, marginBottom: 7 }}>Energy meter inclus</div><Toggle value={tech.energyMeter} onChange={function(v){ setT("energyMeter", v); }} /></div>
+            <div>
+              <div style={{ fontSize: 12, color: MUTED, fontWeight: 500, marginBottom: 7 }}>Batterie incluse</div>
+              <Toggle value={tech.batterie.inclus} onChange={function(v){ setT("batterie.inclus", v); }} />
+              {tech.batterie.inclus === "OUI" && <div style={{ display: "grid", gridTemplateColumns: "50px 80px 1fr", gap: 6, marginTop: 6 }}>
+                <Field label="Qté" value={tech.batterie.qty} onChange={function(v){ setT("batterie.qty", v); }} type="number" />
+                <Field label="kWh" value={tech.batterie.kwh} onChange={function(v){ setT("batterie.kwh", v); }} type="number" />
+                <Field label="Modèle" value={tech.batterie.type} onChange={function(v){ setT("batterie.type", v); }} placeholder="Ex: BYD HVM 11.0" />
+              </div>}
+            </div>
+            <div>
+              <div style={{ fontSize: 12, color: MUTED, fontWeight: 500, marginBottom: 7 }}>Borne de recharge</div>
+              <Toggle value={tech.borne.inclus} onChange={function(v){ setT("borne.inclus", v); }} />
+              {tech.borne.inclus === "OUI" && <div style={{ display: "grid", gridTemplateColumns: "50px 1fr", gap: 6, marginTop: 6 }}>
+                <Field label="Qté" value={tech.borne.qty} onChange={function(v){ setT("borne.qty", v); }} type="number" />
+                <Field label="Modèle" value={tech.borne.type} onChange={function(v){ setT("borne.type", v); }} placeholder="Ex: Wallbox Pulsar" />
+              </div>}
+            </div>
+          </div>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <div>
+              <div style={{ fontSize: 12, color: MUTED, fontWeight: 500, marginBottom: 7 }}>EMS (Energy Management System)</div>
+              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                <Toggle value={tech.ems.inclus} onChange={function(v){ setT("ems.inclus", v); }} />
+                {tech.ems.inclus === "OUI" && (
+                  <select value={tech.ems.modele} onChange={function(e){ setT("ems.modele", e.target.value); }} style={{ fontSize: 13, padding: "5px 8px", borderRadius: 6, border: "1px solid " + BORDER }}>
+                    <option value="">— Choisir un EMS —</option>
+                    {["Nexxtlab Smart Master Home", "Nexxtlab Smart Master Pro", "Huawei EMMA", "Eniris Home", "Autre"].map(function(o){ return <option key={o} value={o}>{o}</option>; })}
+                  </select>
+                )}
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}><span style={{ fontSize: 13 }}>Compteur vert</span><Toggle value={tech.compteurVert} onChange={function(v){ setT("compteurVert", v); }} /></div>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}><span style={{ fontSize: 13 }}>Greenbox</span><Toggle value={tech.greenbox} onChange={function(v){ setT("greenbox", v); }} /></div>
+            </div>
+          </div>
+
+          <Field label="Autres accessoires" value={tech.accessoires} onChange={function(v){ setT("accessoires", v); }} placeholder="Ex: Optimiseurs, câblage spécifique…" />
+
+          <div><div style={SUBH}>Réseau électrique</div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {["Monophasé 230V", "Triphasé 3×230V", "Triphasé 3×400+N"].map(function(r){ return <Chip key={r} label={r} selected={tech.reseau === r} onClick={function(){ setT("reseau", tech.reseau === r ? null : r); }} />; })}
+            </div>
+          </div>
+
+          <div style={G2}>
+            <Field label="Ampérage disjoncteur général ⚠" value={tech.amperageDisj} onChange={function(v){ setT("amperageDisj", v); }} type="number" unit="A" />
+            <div />
+          </div>
+
+          <div style={G2}>
+            <Field label="Compteur réseau — N° de série (optionnel)" value={tech.compteur.serie} onChange={function(v){ setT("compteur.serie", v); }} />
+            <Field label="EAN (optionnel)" value={tech.compteur.ean} onChange={function(v){ setT("compteur.ean", v); }} />
+          </div>
+
+          <div><div style={SUBH}>Branchement de l'onduleur</div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {["Sur le TGBT", "Sur un tableau divisionnaire"].map(function(b){ return <Chip key={b} label={b} selected={tech.branchementOnduleur === b} onClick={function(){ setT("branchementOnduleur", tech.branchementOnduleur === b ? null : b); }} />; })}
+            </div>
+          </div>
+
+          <div><div style={SUBH}>Distances</div>
+            <div style={G3}>
+              <Field label="Onduleur → TGBT" value={tech.distances.onduleurTGBT} onChange={function(v){ setT("distances.onduleurTGBT", v); }} type="number" unit="m" />
+              <Field label="Onduleur → Tableau div." value={tech.distances.onduleurTD} onChange={function(v){ setT("distances.onduleurTD", v); }} type="number" unit="m" />
+              <Field label="Borne → TGBT" value={tech.distances.borneTGBT} onChange={function(v){ setT("distances.borneTGBT", v); }} type="number" unit="m" />
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      {/* Strings card */}
+      <div style={Object.assign({}, CARD, { marginTop: 10 })}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div style={SH}><span>📊</span> Configuration de strings</div>
+          <button onClick={function(){ onAddString(instIdx); }} style={{ fontSize: 12, color: GREEN, background: "none", border: "1px dashed " + GREEN_MID, borderRadius: 6, padding: "4px 12px", cursor: "pointer", marginBottom: 14 }}>+ Ajouter un string</button>
+        </div>
+        {strings.length === 0 && <div style={{ textAlign: "center", padding: "20px 0", fontSize: 13, color: "#aaa" }}>Aucun string — cliquez sur + Ajouter</div>}
+        {strings.map(function(row, i) { return <StringRow key={i} idx={i} row={row} onChange={function(r){ onUpdString(instIdx, i, r); }} onRemove={function(){ onDelString(instIdx, i); }} maxOnd={Math.max(1, tech.onduleurs.length)} />; })}
+        {strings.length > 0 && (
+          <div style={{ marginTop: 12, padding: "8px 12px", background: GREEN_LIGHT, borderRadius: 6, fontSize: 12, color: MUTED }}>
+            <strong style={{ color: TEXT }}>Résumé : </strong>
+            {Object.entries(strings.reduce(function(acc, s, i) { var k = "Onduleur " + s.onduleur; if (!acc[k]) acc[k] = []; acc[k].push({ s: s, idx: i }); return acc; }, {})).map(function(e) { return e[0] + " → " + e[1].map(function(x){ return "STR"+(x.idx+1)+": "+(x.s.count||"?")+"×PV "+(x.s.orient==="Libre"?(x.s.orientLibre||"?"):(x.s.orient||"?")); }).join(", "); }).join("   |   ")}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+
+
+// ── CheckItem ─────────────────────────────────────────
+function CheckItem({ label, value, remark, onChange, onRemarkChange }) {
+  var bg = value === "OK" ? "#f0fff4" : value === "NOK" ? "#fff5f5" : value === "NA" ? "#f8f8f8" : "#fff";
+  var bd = value === "OK" ? "#a8e6c0" : value === "NOK" ? "#f1a0a0" : value === "NA" ? "#e0e0e0" : BORDER;
+  return (
+    <div className="check-item" style={{ background: bg, borderRadius: 8, padding: "10px 12px", border: "1px solid "+bd, marginBottom: 6, transition: "background 0.15s" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+        <span style={{ flex: 1, fontSize: 14, lineHeight: 1.45 }}>{label}</span>
+        <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+          {[["OK","✅",OK_COLOR],["NOK","❌",NOK_COLOR],["NA","N/A",NA_COLOR]].map(function(item) {
+            var v = item[0], icon = item[1], col = item[2];
+            var sel = value === v;
+            return (
+              <button key={v} onClick={function(){ onChange(sel ? null : v); }}
+                style={{ padding: "5px 8px", borderRadius: 6, border: "1.5px solid "+(sel ? col : BORDER),
+                  background: sel ? col : WHITE, color: sel ? WHITE : MUTED,
+                  fontSize: 12, fontWeight: sel ? 700 : 400, cursor: "pointer", whiteSpace: "nowrap", minWidth: 36, minHeight: 32 }}>
+                {icon}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+      {value === "NOK" && (
+        <textarea placeholder="⚠️ Remarque obligatoire..." value={remark || ""} onChange={function(e){ onRemarkChange(e.target.value); }}
+          style={{ marginTop: 8, width: "100%", fontSize: 13, borderRadius: 6, border: "1.5px solid #e74c3c", padding: "6px 10px", resize: "vertical", minHeight: 56, fontFamily: "inherit", background: "#fff8f8", boxSizing: "border-box" }} />
+      )}
+    </div>
+  );
+}
+
+// ── SectionBlock ──────────────────────────────────────
+function SectionBlock({ icon, label, description, color, children, defaultOpen }) {
+  var [open, setOpen] = useState(defaultOpen !== false);
+  return (
+    <div style={{ marginBottom: 16, borderRadius: 10, border: "1px solid "+(color||GREEN)+"33", overflow: "hidden" }}>
+      <div onClick={function(){ setOpen(function(o){ return !o; }); }}
+        style={{ background: (color||GREEN)+"12", padding: "10px 14px", display: "flex", alignItems: "center", gap: 8, cursor: "pointer", borderBottom: open ? "1px solid "+(color||GREEN)+"22" : "none", userSelect: "none" }}>
+        {icon && <span style={{ fontSize: 16 }}>{icon}</span>}
+        <span style={{ flex: 1, fontWeight: 700, fontSize: 13, color: "#1a1a1a" }}>{label}</span>
+        {description && <span style={{ fontSize: 11, color: MUTED, fontStyle: "italic" }}>{description}</span>}
+        <span style={{ color: MUTED, fontSize: 12, transition: "transform 0.2s", transform: open ? "rotate(180deg)" : "none" }}>▼</span>
+      </div>
+      {open && <div style={{ padding: "12px 14px", background: WHITE }}>{children}</div>}
+    </div>
+  );
+}
+
+// ── CompletionBar ─────────────────────────────────────
+function CompletionBar({ done, total, nokCount, color }) {
+  var pct = total > 0 ? Math.round(done/total*100) : 0;
+  var barColor = pct >= 80 ? "#27ae60" : pct >= 50 ? "#f39c12" : "#e74c3c";
+  return (
+    <div style={{ padding: "12px 14px", background: WHITE, borderRadius: 10, border: "1px solid "+BORDER, marginBottom: 14 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 7 }}>
+        <span style={{ fontSize: 13, fontWeight: 600, color: "#1a1a1a" }}>{done}/{total} items vérifiés — <strong style={{ color: barColor }}>{pct}%</strong></span>
+        {nokCount > 0 && (
+          <span style={{ background: "#e74c3c", color: WHITE, borderRadius: 12, padding: "2px 10px", fontSize: 12, fontWeight: 700 }}>⚠️ {nokCount} NOK</span>
+        )}
+      </div>
+      <div style={{ height: 8, background: "#e8e8e4", borderRadius: 4, overflow: "hidden" }}>
+        <div style={{ height: "100%", width: pct+"%", background: barColor, borderRadius: 4, transition: "width 0.4s ease" }} />
+      </div>
+    </div>
+  );
+}
+
+// ── NOK Summary ───────────────────────────────────────
+function NOKSummary({ nokItems, tab }) {
+  var items = nokItems.filter(function(i){ return i.tab === tab; });
+  if (items.length === 0) return null;
+  return (
+    <div style={{ background: "#fff5f5", border: "1.5px solid #f1a0a0", borderRadius: 10, padding: 14, marginBottom: 16 }}>
+      <div style={{ fontWeight: 700, color: "#c0392b", marginBottom: 10, fontSize: 13 }}>⚠️ Récapitulatif des non-conformités ({items.length})</div>
+      {items.map(function(item, i) {
+        return (
+          <div key={i} style={{ background: WHITE, borderRadius: 7, padding: "8px 10px", marginBottom: 6, border: "1px solid #fcd9d4" }}>
+            <div style={{ display: "flex", gap: 6, alignItems: "flex-start" }}>
+              <span style={{ background: "#e74c3c", color: WHITE, borderRadius: 4, padding: "1px 6px", fontSize: 10, fontWeight: 700, flexShrink: 0, marginTop: 1 }}>NOK</span>
+              <div>
+                <div style={{ fontSize: 12, color: MUTED, fontWeight: 500 }}>{item.section}</div>
+                <div style={{ fontSize: 13, fontWeight: 600 }}>{item.label}</div>
+                {item.remark && <div style={{ fontSize: 12, color: "#c0392b", marginTop: 3, fontStyle: "italic" }}>→ {item.remark}</div>}
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── NumericField ──────────────────────────────────────
+function NumField({ label, value, onChange, placeholder }) {
+  return (
+    <div style={{ flex: 1, minWidth: 160 }}>
+      <label style={{ fontSize: 12, color: MUTED, fontWeight: 500, marginBottom: 4, display: "block" }}>{label}</label>
+      <input type="text" value={value||""} onChange={function(e){ onChange(e.target.value); }} placeholder={placeholder||""} />
+    </div>
+  );
+}
+function SelectField({ label, value, onChange, options }) {
+  return (
+    <div style={{ flex: 1, minWidth: 160 }}>
+      <label style={{ fontSize: 12, color: MUTED, fontWeight: 500, marginBottom: 4, display: "block" }}>{label}</label>
+      <select value={value||""} onChange={function(e){ onChange(e.target.value); }}>
+        <option value="">— Sélectionner —</option>
+        {options.map(function(o){ return <option key={o} value={o}>{o}</option>; })}
+      </select>
+    </div>
+  );
+}
+
+// ── SignatureBlock ────────────────────────────────────
+function SignatureBlock({ title, name, heureFin, onName, onHeure, color }) {
+  return (
+    <div style={{ background: WHITE, border: "1px solid "+(color||GREEN)+"44", borderRadius: 10, padding: 14, marginTop: 16 }}>
+      <div style={{ fontWeight: 700, fontSize: 13, color: color||GREEN, marginBottom: 12 }}>{title}</div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10 }}>
+        <div>
+          <label style={{ fontSize: 12, color: MUTED, fontWeight: 500, marginBottom: 4, display: "block" }}>Nom / Initiales du responsable</label>
+          <input type="text" value={name||""} onChange={function(e){ onName(e.target.value); }} placeholder="Votre nom ou initiales" />
+        </div>
+        <div>
+          <label style={{ fontSize: 12, color: MUTED, fontWeight: 500, marginBottom: 4, display: "block" }}>Heure de fin d\'intervention</label>
+          <input type="time" value={heureFin||""} onChange={function(e){ onHeure(e.target.value); }} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── OnduleurCard ──────────────────────────────────────
+function OnduleurCard({ index, onduleur, onChange, onRemove, canRemove }) {
+  function set(key, val) { onChange(Object.assign({}, onduleur, { [key]: val })); }
+  return (
+    <div style={{ background: WHITE, border: "1.5px solid "+AC_BORDER, borderRadius: 10, padding: 14, marginBottom: 14 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+        <span style={{ fontWeight: 700, color: AC_COLOR, fontSize: 14 }}>🔆 Onduleur {index+1}</span>
+        {canRemove && (
+          <button onClick={function(){ if(window.confirm("Supprimer l\'onduleur "+(index+1)+" ?")) onRemove(); }}
+            style={{ background: "#fdecea", border: "1px solid "+AC_BORDER, color: AC_COLOR, borderRadius: 6, padding: "4px 10px", fontSize: 12, cursor: "pointer", minHeight: 0 }}>
+            🗑 Supprimer
+          </button>
+        )}
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10, marginBottom: 14 }}>
+        <div>
+          <label style={{ fontSize: 12, color: MUTED, fontWeight: 500, marginBottom: 4, display: "block" }}>Marque & modèle</label>
+          <input type="text" value={onduleur.marque||""} onChange={function(e){ set("marque",e.target.value); }} placeholder="ex: Fronius Primo 6.0" />
+        </div>
+        <div>
+          <label style={{ fontSize: 12, color: MUTED, fontWeight: 500, marginBottom: 4, display: "block" }}>N° de série</label>
+          <input type="text" value={onduleur.serie||""} onChange={function(e){ set("serie",e.target.value); }} placeholder="Numéro de série" />
+        </div>
+        <div>
+          <label style={{ fontSize: 12, color: MUTED, fontWeight: 500, marginBottom: 4, display: "block" }}>Emplacement</label>
+          <input type="text" value={onduleur.emplacement||""} onChange={function(e){ set("emplacement",e.target.value); }} placeholder="ex: garage, façade" />
+        </div>
+      </div>
+      {ONDULEUR_ITEMS.map(function(it) {
+        return (
+          <CheckItem key={it.key} label={it.label}
+            value={onduleur[it.key]} remark={onduleur[it.key+"Remarque"]}
+            onChange={function(v){ set(it.key, v); }} onRemarkChange={function(v){ set(it.key+"Remarque", v); }} />
+        );
+      })}
+    </div>
+  );
+}
+
+// ── PhotoSection helper ───────────────────────────────
+function renderPhotoSection(cats, photos, setPhotos) {
+  var allSections = cats.map(function(c){ return { key: c.key, label: c.label }; });
+  return cats.map(function(cat) {
+    return (
+      <PhotoZone key={cat.key} catKey={cat.key} label={cat.label} items={photos[cat.key]||[]} hiRes={!!cat.hiRes}
+        allSections={allSections}
+        onAdd={function(arr){
+          setPhotos(cat.key, function(prev){ return (prev||[]).concat(arr); });
+        }}
+        onDelete={function(idx){
+          if(!window.confirm("Supprimer cette photo ?")) return;
+          setPhotos(cat.key, function(prev){ return (prev||[]).filter(function(_,i){ return i!==idx; }); });
+        }}
+        onUpdate={function(idx, updated){
+          setPhotos(cat.key, function(prev){ var a=[].concat(prev||[]); a[idx]=updated; return a; });
+        }}
+        onReorder={function(from, to){
+          setPhotos(cat.key, function(prev){
+            var a=[].concat(prev||[]); var item=a.splice(from,1)[0]; a.splice(to,0,item); return a;
+          });
+        }}
+        onReceiveCross={function(fromKey, fromIdx){
+          var srcPhoto = (photos[fromKey]||[])[fromIdx]; if(!srcPhoto) return;
+          setPhotos(cat.key, function(prev){ return (prev||[]).concat([srcPhoto]); });
+          setPhotos(fromKey, function(prev){ return (prev||[]).filter(function(_,i){ return i!==fromIdx; }); });
+        }}
+        onMoveTo={function(fromIdx, toKey){
+          var srcPhoto = (photos[cat.key]||[])[fromIdx]; if(!srcPhoto) return;
+          setPhotos(toKey, function(prev){ return (prev||[]).concat([srcPhoto]); });
+          setPhotos(cat.key, function(prev){ return (prev||[]).filter(function(_,i){ return i!==fromIdx; }); });
+        }}
+      />
+    );
+  });
+}
+
+// ── RulesPanel ───────────────────────────────────────────────────────────────
+function RulesPanel({ rules, color }) {
+  var [open, setOpen] = useState(false);
+  if (!rules || rules.length === 0) return null;
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <button onClick={function(){ setOpen(function(o){ return !o; }); }}
+        style={{ width: "100%", padding: "7px 12px", background: open ? (color||DC_COLOR)+"1a" : (color||DC_COLOR)+"0d",
+          border: "1px solid "+(color||DC_COLOR)+"44", borderRadius: open ? "7px 7px 0 0" : 7, color: color||DC_COLOR,
+          fontWeight: 600, fontSize: 12, cursor: "pointer", textAlign: "left", display: "flex", justifyContent: "space-between", alignItems: "center", fontFamily: "inherit" }}>
+        <span>📋 Rappel des règles</span>
+        <span style={{ fontSize: 10, transform: open ? "rotate(180deg)" : "none", transition: "transform 0.2s" }}>▼</span>
+      </button>
+      {open && (
+        <div style={{ background: (color||DC_COLOR)+"08", border: "1px solid "+(color||DC_COLOR)+"33", borderTop: "none",
+          borderRadius: "0 0 7px 7px", padding: "10px 14px" }}>
+          {rules.map(function(r, i) {
+            return (
+              <div key={i} style={{ marginBottom: i < rules.length-1 ? 10 : 0 }}>
+                <div style={{ fontWeight: 700, fontSize: 12, color: "#1a1a1a", marginBottom: 4, display: "flex", alignItems: "center", gap: 5 }}>
+                  {r.title.includes("❌") ? <span style={{ color: "#e74c3c" }}>{r.title}</span> : <span>{r.title}</span>}
+                </div>
+                <ul style={{ paddingLeft: 18, margin: 0 }}>
+                  {r.items.map(function(item, j) {
+                    return <li key={j} style={{ fontSize: 12, color: "#444", lineHeight: 1.7 }}>{item}</li>;
+                  })}
+                </ul>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── StringsSection ────────────────────────────────────────────────────────────
+function StringsSection({ nbStrings, photos, tensions, setPhotos, setTension }) {
+  var count = parseInt(nbStrings) || 0;
+  if (count <= 0) {
+    return (
+      <div style={{ textAlign: "center", padding: "16px 0", color: MUTED, fontSize: 13, background: DC_LIGHT+"66", borderRadius: 8, border: "1px dashed "+DC_BORDER }}>
+        ℹ️ Indiquez le nombre de strings ci-dessus pour afficher les zones photos par string
+      </div>
+    );
+  }
+  var allStringCats = [];
+  for (var i = 0; i < count; i++) { allStringCats.push({ key: "string_ph_"+i, label: "String "+(i+1) }); }
+  return (
+    <div>
+      {allStringCats.map(function(cat, i) {
+        return (
+          <div key={i} style={{ marginBottom: 14, border: "1px solid "+DC_BORDER, borderRadius: 9, padding: "12px 12px 6px", background: DC_LIGHT+"55" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, flexWrap: "wrap", gap: 8 }}>
+              <span style={{ fontWeight: 700, color: DC_COLOR, fontSize: 14 }}>⚡ String {i+1}</span>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <label style={{ fontSize: 12, color: MUTED, whiteSpace: "nowrap" }}>Tension mesurée :</label>
+                <input type="text" value={tensions[i]||""} onChange={function(e){ setTension(i, e.target.value); }}
+                  placeholder="ex: 380V" style={{ width: 80, fontSize: 13, padding: "5px 8px" }} />
+              </div>
+            </div>
+            <PhotoZone catKey={cat.key} label={"Photos String "+(i+1)+" (identification + tension)"}
+              items={photos[cat.key]||[]} hiRes={false}
+              allSections={allStringCats}
+              onAdd={function(arr){ setPhotos(cat.key, function(prev){ return (prev||[]).concat(arr); }); }}
+              onDelete={function(idx){ if(!window.confirm("Supprimer ?")) return; setPhotos(cat.key, function(prev){ return (prev||[]).filter(function(_,j){ return j!==idx; }); }); }}
+              onUpdate={function(idx,u){ setPhotos(cat.key, function(prev){ var a=[].concat(prev||[]); a[idx]=u; return a; }); }}
+              onReorder={function(from,to){ setPhotos(cat.key, function(prev){ var a=[].concat(prev||[]); var item=a.splice(from,1)[0]; a.splice(to,0,item); return a; }); }}
+              onReceiveCross={function(fromKey,fromIdx){
+                var src=(photos[fromKey]||[])[fromIdx]; if(!src) return;
+                setPhotos(cat.key, function(prev){ return (prev||[]).concat([src]); });
+                setPhotos(fromKey, function(prev){ return (prev||[]).filter(function(_,j){ return j!==fromIdx; }); });
+              }}
+              onMoveTo={function(fromIdx,toKey){
+                var src=(photos[cat.key]||[])[fromIdx]; if(!src) return;
+                setPhotos(toKey, function(prev){ return (prev||[]).concat([src]); });
+                setPhotos(cat.key, function(prev){ return (prev||[]).filter(function(_,j){ return j!==fromIdx; }); });
+              }}
+            />
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── DCTab ─────────────────────────────────────────────
+function DCTab({ data, setData }) {
+  var comp = calcDCCompletion(data);
+  var nokItems = collectNOK(data);
+
+  function setItem(sectionKey, itemKey, value) {
+    setData(function(prev){
+      var n = Object.assign({}, prev); n.dc = Object.assign({}, prev.dc);
+      n.dc.items = Object.assign({}, prev.dc.items);
+      n.dc.items[sectionKey] = Object.assign({}, prev.dc.items[sectionKey]);
+      n.dc.items[sectionKey][itemKey] = value;
+      return n;
+    });
+  }
+  function setPhotos(catKey, updater) {
+    setData(function(prev){
+      var n = Object.assign({}, prev); n.dc = Object.assign({}, prev.dc);
+      n.dc.photos = Object.assign({}, prev.dc.photos);
+      n.dc.photos[catKey] = typeof updater === "function" ? updater(prev.dc.photos[catKey]||[]) : updater;
+      return n;
+    });
+  }
+  function setStringTension(idx, val) {
+    setData(function(prev){
+      var n = Object.assign({}, prev); n.dc = Object.assign({}, prev.dc);
+      var t = Object.assign({}, prev.dc.stringTensions||{});
+      t[idx] = val;
+      n.dc = Object.assign({}, n.dc, { stringTensions: t });
+      return n;
+    });
+  }
+
+  return (
+    <div>
+      <CompletionBar done={comp.done} total={comp.total} nokCount={comp.nokCount} color={DC_COLOR} />
+      <NOKSummary nokItems={nokItems} tab="DC" />
+
+      {DC_SECTIONS.map(function(s) {
+        var sData = (data.dc.items||{})[s.key] || {};
+        return (
+          <SectionBlock key={s.key} icon={s.icon} label={s.label} color={DC_COLOR}>
+            {/* Rappel des règles (toggle) */}
+            <RulesPanel rules={s.rules} color={DC_COLOR} />
+
+            {/* Checkboxes */}
+            {(s.items||[]).map(function(it) {
+              return (
+                <CheckItem key={it.key} label={it.label}
+                  value={sData[it.key]} remark={sData[it.key+"Remarque"]}
+                  onChange={function(v){ setItem(s.key, it.key, v); }}
+                  onRemarkChange={function(v){ setItem(s.key, it.key+"Remarque", v); }} />
+              );
+            })}
+
+            {/* Champs numériques / sélecteurs */}
+            {((s.numericFields||[]).length > 0 || (s.selectFields||[]).length > 0) && (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 10, marginBottom: 10 }}>
+                {(s.numericFields||[]).map(function(f) {
+                  return <NumField key={f.key} label={f.label} value={sData[f.key]} placeholder={f.placeholder}
+                    onChange={function(v){ setItem(s.key, f.key, v); }} />;
+                })}
+                {(s.selectFields||[]).map(function(f) {
+                  return <SelectField key={f.key} label={f.label} value={sData[f.key]} options={f.options}
+                    onChange={function(v){ setItem(s.key, f.key, v); }} />;
+                })}
+              </div>
+            )}
+
+            {/* Photos par string (section strings uniquement) */}
+            {s.hasStringPhotos && (
+              <div style={{ marginBottom: 10 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: DC_COLOR, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8, marginTop: 4 }}>
+                  📸 Photos par string
+                </div>
+                <StringsSection
+                  nbStrings={sData["nbStrings"]}
+                  photos={data.dc.photos||{}}
+                  tensions={data.dc.stringTensions||{}}
+                  setPhotos={setPhotos}
+                  setTension={setStringTension}
+                />
+                <div style={{ marginTop: 10 }} />
+              </div>
+            )}
+
+            {/* Photos de section */}
+            {(s.photoCats||[]).length > 0 && (
+              <div style={{ marginTop: s.hasStringPhotos ? 0 : 10 }}>
+                {s.hasStringPhotos && (
+                  <div style={{ fontSize: 12, fontWeight: 700, color: DC_COLOR, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>
+                    📸 Schéma global
+                  </div>
+                )}
+                {renderPhotoSection(s.photoCats, data.dc.photos||{}, setPhotos)}
+              </div>
+            )}
+          </SectionBlock>
+        );
+      })}
+
+      {/* Observations */}
+      <SectionBlock icon="📝" label="Observations & Remarques DC" color={DC_COLOR} defaultOpen={false}>
+        <textarea value={data.dc.observations||""} onChange={function(e){
+          setData(function(prev){ var n=Object.assign({},prev); n.dc=Object.assign({},prev.dc,{observations:e.target.value}); return n; });
+        }} placeholder="Observations libres…" style={{ minHeight: 90, resize: "vertical", width: "100%" }} />
+      </SectionBlock>
+
+      <SignatureBlock title="✍️ Signature Responsable DC"
+        name={data.dc.signatureName} heureFin={data.dc.heureFin} color={DC_COLOR}
+        onName={function(v){ setData(function(prev){ var n=Object.assign({},prev); n.dc=Object.assign({},prev.dc,{signatureName:v}); return n; }); }}
+        onHeure={function(v){ setData(function(prev){ var n=Object.assign({},prev); n.dc=Object.assign({},prev.dc,{heureFin:v}); return n; }); }}
+      />
+    </div>
+  );
+}
+
+// ── ACTab ─────────────────────────────────────────────
+function ACTab({ data, setData }) {
+  var comp = calcACCompletion(data);
+  var nokItems = collectNOK(data);
+
+  function setItem(sectionKey, itemKey, value) {
+    setData(function(prev){
+      var next = Object.assign({}, prev);
+      next.ac = Object.assign({}, prev.ac);
+      next.ac.items = Object.assign({}, prev.ac.items);
+      next.ac.items[sectionKey] = Object.assign({}, prev.ac.items[sectionKey]);
+      next.ac.items[sectionKey][itemKey] = value;
+      return next;
+    });
+  }
+  function setNumber(sectionKey, fieldKey, value) { setItem(sectionKey, fieldKey, value); }
+  function setOnduleur(idx, updated) {
+    setData(function(prev){
+      var next = Object.assign({}, prev);
+      next.ac = Object.assign({}, prev.ac);
+      var onds = [].concat(prev.ac.onduleurs||[]);
+      onds[idx] = updated;
+      next.ac = Object.assign({}, next.ac, { onduleurs: onds });
+      return next;
+    });
+  }
+  function addOnduleur() {
+    setData(function(prev){
+      var next = Object.assign({}, prev);
+      next.ac = Object.assign({}, prev.ac, { onduleurs: (prev.ac.onduleurs||[]).concat([makeDefaultOnduleur()]) });
+      return next;
+    });
+  }
+  function removeOnduleur(idx) {
+    setData(function(prev){
+      var next = Object.assign({}, prev);
+      next.ac = Object.assign({}, prev.ac, { onduleurs: (prev.ac.onduleurs||[]).filter(function(_,i){ return i!==idx; }) });
+      return next;
+    });
+  }
+  function setPhotos(catKey, updater) {
+    setData(function(prev){
+      var next = Object.assign({}, prev);
+      next.ac = Object.assign({}, prev.ac);
+      next.ac.photos = Object.assign({}, prev.ac.photos);
+      next.ac.photos[catKey] = typeof updater === "function" ? updater(prev.ac.photos[catKey]||[]) : updater;
+      return next;
+    });
+  }
+
+  return (
+    <div>
+      <CompletionBar done={comp.done} total={comp.total} nokCount={comp.nokCount} color={AC_COLOR} />
+      <NOKSummary nokItems={nokItems} tab="AC" />
+
+      {/* Sections 1 & 2 */}
+      {[AC_SECTIONS[0], AC_SECTIONS[1]].map(function(s) {
+        var sData = (data.ac.items||{})[s.key] || {};
+        return (
+          <SectionBlock key={s.key} icon={s.icon} label={s.label} color={AC_COLOR}>
+            {(s.items||[]).map(function(it) {
+              return (
+                <CheckItem key={it.key} label={it.label}
+                  value={sData[it.key]} remark={sData[it.key+"Remarque"]}
+                  onChange={function(v){ setItem(s.key, it.key, v); }}
+                  onRemarkChange={function(v){ setItem(s.key, it.key+"Remarque", v); }} />
+              );
+            })}
+          </SectionBlock>
+        );
+      })}
+
+      {/* Section 3 : Onduleurs */}
+      <SectionBlock icon="🔆" label="3 · Onduleur(s)" color={AC_COLOR}>
+        {(data.ac.onduleurs||[]).map(function(o, i) {
+          return (
+            <OnduleurCard key={i} index={i} onduleur={o}
+              onChange={function(updated){ setOnduleur(i, updated); }}
+              onRemove={function(){ removeOnduleur(i); }}
+              canRemove={(data.ac.onduleurs||[]).length > 1} />
+          );
+        })}
+        <button onClick={addOnduleur}
+          style={{ width: "100%", padding: "10px", border: "2px dashed "+AC_BORDER, background: AC_LIGHT, color: AC_COLOR, borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: "pointer", marginTop: 4 }}>
+          + Ajouter un onduleur
+        </button>
+      </SectionBlock>
+
+      {/* Sections 4-7 */}
+      {AC_SECTIONS.slice(2).map(function(s) {
+        var sData = (data.ac.items||{})[s.key] || {};
+        return (
+          <SectionBlock key={s.key} icon={s.icon} label={s.label} color={AC_COLOR}>
+            {(s.items||[]).map(function(it) {
+              return (
+                <CheckItem key={it.key} label={it.label}
+                  value={sData[it.key]} remark={sData[it.key+"Remarque"]}
+                  onChange={function(v){ setItem(s.key, it.key, v); }}
+                  onRemarkChange={function(v){ setItem(s.key, it.key+"Remarque", v); }} />
+              );
+            })}
+            {((s.numericFields||[]).length > 0 || (s.timeFields||[]).length > 0) && (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 10 }}>
+                {(s.numericFields||[]).map(function(f) {
+                  return <NumField key={f.key} label={f.label} value={sData[f.key]} placeholder={f.placeholder} onChange={function(v){ setNumber(s.key, f.key, v); }} />;
+                })}
+                {(s.timeFields||[]).map(function(f) {
+                  return (
+                    <div key={f.key} style={{ flex: 1, minWidth: 160 }}>
+                      <label style={{ fontSize: 12, color: MUTED, fontWeight: 500, marginBottom: 4, display: "block" }}>{f.label}</label>
+                      <input type="time" value={sData[f.key]||""} onChange={function(e){ setNumber(s.key, f.key, e.target.value); }} />
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </SectionBlock>
+        );
+      })}
+
+      {/* Photos AC */}
+      <SectionBlock icon="📷" label="8 · Photos AC obligatoires (HD)" color={AC_COLOR}>
+        {renderPhotoSection(AC_PHOTO_CATS, data.ac.photos||{}, setPhotos)}
+      </SectionBlock>
+
+      {/* Observations */}
+      <SectionBlock icon="📝" label="9 · Observations & Remarques AC" color={AC_COLOR}>
+        <label style={{ fontSize: 12, color: MUTED, fontWeight: 500, marginBottom: 6, display: "block" }}>Remarques générales AC</label>
+        <textarea value={data.ac.observations||""} onChange={function(e){ setData(function(prev){ var n=Object.assign({},prev); n.ac=Object.assign({},prev.ac,{observations:e.target.value}); return n; }); }}
+          placeholder="Observations libres…" style={{ minHeight: 100, resize: "vertical", width: "100%" }} />
+      </SectionBlock>
+
+      <SignatureBlock title="✍️ Signature Responsable AC"
+        name={data.ac.signatureName} heureFin={data.ac.heureFin}
+        color={AC_COLOR}
+        onName={function(v){ setData(function(prev){ var n=Object.assign({},prev); n.ac=Object.assign({},prev.ac,{signatureName:v}); return n; }); }}
+        onHeure={function(v){ setData(function(prev){ var n=Object.assign({},prev); n.ac=Object.assign({},prev.ac,{heureFin:v}); return n; }); }}
+      />
+    </div>
+  );
+}
+
+// ── HeaderSection ─────────────────────────────────────
+function HeaderSection({ data, setData, onLoad, onPrefill, prefillMsg, loading }) {
+  var [refInput, setRefInput] = useState(data.meta.ref||"");
+  function setMeta(key, val) { setData(function(prev){ var n=Object.assign({},prev); n.meta=Object.assign({},prev.meta); n.meta[key]=val; return n; }); }
+  return (
+    <div style={{ background: WHITE, padding: "14px", borderBottom: "1px solid #e8e8e4" }}>
+      <div style={{ fontWeight: 700, fontSize: 12, color: GREEN, marginBottom: 12, textTransform: "uppercase", letterSpacing: "0.07em" }}>📋 Identification du chantier</div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 10 }}>
+        <div>
+          <label style={{ fontSize: 12, color: MUTED, fontWeight: 500, marginBottom: 4, display: "block" }}>Référence chantier *</label>
+          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+            <input type="text" value={refInput} onChange={function(e){ setRefInput(e.target.value); }}
+              onBlur={function(){ setMeta("ref", refInput); if(refInput) onLoad(refInput); }}
+              onKeyDown={function(e){ if(e.key==="Enter"){ setMeta("ref",refInput); if(refInput) onLoad(refInput); } }}
+              placeholder="WG-2025-0123" style={{ flex: 1 }} />
+            {loading && <span style={{ fontSize: 11, color: MUTED }}>⏳</span>}
+          </div>
+          {refInput && (
+            <button onClick={function(){ onPrefill(refInput); }}
+              style={{ marginTop: 5, fontSize: 11, color: DC_COLOR, background: "none", border: "none", cursor: "pointer", padding: 0, textDecoration: "underline", minHeight: 0 }}>
+              ↩ Importer depuis la feuille de chantier
+            </button>
+          )}
+          {prefillMsg && <div style={{ fontSize: 11, marginTop: 3, color: prefillMsg.startsWith("✅") ? "#27ae60" : "#e74c3c" }}>{prefillMsg}</div>}
+        </div>
+        <div>
+          <label style={{ fontSize: 12, color: MUTED, fontWeight: 500, marginBottom: 4, display: "block" }}>Client</label>
+          <input type="text" value={data.meta.client||""} onChange={function(e){ setMeta("client",e.target.value); }} placeholder="Nom du client" />
+        </div>
+        <div>
+          <label style={{ fontSize: 12, color: MUTED, fontWeight: 500, marginBottom: 4, display: "block" }}>Adresse</label>
+          <input type="text" value={data.meta.adresse||""} onChange={function(e){ setMeta("adresse",e.target.value); }} placeholder="Adresse du chantier" />
+        </div>
+        <div>
+          <label style={{ fontSize: 12, color: MUTED, fontWeight: 500, marginBottom: 4, display: "block" }}>Date du contrôle</label>
+          <input type="date" value={data.meta.dateControle||""} onChange={function(e){ setMeta("dateControle",e.target.value); }} />
+        </div>
+        <div>
+          <label style={{ fontSize: 12, color: MUTED, fontWeight: 500, marginBottom: 4, display: "block" }}>Contrôleur</label>
+          <input type="text" value={data.meta.controleur||""} onChange={function(e){ setMeta("controleur",e.target.value); }} placeholder="Votre nom" />
+        </div>
+        <div>
+          <label style={{ fontSize: 12, color: MUTED, fontWeight: 500, marginBottom: 4, display: "block" }}>Équipe présente</label>
+          <input type="text" value={data.meta.equipe||""} onChange={function(e){ setMeta("equipe",e.target.value); }} placeholder="Membres de l'équipe" />
+        </div>
+        <div>
+          <label style={{ fontSize: 12, color: MUTED, fontWeight: 500, marginBottom: 4, display: "block" }}>Project Manager</label>
+          <select value={data.meta.pm||""} onChange={function(e){ setMeta("pm",e.target.value); }}>
+            <option value="">— Sélectionner —</option>
+            {PM_LIST.map(function(pm){ return <option key={pm} value={pm}>{pm}</option>; })}
+          </select>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── App ───────────────────────────────────────────────
+function App() {
+  var [user, setUser] = useState(null);
+  var [data, setData] = useState(makeDefaultData);
+  var [activeTab, setActiveTab] = useState("dc");
+  var [saveStatus, setSaveStatus] = useState("idle");
+  var [loading, setLoading] = useState(false);
+  var [prefillMsg, setPrefillMsg] = useState("");
+  var debounceRef = useRef(null);
+  var lastSavedRef = useRef(null);
+
+  // Load user from localStorage
+  useEffect(function() {
+    try {
+      var stored = localStorage.getItem("wge_user");
+      if (stored) { var u = JSON.parse(stored); if (u && u.name) setUser(u); }
+    } catch(e) {}
+  }, []);
+
+  // Auto-save on data change (debounce 2s)
+  useEffect(function() {
+    var ref = data.meta.ref;
+    if (!ref) { setSaveStatus("idle"); return; }
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    setSaveStatus("saving");
+    debounceRef.current = setTimeout(async function() {
+      var ok = await supaSave(ref, data);
+      setSaveStatus(ok ? "saved" : "error");
+      setTimeout(function(){ setSaveStatus("idle"); }, 2500);
+    }, 2000);
+    return function() { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, [data]);
+
+  // Load from Supabase
+  async function loadData(ref) {
+    if (!ref) return;
+    setLoading(true);
+    var row = await supaLoad(ref);
+    if (row && row.data) {
+      setData(deepMerge(makeDefaultData(), row.data));
+    }
+    setLoading(false);
+  }
+
+  // Pre-fill from feuilles_chantier
+  async function prefillFromChantier(ref) {
+    var chantierData = await supaLoadChantier(ref);
+    if (!chantierData) { setPrefillMsg("⚠️ Aucune feuille de chantier trouvée pour cette référence."); setTimeout(function(){ setPrefillMsg(""); }, 4000); return; }
+    var client = chantierData.client || {};
+    var weGreen = chantierData.weGreen || {};
+    setData(function(prev) {
+      return Object.assign({}, prev, {
+        meta: Object.assign({}, prev.meta, {
+          client: client.nom || prev.meta.client,
+          adresse: client.adresse || prev.meta.adresse,
+          pm: weGreen.manager || prev.meta.pm
+        })
+      });
+    });
+    setPrefillMsg("✅ Informations importées depuis la feuille de chantier");
+    setTimeout(function(){ setPrefillMsg(""); }, 4000);
+  }
+
+  var dcComp = calcDCCompletion(data);
+  var acComp = calcACCompletion(data);
+
+  return (
+    <div style={{ minHeight: "100vh", background: BG, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }}>
+      {/* App Header */}
+      <div id="no-print" style={{ background: GREEN, color: WHITE, padding: "10px 14px", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <img src={LOGO_SRC} alt="We Green" style={{ height: 28, borderRadius: 4, flexShrink: 0 }} />
+        <div style={{ flex: 1 }}>
+          <div style={{ fontWeight: 700, fontSize: 15 }}>Feuille de Contrôle Chantier</div>
+          <div style={{ fontSize: 11, opacity: 0.8 }}>We Green Energy PV</div>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          {saveStatus === "saving" && <span style={{ fontSize: 11, opacity: 0.8 }}>⏳ Sauvegarde…</span>}
+          {saveStatus === "saved" && <span style={{ fontSize: 11, opacity: 0.8, color: "#a8e6c0" }}>✅ Sauvegardé</span>}
+          {saveStatus === "error" && <span style={{ fontSize: 11, color: "#f1a0a0" }}>❌ Erreur</span>}
+          {user && (
+            <div style={{ display: "flex", alignItems: "center", gap: 5, padding: "3px 9px", background: user.type === "contractor" ? "#fff8f0" : "rgba(255,255,255,0.15)", border: "1px solid "+(user.type === "contractor" ? "#e8c080" : "rgba(255,255,255,0.3)"), borderRadius: 20 }}>
+              {user.type === "contractor" && <span style={{ fontSize: 11 }}>🔧</span>}
+              {user.type !== "contractor" && <span style={{ fontSize: 11 }}>🌿</span>}
+              <span style={{ fontSize: 11, fontWeight: 600, color: user.type === "contractor" ? "#7a4800" : WHITE, maxWidth: 100, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{user.name}</span>
+            </div>
+          )}
+          <button onClick={function(){ window.print(); }}
+            style={{ background: "rgba(255,255,255,0.2)", border: "none", color: WHITE, borderRadius: 6, padding: "5px 10px", fontSize: 12, cursor: "pointer" }}>
+            🖨️ Imprimer
+          </button>
+          <button onClick={function(){ window.wgeSignOut(); }}
+            style={{ background: "rgba(255,255,255,0.15)", border: "none", color: WHITE, borderRadius: 6, padding: "5px 10px", fontSize: 12, cursor: "pointer" }}>
+            Déco.
+          </button>
+        </div>
+      </div>
+
+      {/* Common header */}
+      <HeaderSection data={data} setData={setData} onLoad={loadData} onPrefill={prefillFromChantier} prefillMsg={prefillMsg} loading={loading} />
+
+      {/* Tabs */}
+      <div id="no-print" style={{ display: "flex", background: WHITE, borderBottom: "2px solid #e8e8e4", position: "sticky", top: 0, zIndex: 100, boxShadow: "0 2px 8px rgba(0,0,0,0.06)" }}>
+        <button onClick={function(){ setActiveTab("dc"); }}
+          style={{ flex: 1, padding: "12px 8px", background: activeTab==="dc" ? DC_LIGHT : WHITE, color: activeTab==="dc" ? DC_COLOR : MUTED, fontWeight: activeTab==="dc" ? 700 : 400, border: "none", borderBottom: activeTab==="dc" ? "3px solid "+DC_COLOR : "3px solid transparent", fontSize: 14, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+          <span>🟦 DC</span>
+          {dcComp.total > 0 && <span style={{ fontSize: 12 }}>({dcComp.pct}%)</span>}
+          {dcComp.nokCount > 0 && <span style={{ background: "#e74c3c", color: WHITE, borderRadius: 10, padding: "1px 7px", fontSize: 11, fontWeight: 700 }}>{dcComp.nokCount} NOK</span>}
+        </button>
+        <button onClick={function(){ setActiveTab("ac"); }}
+          style={{ flex: 1, padding: "12px 8px", background: activeTab==="ac" ? AC_LIGHT : WHITE, color: activeTab==="ac" ? AC_COLOR : MUTED, fontWeight: activeTab==="ac" ? 700 : 400, border: "none", borderBottom: activeTab==="ac" ? "3px solid "+AC_COLOR : "3px solid transparent", fontSize: 14, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+          <span>🟥 AC</span>
+          {acComp.total > 0 && <span style={{ fontSize: 12 }}>({acComp.pct}%)</span>}
+          {acComp.nokCount > 0 && <span style={{ background: "#e74c3c", color: WHITE, borderRadius: 10, padding: "1px 7px", fontSize: 11, fontWeight: 700 }}>{acComp.nokCount} NOK</span>}
+        </button>
+      </div>
+
+      {/* Tab content */}
+      <div style={{ maxWidth: 800, margin: "0 auto", padding: "14px" }}>
+        <div style={{ display: activeTab==="dc" ? "block" : "none" }}>
+          <DCTab data={data} setData={setData} />
+        </div>
+        <div style={{ display: activeTab==="ac" ? "block" : "none" }}>
+          <ACTab data={data} setData={setData} />
+        </div>
+      </div>
+
+      {/* Debug info */}
+      {!data.meta.ref && (
+        <div id="no-print" style={{ textAlign: "center", padding: "20px 14px", color: MUTED, fontSize: 13 }}>
+          ℹ️ Saisissez une référence chantier pour activer la sauvegarde automatique
+        </div>
+      )}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
