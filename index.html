@@ -1117,7 +1117,7 @@ function PhotoZone({ catKey, label, items, onAdd, onDelete, onUpdate, onReorder,
       {/* Annotation modal */}
       {annotating!==null && items[annotating] && items[annotating].url && (
         <AnnotationModal imageUrl={items[annotating].url}
-          onSave={function(newUrl){ onUpdate(annotating,newUrl); setAnnotating(null); }}
+          onSave={function(newUrl){ onUpdate(annotating, Object.assign({}, items[annotating], { url: newUrl })); setAnnotating(null); }}
           onClose={function(){ setAnnotating(null); }} />
       )}
 
