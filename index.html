@@ -264,23 +264,29 @@ async function supaLoadById(id) {
   } catch(e) { return null; }
 }
 
-async function supaCreate(ref, label, data) {
+async function supaCreate(ref, label, payload) {
   try {
+    var body = JSON.stringify({ ref: ref, label: label || "", data: payload,
+      updated_at: new Date().toISOString() });
     var res = await fetch(SUPA_URL + "/rest/v1/feuilles_controle", {
       method: "POST",
       headers: {
         "apikey": SUPA_KEY, "Authorization": "Bearer " + SUPA_KEY,
         "Content-Type": "application/json", "Prefer": "return=representation"
       },
-      body: JSON.stringify({ ref: ref, label: label || "", data: data, updated_at: new Date().toISOString() })
+      body: body
     });
-    if (!res.ok) { console.error("[Contrôle] supaCreate HTTP", res.status, await res.text()); return null; }
+    if (!res.ok) {
+      var errTxt = await res.text();
+      console.error("[Rapport] supaCreate FAILED — HTTP " + res.status + " — " + errTxt);
+      return null;
+    }
     var rows = await res.json();
     return (rows && rows.length > 0) ? rows[0] : null;
-  } catch(e) { console.error("[Contrôle] supaCreate error", e); return null; }
+  } catch(e) { console.error("[Rapport] supaCreate exception:", e); return null; }
 }
 
-async function supaUpdate(id, data) {
+async function supaUpdate(id, payload) {
   try {
     var res = await fetch(SUPA_URL + "/rest/v1/feuilles_controle?id=eq." + id, {
       method: "PATCH",
@@ -288,11 +294,15 @@ async function supaUpdate(id, data) {
         "apikey": SUPA_KEY, "Authorization": "Bearer " + SUPA_KEY,
         "Content-Type": "application/json"
       },
-      body: JSON.stringify({ data: data, updated_at: new Date().toISOString() })
+      body: JSON.stringify({ data: payload, updated_at: new Date().toISOString() })
     });
-    if (!res.ok) { console.error("[Contrôle] supaUpdate HTTP", res.status, await res.text()); return false; }
+    if (!res.ok) {
+      var errTxt = await res.text();
+      console.error("[Rapport] supaUpdate FAILED — HTTP " + res.status + " — " + errTxt);
+      return false;
+    }
     return true;
-  } catch(e) { console.error("[Contrôle] supaUpdate error", e); return false; }
+  } catch(e) { console.error("[Rapport] supaUpdate exception:", e); return false; }
 }
 
 async function supaDeleteSheet(id) {
@@ -4208,7 +4218,7 @@ function App() {
     // Ne pas sauvegarder pendant un chargement (guard vérifié dès le départ)
     if (isLoadingData.current) return;
     var ref = data.meta.ref;
-    if (!ref) { setSaveStatus("idle"); return; }
+    if (!ref || ref.trim().length < 2) { setSaveStatus("idle"); return; }
     if (debounceRef.current) clearTimeout(debounceRef.current);
     setSaveStatus("saving");
     debounceRef.current = setTimeout(async function() {
@@ -4242,7 +4252,8 @@ function App() {
         prevDataRef.current = slim;
       }
       setSaveStatus(ok ? "saved" : "error");
-      setTimeout(function(){ setSaveStatus("idle"); }, 2500);
+      if (!ok) console.error("[Rapport] Save failed — check console for details");
+      setTimeout(function(){ setSaveStatus("idle"); }, 4000);
     }, 2000);
     return function() { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, [data, currentSheetId]);
@@ -4333,7 +4344,13 @@ function App() {
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           {saveStatus === "saving" && <span style={{ fontSize: 11, opacity: 0.8 }}>⏳ Sauvegarde…</span>}
           {saveStatus === "saved" && <span style={{ fontSize: 11, opacity: 0.8, color: "#a8e6c0" }}>✅ Sauvegardé</span>}
-          {saveStatus === "error" && <span style={{ fontSize: 11, color: "#f1a0a0" }}>❌ Erreur</span>}
+          {saveStatus === "error" && (
+            <span style={{ fontSize: 11, color: "#f1a0a0", cursor:"pointer" }}
+              onClick={function(){ alert("Erreur de sauvegarde.\nVérifiez la console (F12) pour le détail.\nMessage: [Contrôle] supaCreate HTTP ..."); }}
+              title="Cliquer pour plus d\'infos">
+              ❌ Erreur sauvegarde
+            </span>
+          )}
           {user && (
             <div style={{ display: "flex", alignItems: "center", gap: 5, padding: "3px 9px", background: user.type === "contractor" ? "#fff8f0" : "rgba(255,255,255,0.15)", border: "1px solid "+(user.type === "contractor" ? "#e8c080" : "rgba(255,255,255,0.3)"), borderRadius: 20 }}>
               {user.type === "contractor" && <span style={{ fontSize: 11 }}>🔧</span>}
@@ -4341,12 +4358,15 @@ function App() {
               <span style={{ fontSize: 11, fontWeight: 600, color: user.type === "contractor" ? "#7a4800" : WHITE, maxWidth: 100, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{user.name}</span>
             </div>
           )}
-          {data.meta.ref && currentSheetId && (
-            <button onClick={function(){ setShowHistory(true); }}
-              style={{ background:"rgba(255,255,255,0.2)", border:"none", color:WHITE, borderRadius:6, padding:"5px 10px", fontSize:12, cursor:"pointer" }}>
-              🔄 Historique
-            </button>
-          )}
+          <button
+            onClick={function(){ if(currentSheetId){ setShowHistory(true); } }}
+            title={currentSheetId ? "Historique des versions" : "Ouvrez ou créez une feuille pour accéder à l\'historique"}
+            style={{ background:"rgba(255,255,255,0.2)", border:"none", color:WHITE,
+              borderRadius:6, padding:"5px 10px", fontSize:12,
+              cursor: currentSheetId ? "pointer" : "default",
+              opacity: currentSheetId ? 1 : 0.45 }}>
+            🔄 Historique
+          </button>
           {data.meta.ref && (
             <button onClick={function(){ setShowChantier(function(v){ return !v; }); }}
               style={{ background:showChantier?"rgba(255,255,255,0.35)":"rgba(255,255,255,0.2)", border:"none", color:WHITE, borderRadius:6, padding:"5px 10px", fontSize:12, cursor:"pointer" }}>
