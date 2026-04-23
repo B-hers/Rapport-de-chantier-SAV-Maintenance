@@ -289,6 +289,82 @@ async function supaDeleteSheet(id) {
   } catch(e) { return false; }
 }
 
+// ── Supabase versions & audit (contrôle) ────────────────────────────────────
+// Clé versions : ref + "_ctrl_" + sheetId (évite les conflits avec feuilles_chantier)
+function ctrlVersionRef(ref, sheetId) { return ref + "_ctrl_" + sheetId; }
+
+async function supaCtrlSaveVersion(ref, sheetId, data, user, label) {
+  if (!ref || !sheetId || !user) return;
+  var vRef = ctrlVersionRef(ref, sheetId);
+  try {
+    var listRes = await fetch(SUPA_URL + "/rest/v1/versions?ref=eq." + encodeURIComponent(vRef) +
+      "&select=id,created_at&order=created_at.asc",
+      { headers: { "apikey": SUPA_KEY, "Authorization": "Bearer " + SUPA_KEY } });
+    var list = await listRes.json();
+    if (Array.isArray(list) && list.length >= 15) {
+      var toDelete = list.slice(0, list.length - 14);
+      for (var vi = 0; vi < toDelete.length; vi++) {
+        await fetch(SUPA_URL + "/rest/v1/versions?id=eq." + toDelete[vi].id, {
+          method: "DELETE", headers: { "apikey": SUPA_KEY, "Authorization": "Bearer " + SUPA_KEY }
+        });
+      }
+    }
+    await fetch(SUPA_URL + "/rest/v1/versions", {
+      method: "POST",
+      headers: { "apikey": SUPA_KEY, "Authorization": "Bearer " + SUPA_KEY, "Content-Type": "application/json" },
+      body: JSON.stringify({ ref: vRef, data: data, user_email: user.email, user_name: user.name,
+        label: label || "", created_at: new Date().toISOString() })
+    });
+  } catch(e) {}
+}
+
+async function supaCtrlLoadVersions(ref, sheetId) {
+  try {
+    var vRef = ctrlVersionRef(ref, sheetId);
+    var res = await fetch(SUPA_URL + "/rest/v1/versions?ref=eq." + encodeURIComponent(vRef) +
+      "&select=id,user_email,user_name,label,created_at,data&order=created_at.desc&limit=15",
+      { headers: { "apikey": SUPA_KEY, "Authorization": "Bearer " + SUPA_KEY } });
+    var rows = await res.json(); return Array.isArray(rows) ? rows : [];
+  } catch(e) { return []; }
+}
+
+async function supaCtrlLogAudit(ref, sheetId, user, action, detail) {
+  if (!ref || !user) return;
+  try {
+    await fetch(SUPA_URL + "/rest/v1/audit_log", {
+      method: "POST",
+      headers: { "apikey": SUPA_KEY, "Authorization": "Bearer " + SUPA_KEY, "Content-Type": "application/json" },
+      body: JSON.stringify({ ref: ref + "_ctrl", user_email: user.email, user_name: user.name,
+        action: action, detail: detail || {}, created_at: new Date().toISOString() })
+    });
+  } catch(e) {}
+}
+
+async function supaCtrlLoadAudit(ref, sheetId) {
+  try {
+    var res = await fetch(SUPA_URL + "/rest/v1/audit_log?ref=eq." + encodeURIComponent(ref + "_ctrl") +
+      "&select=id,user_email,user_name,action,detail,created_at&order=created_at.desc&limit=60",
+      { headers: { "apikey": SUPA_KEY, "Authorization": "Bearer " + SUPA_KEY } });
+    var rows = await res.json(); return Array.isArray(rows) ? rows : [];
+  } catch(e) { return []; }
+}
+
+function makeSlimCtrlData(data) {
+  var slim = JSON.parse(JSON.stringify(data));
+  // Strip photo base64 to keep versions table light
+  if (slim.dc && slim.dc.photos) {
+    Object.keys(slim.dc.photos).forEach(function(k) {
+      slim.dc.photos[k] = (slim.dc.photos[k]||[]).map(function(p){ return { name: p.name, type: p.type }; });
+    });
+  }
+  if (slim.ac && slim.ac.photos) {
+    Object.keys(slim.ac.photos).forEach(function(k) {
+      slim.ac.photos[k] = (slim.ac.photos[k]||[]).map(function(p){ return { name: p.name, type: p.type }; });
+    });
+  }
+  return slim;
+}
+
 async function supaLoadChantier(ref) {
   try {
     var res = await fetch(SUPA_URL + "/rest/v1/feuilles_chantier?ref=eq." + encodeURIComponent(ref) + "&select=data", {
@@ -2546,6 +2622,288 @@ function ACTab({ data, setData }) {
 }
 
 
+// ── HistoryPanel (contrôle) ─────────────────────────────────────────────────
+function HistoryPanel({ ref: refChantier, sheetId, sheetLabel, onRestore, onClose }) {
+  var [tab, setTab] = useState("versions");
+  var [versions, setVersions] = useState([]);
+  var [auditLog, setAuditLog] = useState([]);
+  var [loading, setLoading] = useState(true);
+  var [restoring, setRestoring] = useState(null);
+
+  useEffect(function() {
+    if (!refChantier || !sheetId) return;
+    setLoading(true);
+    Promise.all([supaCtrlLoadVersions(refChantier, sheetId), supaCtrlLoadAudit(refChantier, sheetId)])
+      .then(function(res) {
+        setVersions(Array.isArray(res[0]) ? res[0] : []);
+        setAuditLog(Array.isArray(res[1]) ? res[1] : []);
+        setLoading(false);
+      });
+  }, [refChantier, sheetId]);
+
+  function fmtDate(iso) {
+    if (!iso) return "—";
+    var d = new Date(iso);
+    return d.toLocaleDateString("fr-BE", { day:"2-digit", month:"2-digit", year:"numeric" }) + " " +
+           d.toLocaleTimeString("fr-BE", { hour:"2-digit", minute:"2-digit" });
+  }
+  var ACT = { save:"💾 Sauvegarde", photo_delete:"🗑️ Photo supprimée", restore:"↩️ Restauration", load:"👁️ Consultation" };
+
+  return (
+    <div style={{ position:"fixed", top:0, right:0, bottom:0, width:"min(460px,100vw)",
+      background:WHITE, boxShadow:"-4px 0 28px rgba(0,0,0,0.15)", zIndex:9990,
+      display:"flex", flexDirection:"column", fontFamily:"inherit" }}>
+      <div style={{ padding:"13px 16px", borderBottom:"1px solid #e8e8e4",
+        display:"flex", alignItems:"center", justifyContent:"space-between",
+        background:GREEN, color:WHITE, flexShrink:0 }}>
+        <div>
+          <div style={{ fontWeight:700, fontSize:13 }}>📋 Historique — {refChantier}</div>
+          {sheetLabel && <div style={{ fontSize:11, opacity:0.75, marginTop:2 }}>{sheetLabel}</div>}
+        </div>
+        <button onClick={onClose} style={{ background:"rgba(255,255,255,0.18)", border:"none",
+          color:WHITE, borderRadius:6, padding:"3px 9px", cursor:"pointer", fontSize:15 }}>✕</button>
+      </div>
+      <div style={{ display:"flex", borderBottom:"1px solid #e8e8e4", flexShrink:0 }}>
+        {[["versions","🔄 Versions ("+versions.length+")"],["audit","📝 Journal ("+auditLog.length+")"]].map(function(t) {
+          return <button key={t[0]} onClick={function(){ setTab(t[0]); }}
+            style={{ flex:1, padding:"9px 4px", border:"none",
+              background:tab===t[0]?"#f0f7f2":WHITE, color:tab===t[0]?GREEN:MUTED,
+              fontWeight:tab===t[0]?700:400, cursor:"pointer", fontSize:12,
+              borderBottom:tab===t[0]?"2.5px solid "+GREEN:"2.5px solid transparent",
+              fontFamily:"inherit" }}>
+            {loading ? t[1].split(" ")[0] : t[1]}
+          </button>;
+        })}
+      </div>
+      <div style={{ flex:1, overflow:"auto", padding:"10px 12px" }}>
+        {loading && <div style={{ textAlign:"center", padding:48, color:"#aaa", fontSize:13 }}>⏳ Chargement…</div>}
+        {!loading && tab === "versions" && (
+          <div>
+            <div style={{ fontSize:11, color:"#999", marginBottom:10, background:"#fffdf0",
+              border:"1px solid #e8e0b0", borderRadius:6, padding:"6px 10px" }}>
+              ℹ️ Les versions restaurent les données du formulaire. Les photos ne sont pas affectées.
+            </div>
+            {versions.length === 0 && <div style={{ textAlign:"center", padding:40, color:"#bbb", fontSize:13 }}>Aucune version disponible</div>}
+            {versions.map(function(v, i) {
+              return (
+                <div key={v.id} style={{ background:i===0?"#f0f7f2":"#fafaf8",
+                  border:"1px solid "+(i===0?"#d4ead9":"#e8e8e4"), borderRadius:8,
+                  padding:"10px 12px", marginBottom:8 }}>
+                  <div style={{ display:"flex", alignItems:"flex-start", gap:8 }}>
+                    <div style={{ flex:1, minWidth:0 }}>
+                      {i===0 && <span style={{ fontSize:9, fontWeight:700, color:GREEN, background:"#d4ead9",
+                        padding:"1px 6px", borderRadius:4, marginBottom:4,
+                        display:"inline-block", textTransform:"uppercase" }}>Dernière version</span>}
+                      <div style={{ fontSize:12, fontWeight:600, color:"#1a1a1a" }}>{fmtDate(v.created_at)}</div>
+                      <div style={{ fontSize:11, color:MUTED, marginTop:2 }}>👤 {v.user_name}
+                        <span style={{ color:"#bbb" }}> ({v.user_email})</span></div>
+                      {v.label && <div style={{ fontSize:11, color:"#888", marginTop:3, fontStyle:"italic",
+                        overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{v.label}</div>}
+                    </div>
+                    {i > 0 && (
+                      <button disabled={restoring===v.id} onClick={function(){
+                        if (!window.confirm("Restaurer la version du " + fmtDate(v.created_at) + " ? Note : les photos actuelles seront conservées.")) return;
+                        setRestoring(v.id);
+                        onRestore(v.data, function(){ setRestoring(null); });
+                      }} style={{ background:restoring===v.id?"#ccc":GREEN, color:WHITE, border:"none",
+                        borderRadius:6, padding:"6px 10px", cursor:restoring===v.id?"not-allowed":"pointer",
+                        fontSize:11, fontWeight:600, whiteSpace:"nowrap", flexShrink:0 }}>
+                        {restoring===v.id ? "⏳" : "↩ Restaurer"}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+        {!loading && tab === "audit" && (
+          <div>
+            {auditLog.length === 0 && <div style={{ textAlign:"center", padding:40, color:"#bbb", fontSize:13 }}>Aucune entrée dans le journal</div>}
+            {auditLog.map(function(entry) {
+              var isDel = entry.action === "photo_delete";
+              return (
+                <div key={entry.id} style={{ background:isDel?"#fff8f7":"#fafaf8",
+                  border:"1px solid "+(isDel?"#fcd9d4":"#e8e8e4"), borderRadius:8,
+                  padding:"8px 11px", marginBottom:6 }}>
+                  <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:3 }}>
+                    <span style={{ fontSize:12, fontWeight:600, color:isDel?"#c0392b":"#1a1a1a" }}>
+                      {ACT[entry.action] || entry.action}
+                    </span>
+                    <span style={{ fontSize:10, color:"#aaa", marginLeft:"auto", whiteSpace:"nowrap" }}>
+                      {fmtDate(entry.created_at)}
+                    </span>
+                  </div>
+                  <div style={{ fontSize:11, color:MUTED }}>👤 {entry.user_name}
+                    <span style={{ color:"#bbb" }}> ({entry.user_email})</span></div>
+                  {entry.detail && entry.detail.changes && entry.detail.changes.length > 0 && (
+                    <div style={{ fontSize:11, color:"#555", background:"#f0f0ec",
+                      borderRadius:4, padding:"4px 8px", marginTop:4 }}>
+                      {entry.detail.changes.map(function(c,ci){ return <div key={ci} style={{ lineHeight:1.6 }}>• {c}</div>; })}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── ChantierPanel (lecture seule) ────────────────────────────────────────────
+function ChantierPanel({ refChantier, onClose }) {
+  var [chData, setChData] = useState(null);
+  var [loading, setLoading] = useState(true);
+  var [error, setError] = useState(false);
+
+  useEffect(function() {
+    if (!refChantier) return;
+    setLoading(true); setError(false);
+    supaLoadChantier(refChantier).then(function(d) {
+      if (d) { setChData(d); } else { setError(true); }
+      setLoading(false);
+    });
+  }, [refChantier]);
+
+  function tv(v) { return v || "—"; }
+  function ROw({ label, value }) {
+    if (!value) return null;
+    return (
+      <div style={{ display:"flex", gap:8, padding:"5px 0", borderBottom:"1px solid #f0f0ec", fontSize:13 }}>
+        <span style={{ flex:"0 0 140px", color:MUTED, fontSize:12 }}>{label}</span>
+        <span style={{ flex:1, fontWeight:500 }}>{value}</span>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ position:"fixed", top:0, right:0, bottom:0, width:"min(480px,100vw)",
+      background:WHITE, boxShadow:"-4px 0 28px rgba(0,0,0,0.15)", zIndex:9990,
+      display:"flex", flexDirection:"column", fontFamily:"inherit" }}>
+      {/* Header */}
+      <div style={{ padding:"13px 16px", borderBottom:"1px solid #e8e8e4",
+        display:"flex", alignItems:"center", justifyContent:"space-between",
+        background:"#2e8b57", color:WHITE, flexShrink:0 }}>
+        <div>
+          <div style={{ fontWeight:700, fontSize:13 }}>📄 Feuille de chantier — {refChantier}</div>
+          <div style={{ fontSize:11, opacity:0.75, marginTop:2 }}>Lecture seule — données planifiées</div>
+        </div>
+        <button onClick={onClose} style={{ background:"rgba(255,255,255,0.18)", border:"none",
+          color:WHITE, borderRadius:6, padding:"3px 9px", cursor:"pointer", fontSize:15 }}>✕</button>
+      </div>
+
+      <div style={{ flex:1, overflow:"auto", padding:"12px 14px" }}>
+        {loading && <div style={{ textAlign:"center", padding:48, color:"#aaa", fontSize:13 }}>⏳ Chargement…</div>}
+        {error && (
+          <div style={{ textAlign:"center", padding:40, color:"#e74c3c", fontSize:13 }}>
+            ⚠️ Aucune feuille de chantier trouvée pour la référence <strong>{refChantier}</strong>
+          </div>
+        )}
+        {chData && (
+          <div>
+            {/* Client */}
+            <div style={{ fontWeight:700, fontSize:11, color:GREEN, textTransform:"uppercase",
+              letterSpacing:"0.07em", marginBottom:8, marginTop:4 }}>👤 Client</div>
+            <ROw label="Nom" value={tv((chData.client||{}).nom)} />
+            <ROw label="Adresse" value={tv((chData.client||{}).adresse)} />
+            <ROw label="Tél." value={(chData.client||{}).tel} />
+            <ROw label="Email" value={(chData.client||{}).email} />
+            <ROw label="Project Manager" value={(chData.weGreen||{}).manager} />
+            <ROw label="Date chantier" value={chData.date} />
+
+            {/* Installations */}
+            {(chData.installations||[]).map(function(inst, instIdx) {
+              var t = inst.tech || {};
+              var strs = inst.strings || [];
+              return (
+                <div key={instIdx} style={{ marginTop:14 }}>
+                  {(chData.installations||[]).length > 1 && (
+                    <div style={{ background:GREEN, color:WHITE, borderRadius:5, padding:"3px 10px",
+                      fontWeight:700, fontSize:11, display:"inline-block", marginBottom:8 }}>
+                      Installation {instIdx+1}
+                    </div>
+                  )}
+                  <div style={{ fontWeight:700, fontSize:11, color:GREEN, textTransform:"uppercase",
+                    letterSpacing:"0.07em", marginBottom:8 }}>🔧 Technique</div>
+                  {t.panneaux && (t.panneaux.type||t.panneaux.nbr) && (
+                    <ROw label="Panneaux" value={[t.panneaux.type, t.panneaux.nbr&&t.panneaux.nbr+" pcs", t.panneaux.kWc&&t.panneaux.kWc+" kWc"].filter(Boolean).join(" — ")} />
+                  )}
+                  {(t.onduleurs||[]).map(function(o,i){
+                    return <ROw key={i} label={"Onduleur "+(i+1)} value={[o.type, o.kva&&o.kva+" kVA"].filter(Boolean).join(" — ")} />;
+                  })}
+                  {t.batterie && t.batterie.inclus==="OUI" && (
+                    <ROw label="Batterie" value={[t.batterie.qty&&t.batterie.qty+"×", t.batterie.kwh&&t.batterie.kwh+" kWh", t.batterie.type].filter(Boolean).join(" ")} />
+                  )}
+                  {t.borne && t.borne.inclus==="OUI" && (
+                    <ROw label="Borne recharge" value={[t.borne.qty&&t.borne.qty+"×", t.borne.type].filter(Boolean).join(" ")} />
+                  )}
+                  {t.reseau && <ROw label="Réseau" value={t.reseau} />}
+                  {t.amperageDisj && <ROw label="Disjoncteur général" value={t.amperageDisj+" A"} />}
+                  {t.branchementOnduleur && <ROw label="Branchement onduleur" value={t.branchementOnduleur} />}
+                  {t.distances && (t.distances.onduleurTGBT||t.distances.onduleurTD) && (
+                    <ROw label="Distances" value={[
+                      t.distances.onduleurTGBT&&"Ond→TGBT: "+t.distances.onduleurTGBT+"m",
+                      t.distances.onduleurTD&&"Ond→TD: "+t.distances.onduleurTD+"m",
+                      t.distances.borneTGBT&&"Borne→TGBT: "+t.distances.borneTGBT+"m"
+                    ].filter(Boolean).join(" | ")} />
+                  )}
+                  {t.compteur && (t.compteur.serie||t.compteur.ean) && (
+                    <ROw label="Compteur réseau" value={[t.compteur.serie&&"N° "+t.compteur.serie, t.compteur.ean&&"EAN: "+t.compteur.ean].filter(Boolean).join(" — ")} />
+                  )}
+                  {strs.length > 0 && (
+                    <div style={{ marginTop:10 }}>
+                      <div style={{ fontWeight:700, fontSize:11, color:GREEN, textTransform:"uppercase",
+                        letterSpacing:"0.07em", marginBottom:6 }}>📊 Strings</div>
+                      <div style={{ background:"#f8f8f6", borderRadius:7, padding:"8px 10px" }}>
+                        {strs.map(function(s,i){
+                          return (
+                            <div key={i} style={{ display:"flex", gap:8, fontSize:12, padding:"3px 0",
+                              borderBottom:i<strs.length-1?"1px solid #eee":"none" }}>
+                              <span style={{ fontWeight:700, color:DC_COLOR, minWidth:42 }}>STR {i+1}</span>
+                              <span style={{ color:MUTED }}>Ond. {s.onduleur}</span>
+                              <span>{s.count||"?"} PV</span>
+                              <span style={{ marginLeft:"auto", color:MUTED }}>{s.orient==="Libre"?(s.orientLibre||"?"):s.orient||"?"}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+
+            {/* Logistique */}
+            {chData.logistique && (
+              <div style={{ marginTop:14 }}>
+                <div style={{ fontWeight:700, fontSize:11, color:GREEN, textTransform:"uppercase",
+                  letterSpacing:"0.07em", marginBottom:8 }}>🚛 Logistique</div>
+                <ROw label="Parking" value={(chData.logistique||{}).parking} />
+                <ROw label="Hauteur corniche" value={(chData.logistique||{}).hauteurCorniche&&(chData.logistique.hauteurCorniche+" m")} />
+                <ROw label="Accès toiture" value={(chData.logistique||{}).acces} />
+              </div>
+            )}
+
+            {/* Note PM */}
+            {chData.pmNote && (
+              <div style={{ marginTop:14 }}>
+                <div style={{ fontWeight:700, fontSize:11, color:GREEN, textTransform:"uppercase",
+                  letterSpacing:"0.07em", marginBottom:8 }}>📝 Note PM</div>
+                <div style={{ background:"#fffdf0", border:"1px solid #e8e0b0", borderRadius:7,
+                  padding:"10px 12px", fontSize:13, whiteSpace:"pre-wrap", lineHeight:1.6 }}>
+                  {chData.pmNote}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── SheetSelector ────────────────────────────────────────────────────────────
 function SheetSelector({ refChantier, currentId, onSelect, onNew, onDelete }) {
   var [list, setList] = useState([]);
@@ -2634,7 +2992,7 @@ function SheetSelector({ refChantier, currentId, onSelect, onNew, onDelete }) {
             var isCurrent = sheet.id === currentId;
             return (
               <div key={sheet.id}
-                onClick={function(){ if (!isCurrent) onSelect(sheet.id); }}
+                onClick={function(){ if (!isCurrent) onSelect(sheet.id, sheet.label); }}
                 style={{
                   background: isCurrent ? GREEN : "#f8f8f6",
                   border: "1.5px solid " + (isCurrent ? GREEN : BORDER),
@@ -2748,21 +3106,29 @@ function App() {
   var [user, setUser] = useState(null);
   var [data, setData] = useState(makeDefaultData);
   var [currentSheetId, setCurrentSheetId] = useState(null);
+  var [currentSheetLabel, setCurrentSheetLabel] = useState("");
   var [activeTab, setActiveTab] = useState("dc");
   var [saveStatus, setSaveStatus] = useState("idle");
   var [loading, setLoading] = useState(false);
   var [prefillMsg, setPrefillMsg] = useState("");
+  var [showHistory, setShowHistory] = useState(false);
+  var [showChantier, setShowChantier] = useState(false);
   var debounceRef = useRef(null);
   var lastSavedRef = useRef(null);
   var isLoadingData = useRef(false); // guard : empêche la sauvegarde pendant le chargement
+  var userRef = useRef(null);
+  var prevDataRef = useRef(null);
 
   // Load user from localStorage
   useEffect(function() {
     try {
       var stored = localStorage.getItem("wge_user");
-      if (stored) { var u = JSON.parse(stored); if (u && u.name) setUser(u); }
+      if (stored) { var u = JSON.parse(stored); if (u && u.name) { setUser(u); userRef.current = u; } }
     } catch(e) {}
   }, []);
+
+  // Sync userRef with user state
+  useEffect(function() { userRef.current = user; }, [user]);
 
   // Lire ?ref= dans l'URL au chargement de la page
   useEffect(function() {
@@ -2800,6 +3166,24 @@ function App() {
         var created = await supaCreate(ref, label, data);
         if (created) { setCurrentSheetId(created.id); ok = true; }
       }
+      if (ok && userRef.current && currentSheetId) {
+        var slim = makeSlimCtrlData(data);
+        var prevSlim = prevDataRef.current;
+        var label = "";
+        if (prevSlim) {
+          // Build a short change label
+          var changes = [];
+          if (JSON.stringify((prevSlim.meta||{})) !== JSON.stringify((data.meta||{}))) changes.push("Infos chantier");
+          if (JSON.stringify((prevSlim.dc||{}).items||{}) !== JSON.stringify((data.dc||{}).items||{})) changes.push("DC");
+          if (JSON.stringify((prevSlim.ac||{}).items||{}) !== JSON.stringify((data.ac||{}).items||{})) changes.push("AC");
+          label = changes.join(" | ");
+        }
+        if (!prevSlim || label) {
+          supaCtrlSaveVersion(ref, currentSheetId, slim, userRef.current, label);
+          supaCtrlLogAudit(ref, currentSheetId, userRef.current, "save", { label: label || "Sauvegarde" });
+        }
+        prevDataRef.current = slim;
+      }
       setSaveStatus(ok ? "saved" : "error");
       setTimeout(function(){ setSaveStatus("idle"); }, 2500);
     }, 2000);
@@ -2829,16 +3213,33 @@ function App() {
   }
 
   // Charger une feuille spécifique par id (depuis SheetSelector)
-  async function loadSheetById(id) {
+  async function loadSheetById(id, label) {
     isLoadingData.current = true;
     setLoading(true);
     var row = await supaLoadById(id);
     if (row && row.data) {
       setData(deepMerge(makeDefaultData(), row.data));
       setCurrentSheetId(id);
+      setCurrentSheetLabel(label || row.label || "");
+      prevDataRef.current = null; // reset diff tracking
+      if (userRef.current && row.ref) supaCtrlLogAudit(row.ref, id, userRef.current, "load", {});
     }
     setLoading(false);
     setTimeout(function(){ isLoadingData.current = false; }, 3000);
+  }
+
+  // Restore a version
+  function restoreVersion(vData, onDone) {
+    if (!vData) { if(onDone) onDone(); return; }
+    isLoadingData.current = true;
+    setData(deepMerge(makeDefaultData(), vData));
+    if (userRef.current && data.meta.ref && currentSheetId)
+      supaCtrlLogAudit(data.meta.ref, currentSheetId, userRef.current, "restore", {});
+    setTimeout(function(){
+      isLoadingData.current = false;
+      setShowHistory(false);
+      if (onDone) onDone();
+    }, 500);
   }
 
   // Pre-fill from feuilles_chantier
@@ -2883,6 +3284,18 @@ function App() {
               <span style={{ fontSize: 11, fontWeight: 600, color: user.type === "contractor" ? "#7a4800" : WHITE, maxWidth: 100, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{user.name}</span>
             </div>
           )}
+          {data.meta.ref && currentSheetId && (
+            <button onClick={function(){ setShowHistory(true); }}
+              style={{ background:"rgba(255,255,255,0.2)", border:"none", color:WHITE, borderRadius:6, padding:"5px 10px", fontSize:12, cursor:"pointer" }}>
+              🔄 Historique
+            </button>
+          )}
+          {data.meta.ref && (
+            <button onClick={function(){ setShowChantier(function(v){ return !v; }); }}
+              style={{ background:showChantier?"rgba(255,255,255,0.35)":"rgba(255,255,255,0.2)", border:"none", color:WHITE, borderRadius:6, padding:"5px 10px", fontSize:12, cursor:"pointer" }}>
+              📄 Fiche chantier
+            </button>
+          )}
           <button onClick={function(){ window.print(); }}
             style={{ background: "rgba(255,255,255,0.2)", border: "none", color: WHITE, borderRadius: 6, padding: "5px 10px", fontSize: 12, cursor: "pointer" }}>
             🖨️ Imprimer
@@ -2901,7 +3314,7 @@ function App() {
       <SheetSelector
         refChantier={data.meta.ref}
         currentId={currentSheetId}
-        onSelect={function(id) { loadSheetById(id); }}
+        onSelect={function(id, label) { loadSheetById(id, label); }}
         onNew={function(id, label) {
           var fresh = makeDefaultData();
           fresh.meta.ref = data.meta.ref;
@@ -2955,6 +3368,33 @@ function App() {
         <div id="no-print" style={{ textAlign: "center", padding: "20px 14px", color: MUTED, fontSize: 13 }}>
           ℹ️ Saisissez une référence chantier pour activer la sauvegarde automatique
         </div>
+      )}
+
+      {/* History panel */}
+      {showHistory && data.meta.ref && currentSheetId && (
+        <>
+          <div onClick={function(){ setShowHistory(false); }}
+            style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.25)", zIndex:9989 }} />
+          <HistoryPanel
+            ref={data.meta.ref}
+            sheetId={currentSheetId}
+            sheetLabel={currentSheetLabel}
+            onRestore={restoreVersion}
+            onClose={function(){ setShowHistory(false); }}
+          />
+        </>
+      )}
+
+      {/* Chantier panel */}
+      {showChantier && data.meta.ref && (
+        <>
+          <div onClick={function(){ setShowChantier(false); }}
+            style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.20)", zIndex:9989 }} />
+          <ChantierPanel
+            refChantier={data.meta.ref}
+            onClose={function(){ setShowChantier(false); }}
+          />
+        </>
       )}
     </div>
   );
