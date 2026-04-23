@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Feuille de Contrôle Chantier — We Green Energy</title>
+<title>Rapport de Chantier — We Green Energy</title>
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script src="https://unpkg.com/@babel/standalone@7.23.10/babel.min.js"></script>
@@ -40,7 +40,7 @@ button { font-family: inherit; cursor: pointer; }
   <div style="background:#fff; border-radius:16px; padding:32px 40px; box-shadow:0 4px 32px rgba(0,0,0,0.10); display:flex; flex-direction:column; align-items:center; gap:0; max-width:380px; width:92%; box-sizing:border-box;">
     <div style="font-size:40px; margin-bottom:10px">🌿</div>
     <div style="font-weight:700; font-size:18px; color:#1B6B3A; margin-bottom:2px">We Green Energy</div>
-    <div style="font-weight:600; font-size:14px; color:#1a1a1a; margin-bottom:18px">Feuille de Contrôle Chantier</div>
+    <div style="font-weight:600; font-size:14px; color:#1a1a1a; margin-bottom:18px">Rapport de Chantier</div>
 
     <!-- Tabs -->
     <div style="display:flex; width:100%; border-bottom:2px solid #e8e8e4; margin-bottom:22px;">
@@ -622,13 +622,17 @@ function makeDefaultACPhotos() {
 }
 function makeDefaultData() {
   return {
-    meta: { ref: "", client: "", adresse: "", dateControle: "", controleur: "", equipe: "", pm: "" },
+    meta: { ref: "", client: "", adresse: "", dateControle: "", controleur: "", equipe: "", pm: "",
+            dcLocked: false, acLocked: false },
     dc: { items: makeDefaultDCItems(), photos: makeDefaultDCPhotos(), stringTensions: {}, observations: "", signatureName: "", heureFin: "" },
     ac: { onduleurs: [makeDefaultOnduleur()], batteries: [], bornes: [], appareils: [],
           acTableaux: [{ type: "TGBT", nom: "" }],
           acConfig: { configSysteme: false, creationCentrale: false, connexionInternet: false, inviterClient: false, expliquerClient: false },
           acSchemas: { schemaUnifiliaire: false, schemaPosition: false, tgbtClient: false, tableauWegreen: false, onduleurBorne: false, compteur: false, terre: false, nommages: false },
-          items: makeDefaultACItems(), photos: makeDefaultACPhotos(), observations: "", signatureName: "", heureFin: "" }
+          items: makeDefaultACItems(), photos: makeDefaultACPhotos(), observations: "", signatureName: "", heureFin: "" },
+    sav: [],
+    savPhotos: {},
+    maintenanceVisites: []
   };
 }
 
@@ -1155,7 +1159,7 @@ function PhotoZone({ catKey, label, items, onAdd, onDelete, onUpdate, onReorder,
                 {/* Image */}
                 {item.url
                   ? <img src={item.url} alt={item.name} style={{ width:"100%", height:isMobile?90:75, objectFit:"cover", display:"block", cursor:"pointer" }} onClick={function(e){ e.stopPropagation(); setPreviewIdx(i); setPreviewZoomed(false); }} />
-                  : <div style={{ width:"100%", height:isMobile?90:75, display:"flex", alignItems:"center", justifyContent:"center", background:BG, fontSize:11, color:MUTED }}>PDF</div>}
+                  : <div style={{ width:"100%", height:isMobile?90:75, display:"flex", alignItems:"center", justifyContent:"center", background:"#f4f4f0", fontSize:11, color:MUTED }}>PDF</div>}
                 {/* Action bar — row 1: 4 main actions */}
                 <div style={{ display:"flex", borderTop:"1px solid "+BORDER }}>
                   {item.url && <button title="Agrandir" onClick={function(e){ e.stopPropagation(); setPreviewIdx(i); setPreviewZoomed(false); }}
@@ -1378,7 +1382,7 @@ function PreviewDoc({ data }) {
       {data.comments && (
         <div style={{ marginBottom: 18 }}>
           <div style={{ fontSize: 11, fontWeight: 700, color: GREEN, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Commentaires</div>
-          <div style={{ padding: "10px 14px", background: BG, borderRadius: 6, border: "1px solid " + BORDER, fontSize: 13, whiteSpace: "pre-wrap" }}>{data.comments}</div>
+          <div style={{ padding: "10px 14px", background:"#f4f4f0", borderRadius: 6, border: "1px solid " + BORDER, fontSize: 13, whiteSpace: "pre-wrap" }}>{data.comments}</div>
         </div>
       )}
 
@@ -1399,7 +1403,7 @@ function PreviewDoc({ data }) {
               <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10, pageBreakInside: "avoid", breakInside: "avoid" }}>
                 {data.photos[c.key].map((item, i) => item.url
                   ? <img key={i} src={item.url} alt={item.name} style={{ width: "100%", maxHeight: 280, pageBreakInside: "avoid", breakInside: "avoid", objectFit: "contain", background: "#f8f8f6", borderRadius: 6, border: `1px solid ${BORDER}` }} />
-                  : <div key={i} style={{ minHeight: 100, display: "flex", alignItems: "center", justifyContent: "center", background: BG, borderRadius: 6, border: `1px solid ${BORDER}`, fontSize: 13, color: MUTED }}>📄 PDF</div>
+                  : <div key={i} style={{ minHeight: 100, display: "flex", alignItems: "center", justifyContent: "center", background:"#f4f4f0", borderRadius: 6, border: `1px solid ${BORDER}`, fontSize: 13, color: MUTED }}>📄 PDF</div>
                 )}
               </div>
             </div>
@@ -2011,7 +2015,7 @@ function StringsSection({ nbStrings, photos, tensions, setPhotos, setTension }) 
 }
 
 // ── DCTab ─────────────────────────────────────────────
-function DCTab({ data, setData }) {
+function DCTab({ data, setData, locked, isWGE, onUnlock }) {
   var comp = calcDCCompletion(data);
   var nokItems = collectNOK(data);
 
@@ -2044,6 +2048,8 @@ function DCTab({ data, setData }) {
 
   return (
     <div>
+      {locked && <LockBanner tab="dc" onUnlock={onUnlock} isWGE={isWGE} />}
+      <div style={{ pointerEvents: locked ? "none" : "auto", opacity: locked ? 0.65 : 1, userSelect: locked ? "none" : "auto" }}>
       <CompletionBar done={comp.done} total={comp.total} nokCount={comp.nokCount} color={DC_COLOR} />
       <NOKSummary nokItems={nokItems} tab="DC" />
 
@@ -2122,6 +2128,24 @@ function DCTab({ data, setData }) {
         onName={function(v){ setData(function(prev){ var n=Object.assign({},prev); n.dc=Object.assign({},prev.dc,{signatureName:v}); return n; }); }}
         onHeure={function(v){ setData(function(prev){ var n=Object.assign({},prev); n.dc=Object.assign({},prev.dc,{heureFin:v}); return n; }); }}
       />
+      </div>{/* end lock overlay */}
+      {/* Lock DC button */}
+      {!data.meta.dcLocked && (
+        <div style={{ marginTop: 20, textAlign: "center" }}>
+          <button onClick={function(){
+            if (!window.confirm("Verrouiller la page DC ?\nLes modifications seront désactivées.\nSeuls les PMs We Green pourront déverrouiller.")) return;
+            setData(function(prev){ var n=Object.assign({},prev); n.meta=Object.assign({},prev.meta,{dcLocked:true}); return n; });
+          }} style={{ background: "#856404", color: "#fff", border: "none",
+            borderRadius: 9, padding: "12px 28px", fontSize: 14,
+            fontWeight: 700, cursor: "pointer", display: "inline-flex",
+            alignItems: "center", gap: 8 }}>
+            🔒 Clôturer et verrouiller la page DC
+          </button>
+          <div style={{ fontSize: 11, color: MUTED, marginTop: 6 }}>
+            À faire une fois le chantier DC terminé et validé
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -2281,7 +2305,7 @@ function BorneCard({ index, item, onChange, onRemove, canRemove, photos, setPhot
 
 
 // ── ACTab ─────────────────────────────────────────────
-function ACTab({ data, setData }) {
+function ACTab({ data, setData, locked, isWGE, onUnlock }) {
   var comp = calcACCompletion(data);
   var nokItems = collectNOK(data);
 
@@ -2404,6 +2428,8 @@ function ACTab({ data, setData }) {
 
   return (
     <div>
+      {locked && <LockBanner tab="ac" onUnlock={onUnlock} isWGE={isWGE} />}
+      <div style={{ pointerEvents: locked ? "none" : "auto", opacity: locked ? 0.65 : 1, userSelect: locked ? "none" : "auto" }}>
       <CompletionBar done={comp.done} total={comp.total} nokCount={comp.nokCount} color={AC_COLOR} />
       <NOKSummary nokItems={nokItems} tab="AC" />
 
@@ -2617,9 +2643,885 @@ function ACTab({ data, setData }) {
         onHeure={function(v){ setData(function(prev){ var n=Object.assign({},prev);
           n.ac=Object.assign({},prev.ac,{heureFin:v}); return n; }); }}
       />
+      </div>{/* end lock overlay */}
+      {/* Lock AC button */}
+      {!data.meta.acLocked && (
+        <div style={{ marginTop: 20, textAlign: "center" }}>
+          <button onClick={function(){
+            if (!window.confirm("Verrouiller la page AC ?\nLes modifications seront désactivées.\nSeuls les PMs We Green pourront déverrouiller.")) return;
+            setData(function(prev){ var n=Object.assign({},prev); n.meta=Object.assign({},prev.meta,{acLocked:true}); return n; });
+          }} style={{ background: "#856404", color: "#fff", border: "none",
+            borderRadius: 9, padding: "12px 28px", fontSize: 14,
+            fontWeight: 700, cursor: "pointer", display: "inline-flex",
+            alignItems: "center", gap: 8 }}>
+            🔒 Clôturer et verrouiller la page AC
+          </button>
+          <div style={{ fontSize: 11, color: MUTED, marginTop: 6 }}>
+            À faire une fois le chantier AC terminé et validé
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+
+
+
+// ── Supabase maintenance ─────────────────────────────────────────────────────
+async function supaLoadMaint(ref) {
+  try {
+    var res = await fetch(SUPA_URL + "/rest/v1/maintenance_onduleur?ref=eq." + encodeURIComponent(ref) +
+      "&select=id,ref,label,data,updated_at&order=updated_at.desc",
+      { headers: { "apikey": SUPA_KEY, "Authorization": "Bearer " + SUPA_KEY } });
+    var rows = await res.json(); return Array.isArray(rows) ? rows : [];
+  } catch(e) { return []; }
+}
+
+async function supaCreateMaint(ref, label, data) {
+  try {
+    var res = await fetch(SUPA_URL + "/rest/v1/maintenance_onduleur", {
+      method: "POST",
+      headers: { "apikey": SUPA_KEY, "Authorization": "Bearer " + SUPA_KEY,
+        "Content-Type": "application/json", "Prefer": "return=representation" },
+      body: JSON.stringify({ ref: ref, label: label || "", data: data,
+        updated_at: new Date().toISOString() })
+    });
+    if (!res.ok) return null;
+    var rows = await res.json();
+    return rows && rows.length > 0 ? rows[0] : null;
+  } catch(e) { return null; }
+}
+
+async function supaUpdateMaint(id, data) {
+  try {
+    var res = await fetch(SUPA_URL + "/rest/v1/maintenance_onduleur?id=eq." + id, {
+      method: "PATCH",
+      headers: { "apikey": SUPA_KEY, "Authorization": "Bearer " + SUPA_KEY,
+        "Content-Type": "application/json" },
+      body: JSON.stringify({ data: data, updated_at: new Date().toISOString() })
+    });
+    return res.ok;
+  } catch(e) { return false; }
+}
+
+async function supaDeleteMaint(id) {
+  try {
+    await fetch(SUPA_URL + "/rest/v1/maintenance_onduleur?id=eq." + id, {
+      method: "DELETE",
+      headers: { "apikey": SUPA_KEY, "Authorization": "Bearer " + SUPA_KEY }
+    });
+    return true;
+  } catch(e) { return false; }
+}
+
+
+function MaintStringTable({strings,onUpdate,onAdd,onDelete}){
+  const thSt={color:WHITE,padding:"7px 10px",fontSize:12,fontWeight:700,background:GREEN};
+  const tdSt={padding:"4px 8px",border:`1px solid ${BORDER}`,textAlign:"center"};
+  const updStr=(i,k,v)=>onUpdate(strings.map((r,idx)=>idx===i?{...r,[k]:v}:r));
+  return(
+    <div>
+      <div style={{overflowX:"auto"}}>
+        <table style={{width:"100%",borderCollapse:"collapse",minWidth:500}}>
+          <thead>
+            <tr>
+              <th style={{...thSt,textAlign:"left",width:70}}>String</th>
+              <th style={thSt}>PE/− (MΩ)</th>
+              <th style={thSt}>PE/+ (MΩ)</th>
+              <th style={thSt}>Tension est. (V)</th>
+              <th style={thSt}>Tension mes. (V)</th>
+              <th style={{...thSt,width:36}}></th>
+            </tr>
+          </thead>
+          <tbody>
+            {strings.map((s,i)=>{
+              const est=parseFloat(s.voltEst),mes=parseFloat(s.voltMes);
+              const ecart=(!isNaN(est)&&!isNaN(mes)&&est!==0)?Math.abs((mes-est)/est*100).toFixed(1):null;
+              const warn=ecart&&parseFloat(ecart)>5;
+              return(
+                <tr key={i} style={{background:i%2===0?WHITE:"#fafaf8"}}>
+                  <td style={{padding:"5px 8px",border:`1px solid ${BORDER}`}}>
+                    <input type="text" value={s.num} onChange={e=>updStr(i,"num",e.target.value)} style={{width:46,fontWeight:700,color:GREEN,textAlign:"center"}} placeholder={String(i+1)}/>
+                  </td>
+                  {["isolNeg","isolPos"].map(k=>{
+                    const val=s[k],ok=val&&parseFloat(val)>=0.5;
+                    return(
+                      <td key={k} style={tdSt}>
+                        <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:3}}>
+                          <input type="number" step="any" value={val} onChange={e=>updStr(i,k,e.target.value)} style={{width:64,textAlign:"right"}} placeholder="—"/>
+                          <span style={{fontSize:11,color:MUTED}}>MΩ</span>
+                          {val&&<span style={{fontSize:10,fontWeight:700,color:ok?GREEN:"#e74c3c"}}>{ok?"✓":"⚠"}</span>}
+                        </div>
+                      </td>
+                    );
+                  })}
+                  <td style={tdSt}>
+                    <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:3}}>
+                      <input type="number" step="any" value={s.voltEst} onChange={e=>updStr(i,"voltEst",e.target.value)} style={{width:64,textAlign:"right"}} placeholder="—"/>
+                      <span style={{fontSize:11,color:MUTED}}>V</span>
+                    </div>
+                  </td>
+                  <td style={tdSt}>
+                    <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:3}}>
+                      <input type="number" step="any" value={s.voltMes} onChange={e=>updStr(i,"voltMes",e.target.value)} style={{width:64,textAlign:"right"}} placeholder="—"/>
+                      <span style={{fontSize:11,color:MUTED}}>V</span>
+                      {ecart&&<span style={{fontSize:10,fontWeight:700,color:warn?"#e74c3c":GREEN}}>{ecart}%</span>}
+                    </div>
+                  </td>
+                  <td style={{padding:"4px",border:`1px solid ${BORDER}`,textAlign:"center"}}>
+                    <button onClick={()=>onDelete(i)} style={{fontSize:15,color:MUTED,background:"none",border:"none",cursor:"pointer"}}>×</button>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:8,flexWrap:"wrap",gap:8}}>
+        <div style={{fontSize:11,color:MUTED}}>Isolement &gt; 0,5 MΩ = OK · Tension : écart &gt; 5% = rouge</div>
+        <button onClick={onAdd} style={{fontSize:12,color:GREEN,background:"none",border:`1px dashed ${GM}`,borderRadius:6,padding:"3px 10px",cursor:"pointer"}}>+ String</button>
+      </div>
+    </div>
+  );
+}
+
+/* ── Onduleur card ── */
+function MaintOnduleurCard({idx,ond,onChange,onDelete}){
+  const [open,setOpen]=useState(true);
+  const set=(k,v)=>onChange({...ond,[k]:v});
+  const setE=(k,v)=>onChange({...ond,erreur:{...ond.erreur,[k]:v}});
+  const allStr=ond.strings||[];
+  const mkS=n=>({num:String(n),isolNeg:"",isolPos:"",voltEst:"",voltMes:""});
+
+  // Status color
+  const statusColor=ond.etat==="OK"?GREEN:ond.etat==="Erreur"?"#e74c3c":BORDER;
+  const statusBg=ond.etat==="OK"?GREEN_LIGHT:ond.etat==="Erreur"?"#fdf0f0":WHITE;
+
+  return(
+    <div style={{border:`2px solid ${statusColor}`,borderRadius:10,overflow:"hidden",marginBottom:12}}>
+      {/* Header */}
+      <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",background:open?statusBg:WHITE,cursor:"pointer",borderBottom:open?`1px solid ${statusColor}33`:"none"}} onClick={()=>setOpen(!open)}>
+        <div style={{width:28,height:28,borderRadius:"50%",background:statusColor,color:WHITE,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:700,flexShrink:0}}>
+          {idx+1}
+        </div>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{fontSize:13,fontWeight:600,color:"#1a1a1a",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+            {ond.modele||"Onduleur "+(idx+1)}
+            {ond.serie&&<span style={{fontSize:12,fontWeight:400,color:MUTED,marginLeft:8}}>S/N: {ond.serie}</span>}
+          </div>
+          <div style={{display:"flex",gap:8,alignItems:"center",marginTop:2,flexWrap:"wrap"}}>
+            {ond.etat&&<span style={{fontSize:11,fontWeight:700,color:WHITE,background:statusColor,borderRadius:4,padding:"0px 6px"}}>{ond.etat}</span>}
+            {ond.erreur&&ond.erreur.code&&<span style={{fontSize:11,color:"#e67e22"}}>Code: {ond.erreur.code}</span>}
+            {ond.majFirmware==="OUI"&&<span style={{fontSize:11,color:"#3498db"}}>MAJ: {ond.firmwareVersion||"—"}</span>}
+            {ond.erreur&&ond.erreur.redemarrage&&<span style={{fontSize:11,color:GREEN}}>✓ Reboot</span>}
+            {ond.stringsOk&&<span style={{fontSize:11,color:GREEN}}>✓ Strings OK</span>}
+          </div>
+        </div>
+        <span style={{fontSize:16,color:MUTED,transform:open?"rotate(180deg)":"none",transition:"transform .2s",flexShrink:0}}>▾</span>
+        <button onClick={e=>{e.stopPropagation();onDelete();}} style={{fontSize:18,color:"#ccc",background:"none",border:"none",cursor:"pointer",padding:"0 2px",flexShrink:0}} title="Supprimer">×</button>
+      </div>
+
+      {open&&(
+        <div style={{padding:"16px",display:"flex",flexDirection:"column",gap:16}}>
+
+          {/* Identification + fiche */}
+          <div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:14,alignItems:"start"}}>
+            <div style={{display:"flex",flexDirection:"column",gap:10}}>
+              <div style={G2}>
+                <Field label="Modèle" value={ond.modele||""} onChange={v=>set("modele",v)} placeholder="Ex: Deye SUN-8K-SG03LP1"/>
+                <Field label="Numéro de série" value={ond.serie||""} onChange={v=>set("serie",v)} placeholder="S/N…"/>
+              </div>
+              <Field label="Emplacement / repère" value={ond.emplacement||""} onChange={v=>set("emplacement",v)} placeholder="Ex: Local technique R+1"/>
+            </div>
+            <div style={{minWidth:100}}>
+              <div style={{...LBL,marginBottom:4}}>Fiche signalétique</div>
+              <PhotoZone single={true} items={ond.photoFiche||[]}
+                onAdd={items=>set("photoFiche",(ond.photoFiche||[]).concat(items).slice(0,1))}
+                onDelete={()=>set("photoFiche",[])}/>
+            </div>
+          </div>
+
+          <hr style={{border:"none",borderTop:`1px solid ${BORDER}`}}/>
+
+          {/* État onduleur */}
+          <div>
+            <div style={{...LBL,marginBottom:8,fontSize:13,fontWeight:600,color:"#1a1a1a"}}>État de l'onduleur</div>
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={()=>set("etat",ond.etat==="OK"?null:"OK")} style={{
+                padding:"8px 20px",borderRadius:8,fontSize:14,fontWeight:700,cursor:"pointer",
+                border:`2px solid ${ond.etat==="OK"?GREEN:BORDER}`,background:ond.etat==="OK"?GREEN:WHITE,color:ond.etat==="OK"?WHITE:MUTED,
+                display:"flex",alignItems:"center",gap:6
+              }}>✓ OK</button>
+              <button onClick={()=>set("etat",ond.etat==="Erreur"?null:"Erreur")} style={{
+                padding:"8px 20px",borderRadius:8,fontSize:14,fontWeight:700,cursor:"pointer",
+                border:`2px solid ${ond.etat==="Erreur"?"#e74c3c":BORDER}`,background:ond.etat==="Erreur"?"#e74c3c":WHITE,color:ond.etat==="Erreur"?WHITE:MUTED,
+                display:"flex",alignItems:"center",gap:6
+              }}>⚠ Erreur</button>
+            </div>
+          </div>
+
+          {/* LEDs */}
+          <div>
+            <div style={{...LBL,marginBottom:8,fontSize:12,fontWeight:600}}>b) État des LEDs <span style={{fontWeight:400,color:MUTED}}>(cliquer si OK)</span></div>
+            <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+              {[["Vert","ledVert",GREEN,"✓ Vert OK"],["Rouge","ledRouge","#e74c3c","● Rouge"],["Bleu","ledBleu","#3498db","● Bleu"]].map(([lbl,k,col,chipLbl])=>{
+                const val=ond[k];
+                return(
+                  <button key={k} onClick={()=>set(k,val?"":lbl+" OK")} style={{
+                    padding:"7px 14px",borderRadius:8,fontSize:13,fontWeight:val?700:500,cursor:"pointer",
+                    border:`2px solid ${val?col:BORDER}`,background:val?col:WHITE,color:val?WHITE:MUTED,
+                    display:"flex",alignItems:"center",gap:5,transition:"all .15s"
+                  }}>
+                    <span style={{fontSize:10}}>●</span> {lbl} {val?"✓":"?"}
+                  </button>
+                );
+              })}
+            </div>
+            {/* Si rouge ou bleu, champ description */}
+            {(ond.ledRouge||ond.ledBleu)&&(
+              <div style={{marginTop:8,display:"flex",flexDirection:"column",gap:6}}>
+                {ond.ledRouge&&<Field label="Description LED Rouge" value={ond.ledRougeDesc||""} onChange={v=>set("ledRougeDesc",v)} placeholder="Description du code/comportement…"/>}
+                {ond.ledBleu&&<Field label="Description LED Bleu" value={ond.ledBleuDesc||""} onChange={v=>set("ledBleuDesc",v)} placeholder="Description de l'anomalie de communication…"/>}
+              </div>
+            )}
+          </div>
+
+          {/* Mise à jour firmware */}
+          <div>
+            <div style={{...LBL,marginBottom:8,fontSize:12,fontWeight:600}}>Mise à jour firmware effectuée</div>
+            <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
+              <Toggle value={ond.majFirmware||null} onChange={v=>set("majFirmware",v)}/>
+              {ond.majFirmware==="OUI"&&(
+                <div style={{flex:1,minWidth:180}}>
+                  <input value={ond.firmwareVersion||""} onChange={e=>set("firmwareVersion",e.target.value)}
+                    placeholder="Version installée (ex: v1.42.00)" style={{width:"100%"}}/>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Redémarrage */}
+          <div onClick={()=>set("redemarrage",!ond.redemarrage)}
+            style={{padding:"10px 14px",background:ond.redemarrage?GREEN_LIGHT:"#f4f4f0",
+              border:`1px solid ${ond.redemarrage?GM:BORDER}`,borderRadius:8,
+              display:"flex",alignItems:"flex-start",gap:10,cursor:"pointer"}}>
+            <div style={{width:20,height:20,borderRadius:5,border:`2px solid ${ond.redemarrage?GREEN:BORDER}`,
+              background:ond.redemarrage?GREEN:WHITE,display:"flex",alignItems:"center",
+              justifyContent:"center",flexShrink:0,marginTop:1}}>
+              {ond.redemarrage&&<span style={{color:WHITE,fontSize:13,fontWeight:700}}>✓</span>}
+            </div>
+            <div>
+              <div style={{fontSize:13,fontWeight:600,color:ond.redemarrage?GREEN:"#1a1a1a"}}>Redémarrage complet attesté</div>
+              <div style={{fontSize:11,color:MUTED,marginTop:1}}>Commutateur DC OFF pendant AC déconnecté — durée &gt; 15 min</div>
+            </div>
+          </div>
+
+          {/* Rapport d'erreur — visible seulement si état = Erreur */}
+          {ond.etat==="Erreur"&&(
+            <div style={{background:"#fff8f5",border:`1px solid ${"#e74c3c"}33`,borderRadius:8,padding:14,display:"flex",flexDirection:"column",gap:12}}>
+              <div style={{fontSize:12,fontWeight:700,color:"#e74c3c",textTransform:"uppercase",letterSpacing:"0.06em"}}>Rapport d'erreur</div>
+
+              <div>
+                <label style={LBL}>a) Description du problème</label>
+                <textarea value={(ond.erreur&&ond.erreur.description)||""} onChange={e=>setE("description",e.target.value)}
+                  rows={3} style={{width:"100%",resize:"vertical"}} placeholder="Comportement anormal observé…"/>
+              </div>
+
+              <Field label="c) Message / Code d'erreur onduleur" value={(ond.erreur&&ond.erreur.code)||""}
+                onChange={v=>setE("code",v)} placeholder="Ex: E027, Grid fault…"/>
+
+              <div>
+                <label style={LBL}>d) Opérations déjà réalisées</label>
+                <textarea value={(ond.erreur&&ond.erreur.operations)||""} onChange={e=>setE("operations",e.target.value)}
+                  rows={2} style={{width:"100%",resize:"vertical"}} placeholder="Actions déjà tentées…"/>
+              </div>
+
+              <PhotoZone label="Photos erreur / LEDs" items={ond.photosErreur||[]}
+                onAdd={items=>set("photosErreur",(ond.photosErreur||[]).concat(items))}
+                onDelete={i=>set("photosErreur",(ond.photosErreur||[]).filter((_,idx)=>idx!==i))}/>
+            </div>
+          )}
+
+          {/* Mesures AC */}
+          <div>
+            <div style={{fontSize:12,fontWeight:700,color:GREEN,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:10,paddingBottom:6,borderBottom:`1px solid ${GM}`}}>
+              Mesures AC
+            </div>
+            <div style={G2}>
+              <div>
+                <div style={{fontSize:11,fontWeight:600,color:MUTED,marginBottom:7}}>Isolement AC <span style={{fontWeight:400}}>(seuil &gt; 0,5 MΩ)</span></div>
+                <table style={{width:"100%",borderCollapse:"collapse"}}>
+                  <tbody>
+                    {[["L1/PE","acL1pe"],["L2/PE","acL2pe"],["L3/PE","acL3pe"],["N/PE","acNpe"]].map(([lbl,k])=>{
+                      const val=(ond.ac||{})[k]||"";
+                      const ok=val&&parseFloat(val)>=0.5;
+                      return(
+                        <tr key={k}>
+                          <td style={{fontWeight:500,padding:"5px 8px",border:`1px solid ${BORDER}`,width:"30%",fontSize:12}}>{lbl}</td>
+                          <td style={{padding:"3px 8px",border:`1px solid ${BORDER}`}}>
+                            <div style={{display:"flex",alignItems:"center",gap:5}}>
+                              <input type="number" step="any" value={val} onChange={e=>set("ac",{...(ond.ac||{}),[k]:e.target.value})} placeholder="—" style={{width:74,textAlign:"right"}}/>
+                              <span style={{fontSize:11,color:MUTED}}>MΩ</span>
+                              {val&&<span style={{fontSize:10,fontWeight:700,color:WHITE,background:ok?GREEN:"#e74c3c",borderRadius:3,padding:"0 4px"}}>{ok?"OK":"⚠"}</span>}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              <div>
+                <div style={{fontSize:11,fontWeight:600,color:MUTED,marginBottom:7}}>Voltage AC</div>
+                <table style={{width:"100%",borderCollapse:"collapse"}}>
+                  <tbody>
+                    {[["L1/N","vL1n"],["L2/N","vL2n"],["L3/N","vL3n"],["L1/PE","vL1pe"],["L2/PE","vL2pe"],["L3/PE","vL3pe"],["N/PE","vNpe"],["L1/L2","vL1L2"],["L2/L3","vL2L3"],["L1/L3","vL1L3"]].map(([lbl,k])=>{
+                      const val=(ond.ac||{})[k]||"";
+                      return(
+                        <tr key={k}>
+                          <td style={{fontWeight:500,padding:"4px 8px",border:`1px solid ${BORDER}`,width:"30%",fontSize:12}}>{lbl}</td>
+                          <td style={{padding:"3px 8px",border:`1px solid ${BORDER}`}}>
+                            <div style={{display:"flex",alignItems:"center",gap:5}}>
+                              <input type="number" step="any" value={val} onChange={e=>set("ac",{...(ond.ac||{}),[k]:e.target.value})} placeholder="—" style={{width:74,textAlign:"right"}}/>
+                              <span style={{fontSize:11,color:MUTED}}>V</span>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <div style={{marginTop:10,display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,alignItems:"start"}}>
+              <div>
+                <label style={LBL}>Remarques AC</label>
+                <textarea value={(ond.ac&&ond.ac.remarques)||""} onChange={e=>set("ac",{...(ond.ac||{}),remarques:e.target.value})}
+                  rows={2} style={{width:"100%",resize:"vertical"}} placeholder="Observations…"/>
+              </div>
+              <PhotoZone label="Photos AC" items={ond.photosAc||[]}
+                onAdd={items=>set("photosAc",(ond.photosAc||[]).concat(items))}
+                onDelete={i=>set("photosAc",(ond.photosAc||[]).filter((_,idx)=>idx!==i))}/>
+            </div>
+          </div>
+
+          {/* Strings DC */}
+          <div>
+            <div style={{fontSize:12,fontWeight:700,color:GREEN,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:10,paddingBottom:6,borderBottom:`1px solid ${GM}`}}>
+              Mesures DC — Strings
+            </div>
+            <MaintStringTable
+              strings={allStr}
+              onUpdate={v=>set("strings",v)}
+              onAdd={()=>set("strings",[...allStr,mkS(allStr.length+1)])}
+              onDelete={i=>set("strings",allStr.filter((_,idx)=>idx!==i))}/>
+            <div style={{marginTop:12,display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,alignItems:"start"}}>
+              <div>
+                <label style={LBL}>Remarques DC</label>
+                <textarea value={ond.dcRemarques||""} onChange={e=>set("dcRemarques",e.target.value)}
+                  rows={2} style={{width:"100%",resize:"vertical"}} placeholder="Observations DC…"/>
+              </div>
+              <PhotoZone label="Photos DC" items={ond.photosDc||[]}
+                onAdd={items=>set("photosDc",(ond.photosDc||[]).concat(items))}
+                onDelete={i=>set("photosDc",(ond.photosDc||[]).filter((_,idx)=>idx!==i))}/>
+            </div>
+            {/* Strings OK checkbox */}
+            <div onClick={()=>set("stringsOk",!ond.stringsOk)}
+              style={{marginTop:10,padding:"9px 14px",background:ond.stringsOk?GREEN_LIGHT:"#f4f4f0",
+                border:`1.5px solid ${ond.stringsOk?GREEN:BORDER}`,borderRadius:8,
+                display:"flex",alignItems:"center",gap:10,cursor:"pointer"}}>
+              <div style={{width:20,height:20,borderRadius:5,border:`2px solid ${ond.stringsOk?GREEN:BORDER}`,
+                background:ond.stringsOk?GREEN:WHITE,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                {ond.stringsOk&&<span style={{color:WHITE,fontSize:13,fontWeight:700}}>✓</span>}
+              </div>
+              <div style={{fontSize:13,fontWeight:ond.stringsOk?700:500,color:ond.stringsOk?GREEN:"#1a1a1a"}}>
+                Strings OK — toutes les mesures DC sont conformes
+              </div>
+            </div>
+          </div>
+
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── Preview ── */
+
+
+function mkOnd(n){
+  return{id:Date.now()+n,modele:"",serie:"",emplacement:"",photoFiche:[],photosErreur:[],photosAc:[],photosDc:[],
+    etat:null,ledVert:"",ledRouge:"",ledBleu:"",ledRougeDesc:"",ledBleuDesc:"",
+    majFirmware:null,firmwareVersion:"",redemarrage:false,stringsOk:false,
+    ac:{},strings:[{num:"1",isolNeg:"",isolPos:"",voltEst:"",voltMes:""}],dcRemarques:"",
+    erreur:{description:"",code:"",operations:""}};
+}
+
+// ── SAV Tab ───────────────────────────────────────────────────────────────────
+const SAV_TYPES = ["Onduleur", "Câblage DC", "Câblage AC", "Panneau", "Batterie", "Borne de recharge", "Monitoring", "Autre"];
+const SAV_STATUTS = ["Résolu", "En attente de pièce", "Escaladé WGE", "Planifié"];
+
+function makeDefaultSAV() {
+  return {
+    id: Date.now(),
+    date: new Date().toISOString().slice(0, 10),
+    intervenant: "",
+    type: "Onduleur",
+    description: "",
+    actionsEffectuees: "",
+    statut: "Résolu",
+    piecesRemplacees: "",
+    photos: { avant: [], apres: [] }
+  };
+}
+
+function SAVCard({ sav, idx, onChange, onDelete, photos, setPhotos }) {
+  var [open, setOpen] = useState(true);
+
+  var statutColors = {
+    "Résolu": { bg: "#f0fff4", border: "#27ae60", color: "#27ae60" },
+    "En attente de pièce": { bg: "#fff8e1", border: "#f39c12", color: "#856404" },
+    "Escaladé WGE": { bg: "#fdecea", border: "#e74c3c", color: "#c0392b" },
+    "Planifié": { bg: "#e8f4fd", border: "#3498db", color: "#2980b9" }
+  };
+  var sc = statutColors[sav.statut] || { bg: "#fafafa", border: BORDER, color: MUTED };
+  var photoAvantKey = "sav_avant_" + sav.id;
+  var photoApresKey = "sav_apres_" + sav.id;
+
+  function pz(catKey, label) {
+    return <PhotoZone catKey={catKey} label={label} items={photos[catKey]||[]} hiRes={true}
+      allSections={[{key: photoAvantKey, label:"Avant"},{key: photoApresKey, label:"Après"}]}
+      onAdd={function(arr){ setPhotos(catKey, function(p){ return (p||[]).concat(arr); }); }}
+      onDelete={function(i){ if(!window.confirm("Supprimer ?")) return;
+        setPhotos(catKey, function(p){ return (p||[]).filter(function(_,j){ return j!==i; }); }); }}
+      onUpdate={function(i,u){ setPhotos(catKey, function(p){ var a=[].concat(p||[]); a[i]=u; return a; }); }}
+      onReorder={function(f,t){ setPhotos(catKey, function(p){ var a=[].concat(p||[]); var it=a.splice(f,1)[0]; a.splice(t,0,it); return a; }); }}
+      onReceiveCross={function(fk,fi){ var src=(photos[fk]||[])[fi]; if(!src) return;
+        setPhotos(catKey,function(p){ return (p||[]).concat([src]); });
+        setPhotos(fk,function(p){ return (p||[]).filter(function(_,j){ return j!==fi; }); }); }}
+      onMoveTo={function(fi,tk){ var src=(photos[catKey]||[])[fi]; if(!src) return;
+        setPhotos(tk,function(p){ return (p||[]).concat([src]); });
+        setPhotos(catKey,function(p){ return (p||[]).filter(function(_,j){ return j!==fi; }); }); }}
+    />;
+  }
+
+  return (
+    <div style={{ border: "1.5px solid " + sc.border, borderRadius: 10,
+      overflow: "hidden", marginBottom: 14 }}>
+      {/* Header */}
+      <div onClick={function(){ setOpen(function(o){ return !o; }); }}
+        style={{ background: sc.bg, padding: "11px 14px", cursor: "pointer",
+          display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <span style={{ fontWeight: 700, fontSize: 13, color: sc.color }}>
+          🔧 Intervention {idx + 1}
+        </span>
+        <span style={{ fontSize: 12, color: MUTED }}>
+          {sav.date || "Sans date"}
+          {sav.intervenant && " — " + sav.intervenant}
+        </span>
+        <span style={{ fontSize: 11, fontWeight: 700, background: sc.border,
+          color: WHITE, borderRadius: 5, padding: "1px 8px", marginLeft: "auto" }}>
+          {sav.statut}
+        </span>
+        <span style={{ fontSize: 11, background: "#e8e8e4", borderRadius: 5,
+          padding: "1px 8px", color: MUTED }}>
+          {sav.type}
+        </span>
+        <span style={{ color: MUTED, fontSize: 12 }}>{open ? "▲" : "▼"}</span>
+      </div>
+
+      {open && (
+        <div style={{ padding: "14px", background: WHITE }}>
+          {/* Row 1: date + intervenant + type */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10, marginBottom: 12 }}>
+            <div>
+              <label style={{ fontSize: 12, color: MUTED, fontWeight: 500, marginBottom: 4, display: "block" }}>Date</label>
+              <input type="date" value={sav.date||""} onChange={function(e){ onChange({...sav, date: e.target.value}); }} />
+            </div>
+            <div>
+              <label style={{ fontSize: 12, color: MUTED, fontWeight: 500, marginBottom: 4, display: "block" }}>Intervenant</label>
+              <input type="text" value={sav.intervenant||""} onChange={function(e){ onChange({...sav, intervenant: e.target.value}); }} placeholder="Nom ou société" />
+            </div>
+            <div>
+              <label style={{ fontSize: 12, color: MUTED, fontWeight: 500, marginBottom: 4, display: "block" }}>Type de problème</label>
+              <select value={sav.type||"Onduleur"} onChange={function(e){ onChange({...sav, type: e.target.value}); }}>
+                {SAV_TYPES.map(function(t){ return <option key={t} value={t}>{t}</option>; })}
+              </select>
+            </div>
+            <div>
+              <label style={{ fontSize: 12, color: MUTED, fontWeight: 500, marginBottom: 4, display: "block" }}>Statut</label>
+              <select value={sav.statut||"Résolu"} onChange={function(e){ onChange({...sav, statut: e.target.value}); }}>
+                {SAV_STATUTS.map(function(s){ return <option key={s} value={s}>{s}</option>; })}
+              </select>
+            </div>
+          </div>
+
+          {/* Description */}
+          <div style={{ marginBottom: 10 }}>
+            <label style={{ fontSize: 12, color: MUTED, fontWeight: 500, marginBottom: 4, display: "block" }}>Description du problème</label>
+            <textarea value={sav.description||""} onChange={function(e){ onChange({...sav, description: e.target.value}); }}
+              placeholder="Décrire le problème observé…"
+              rows={3} style={{ width: "100%", fontSize: 13, resize: "vertical", boxSizing: "border-box" }} />
+          </div>
+
+          {/* Actions */}
+          <div style={{ marginBottom: 10 }}>
+            <label style={{ fontSize: 12, color: MUTED, fontWeight: 500, marginBottom: 4, display: "block" }}>Actions effectuées</label>
+            <textarea value={sav.actionsEffectuees||""} onChange={function(e){ onChange({...sav, actionsEffectuees: e.target.value}); }}
+              placeholder="Décrire les actions réalisées pour résoudre le problème…"
+              rows={3} style={{ width: "100%", fontSize: 13, resize: "vertical", boxSizing: "border-box" }} />
+          </div>
+
+          {/* Pièces */}
+          <div style={{ marginBottom: 14 }}>
+            <label style={{ fontSize: 12, color: MUTED, fontWeight: 500, marginBottom: 4, display: "block" }}>Pièces remplacées</label>
+            <input type="text" value={sav.piecesRemplacees||""}
+              onChange={function(e){ onChange({...sav, piecesRemplacees: e.target.value}); }}
+              placeholder="ex: Onduleur Fronius Primo 6.0 — réf. 12345" />
+          </div>
+
+          {/* Photos */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
+            <div>{pz(photoAvantKey, "📷 Photos AVANT")}</div>
+            <div>{pz(photoApresKey, "📷 Photos APRÈS")}</div>
+          </div>
+
+          {/* Delete */}
+          <div style={{ textAlign: "right" }}>
+            <button onClick={function(){
+              if (!window.confirm("Supprimer cette intervention ?")) return;
+              onDelete();
+            }} style={{ background: "#fdecea", border: "1px solid #f1948a",
+              color: "#c0392b", borderRadius: 7, padding: "6px 14px",
+              fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
+              🗑 Supprimer l'intervention
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SAVTab({ data, setData }) {
+  var savList = data.sav || [];
+  var savPhotos = data.savPhotos || {};
+
+  function setSavList(updater) {
+    setData(function(prev){ var n=Object.assign({},prev);
+      n.sav = typeof updater === "function" ? updater(prev.sav||[]) : updater;
+      return n;
+    });
+  }
+  function setSavPhotos(catKey, updater) {
+    setData(function(prev){ var n=Object.assign({},prev);
+      n.savPhotos = Object.assign({}, prev.savPhotos||{});
+      n.savPhotos[catKey] = typeof updater === "function" ? updater((prev.savPhotos||{})[catKey]||[]) : updater;
+      return n;
+    });
+  }
+
+  // Summary stats
+  var total = savList.length;
+  var resolus = savList.filter(function(s){ return s.statut === "Résolu"; }).length;
+  var enAttente = savList.filter(function(s){ return s.statut !== "Résolu"; }).length;
+
+  return (
+    <div>
+      {/* Stats header */}
+      {total > 0 && (
+        <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
+          <div style={{ flex: 1, minWidth: 100, background: "#f0fff4", border: "1px solid #a8e6c0",
+            borderRadius: 9, padding: "10px 14px", textAlign: "center" }}>
+            <div style={{ fontSize: 22, fontWeight: 800, color: "#27ae60" }}>{resolus}</div>
+            <div style={{ fontSize: 11, color: MUTED }}>Résolus</div>
+          </div>
+          <div style={{ flex: 1, minWidth: 100, background: "#fff8e1", border: "1px solid #ffe082",
+            borderRadius: 9, padding: "10px 14px", textAlign: "center" }}>
+            <div style={{ fontSize: 22, fontWeight: 800, color: "#856404" }}>{enAttente}</div>
+            <div style={{ fontSize: 11, color: MUTED }}>En cours</div>
+          </div>
+          <div style={{ flex: 1, minWidth: 100, background: WHITE, border: "1px solid " + BORDER,
+            borderRadius: 9, padding: "10px 14px", textAlign: "center" }}>
+            <div style={{ fontSize: 22, fontWeight: 800, color: "#1a1a1a" }}>{total}</div>
+            <div style={{ fontSize: 11, color: MUTED }}>Total</div>
+          </div>
+        </div>
+      )}
+
+      {/* Empty state */}
+      {total === 0 && (
+        <div style={{ textAlign: "center", padding: "40px 20px", color: MUTED,
+          background: "#fafaf8", borderRadius: 10, border: "1.5px dashed " + BORDER, marginBottom: 16 }}>
+          <div style={{ fontSize: 32, marginBottom: 8 }}>🔧</div>
+          <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4 }}>Aucune intervention SAV</div>
+          <div style={{ fontSize: 12 }}>Cliquez sur le bouton ci-dessous pour enregistrer une intervention</div>
+        </div>
+      )}
+
+      {/* SAV cards */}
+      {savList.map(function(sav, i) {
+        return (
+          <SAVCard key={sav.id || i} sav={sav} idx={i}
+            onChange={function(updated){ setSavList(function(l){ return l.map(function(s,j){ return j===i?updated:s; }); }); }}
+            onDelete={function(){ setSavList(function(l){ return l.filter(function(_,j){ return j!==i; }); }); }}
+            photos={savPhotos} setPhotos={setSavPhotos}
+          />
+        );
+      })}
+
+      {/* Add button */}
+      <button onClick={function(){ setSavList(function(l){ return l.concat([makeDefaultSAV()]); }); }}
+        style={{ width: "100%", padding: "12px", border: "2px dashed #f39c12",
+          background: "#fffdf0", color: "#856404", borderRadius: 9,
+          fontSize: 14, fontWeight: 700, cursor: "pointer",
+          display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+        + Nouvelle intervention SAV
+      </button>
+    </div>
+  );
+}
+
+// ── Maintenance Tab (wrapper around maintenance V1 logic) ─────────────────────
+function MaintenanceTab({ data, setData }) {
+  var maintList = data.maintenanceVisites || [];
+  var [currentId, setCurrentId] = useState(null);
+  var [localData, setLocalData] = useState(null);
+  var [saving, setSaving] = useState(false);
+  var [listLoading, setListLoading] = useState(false);
+  var debRef = useRef(null);
+
+  var ref = data.meta.ref;
+
+  useEffect(function() {
+    if (!ref) return;
+    setListLoading(true);
+    supaLoadMaint(ref).then(function(rows) {
+      setData(function(prev){ return Object.assign({}, prev, { maintenanceVisites: rows }); });
+      setListLoading(false);
+    });
+  }, [ref]);
+
+  function newVisite() {
+    if (!ref) { alert("Veuillez d\'abord saisir une référence chantier."); return; }
+    setListLoading(true);
+    var defaultData = {
+      meta: {
+        client: data.meta.client || "",
+        adresse: data.meta.adresse || "",
+        responsable: "",
+        date: new Date().toISOString().slice(0,10)
+      },
+      onduleurs: [mkOnd(0)],
+      photos: { general: [] }
+    };
+    var label = "Visite " + new Date().toLocaleDateString("fr-BE", { day:"2-digit", month:"2-digit", year:"numeric" });
+    supaCreateMaint(ref, label, defaultData)
+      .then(function(created) {
+        setListLoading(false);
+        if (created) {
+          setData(function(prev){ return Object.assign({}, prev, {
+            maintenanceVisites: [created].concat(prev.maintenanceVisites || [])
+          }); });
+          setCurrentId(created.id);
+          setLocalData(created.data);
+        } else {
+          alert("Erreur lors de la création de la visite. Vérifiez votre connexion.");
+        }
+      });
+  }
+
+  function openVisite(visite) {
+    setCurrentId(visite.id);
+    setLocalData(visite.data);
+  }
+
+  // Auto-save localData
+  useEffect(function() {
+    if (!currentId || !localData) return;
+    if (debRef.current) clearTimeout(debRef.current);
+    debRef.current = setTimeout(function() {
+      setSaving(true);
+      supaUpdateMaint(currentId, localData).then(function() {
+        setSaving(false);
+        setData(function(prev){ return Object.assign({}, prev, {
+          maintenanceVisites: (prev.maintenanceVisites||[]).map(function(v){
+            return v.id === currentId ? Object.assign({}, v, { data: localData, updated_at: new Date().toISOString() }) : v;
+          })
+        }); });
+      });
+    }, 2000);
+    return function(){ if(debRef.current) clearTimeout(debRef.current); };
+  }, [localData, currentId]);
+
+  function fmtDate(iso) {
+    if (!iso) return "—";
+    var d = new Date(iso);
+    return d.toLocaleDateString("fr-BE", { day:"2-digit", month:"2-digit", year:"numeric" });
+  }
+
+  // ── List view ──────────────────────────────────────────────────────────────
+  if (!currentId) {
+    return (
+      <div>
+        {listLoading && <div style={{ textAlign:"center", padding:32, color:MUTED }}>⏳ Chargement…</div>}
+
+        {!listLoading && maintList.length === 0 && (
+          <div style={{ textAlign:"center", padding:"40px 20px", color:MUTED,
+            background:"#fafaf8", borderRadius:10, border:"1.5px dashed "+BORDER, marginBottom:16 }}>
+            <div style={{ fontSize:32, marginBottom:8 }}>🔩</div>
+            <div style={{ fontWeight:600, fontSize:14, marginBottom:4 }}>Aucune visite de maintenance</div>
+            <div style={{ fontSize:12 }}>Créez la première visite avec le bouton ci-dessous</div>
+          </div>
+        )}
+
+        {maintList.map(function(visite) {
+          var d = visite.data || {};
+          var onds = d.onduleurs || [];
+          var ok = onds.filter(function(o){ return o.etat==="OK"; }).length;
+          var err = onds.filter(function(o){ return o.etat==="Erreur"; }).length;
+          return (
+            <div key={visite.id} onClick={function(){ openVisite(visite); }}
+              style={{ background: WHITE, border: "1px solid "+BORDER, borderRadius: 9,
+                padding: "12px 14px", marginBottom: 8, cursor: "pointer",
+                display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap",
+                transition: "box-shadow 0.15s" }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 700, fontSize: 14, color: "#1a1a1a" }}>
+                  {visite.label || "Visite sans titre"}
+                </div>
+                <div style={{ fontSize: 11, color: MUTED, marginTop: 3 }}>
+                  {fmtDate((d.meta||{}).date)} {(d.meta||{}).responsable && "— " + (d.meta||{}).responsable}
+                </div>
+              </div>
+              {onds.length > 0 && (
+                <div style={{ display:"flex", gap:6 }}>
+                  {ok > 0 && <span style={{ background:"#f0fff4", border:"1px solid #a8e6c0",
+                    color:"#27ae60", borderRadius:5, padding:"2px 8px", fontSize:11, fontWeight:600 }}>
+                    {ok} OK
+                  </span>}
+                  {err > 0 && <span style={{ background:"#fdecea", border:"1px solid #f1948a",
+                    color:"#c0392b", borderRadius:5, padding:"2px 8px", fontSize:11, fontWeight:600 }}>
+                    {err} ⚠️
+                  </span>}
+                </div>
+              )}
+              <button onClick={function(e){ e.stopPropagation();
+                if(!window.confirm("Supprimer cette visite ?")) return;
+                supaDeleteMaint(visite.id).then(function(){
+                  setData(function(prev){ return Object.assign({}, prev, {
+                    maintenanceVisites: (prev.maintenanceVisites||[]).filter(function(v){ return v.id!==visite.id; })
+                  }); });
+                });
+              }} style={{ background:"#fdecea", border:"none", color:"#c0392b",
+                borderRadius:6, padding:"5px 10px", fontSize:12, cursor:"pointer", minHeight:0 }}>
+                🗑
+              </button>
+              <span style={{ color:MUTED, fontSize:14 }}>›</span>
+            </div>
+          );
+        })}
+
+        <button onClick={newVisite} disabled={listLoading}
+          style={{ width:"100%", padding:"12px", border:"2px dashed "+GREEN_MID,
+            background: listLoading ? "#e8e8e4" : GREEN_LIGHT,
+            color: listLoading ? MUTED : GREEN, borderRadius:9,
+            fontSize:14, fontWeight:700, cursor: listLoading ? "not-allowed" : "pointer",
+            display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
+          {listLoading ? "⏳ Création en cours…" : "+ Nouvelle visite de maintenance"}
+        </button>
+      </div>
+    );
+  }
+
+  // ── Detail view ────────────────────────────────────────────────────────────
+  if (!localData) return <div style={{ textAlign:"center", padding:32, color:MUTED }}>⏳</div>;
+
+  var onds = localData.onduleurs || [mkOnd(0)];
+  var photos = localData.photos || { general: [] };
+  var meta = localData.meta || {};
+
+  function updateOnd(i, updated) {
+    setLocalData(function(prev){ var a=[].concat(prev.onduleurs||[]); a[i]=updated;
+      return Object.assign({}, prev, { onduleurs: a }); });
+  }
+
+  return (
+    <div>
+      {/* Back + save status */}
+      <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:14,
+        padding:"10px 14px", background:GREEN_LIGHT, borderRadius:9, border:"1px solid "+GREEN_MID }}>
+        <button onClick={function(){ setCurrentId(null); setLocalData(null); }}
+          style={{ background:GREEN, color:WHITE, border:"none", borderRadius:7,
+            padding:"7px 14px", fontSize:13, fontWeight:600, cursor:"pointer" }}>
+          ← Retour
+        </button>
+        <div style={{ flex:1 }}>
+          <div style={{ fontWeight:700, fontSize:13, color:GREEN }}>
+            {(maintList.find(function(v){ return v.id===currentId; })||{}).label || "Visite maintenance"}
+          </div>
+        </div>
+        {saving && <span style={{ fontSize:11, color:MUTED }}>⏳ Sauvegarde…</span>}
+      </div>
+
+      {/* Meta */}
+      <div style={{ background:WHITE, border:"1px solid "+BORDER, borderRadius:9,
+        padding:"12px 14px", marginBottom:14 }}>
+        <div style={{ fontWeight:700, fontSize:11, color:GREEN, textTransform:"uppercase",
+          letterSpacing:"0.07em", marginBottom:10 }}>Identification</div>
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(180px, 1fr))", gap:10 }}>
+          {[["Date","date","date"],["Responsable","responsable","text"],["Client","client","text"],["Adresse","adresse","text"]].map(function(f){
+            return (
+              <div key={f[1]}>
+                <label style={{ fontSize:12, color:MUTED, fontWeight:500, marginBottom:4, display:"block" }}>{f[0]}</label>
+                <input type={f[2]} value={meta[f[1]]||""} onChange={function(e){
+                  setLocalData(function(prev){ return Object.assign({}, prev, { meta: Object.assign({}, prev.meta||{}, {[f[1]]: e.target.value}) }); });
+                }} />
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Onduleurs */}
+      {onds.map(function(ond, i) {
+        return <MaintOnduleurCard key={ond.id||i} idx={i} ond={ond}
+          onChange={function(u){ updateOnd(i, u); }}
+          onDelete={onds.length > 1 ? function(){
+            setLocalData(function(prev){ return Object.assign({}, prev, {
+              onduleurs: (prev.onduleurs||[]).filter(function(_,j){ return j!==i; })
+            }); });
+          } : null}
+        />;
+      })}
+
+      <button onClick={function(){
+        setLocalData(function(prev){ return Object.assign({}, prev, {
+          onduleurs: (prev.onduleurs||[]).concat([mkOnd((prev.onduleurs||[]).length)])
+        }); });
+      }} style={{ width:"100%", padding:"10px", border:"2px dashed "+GREEN_MID,
+        background:GREEN_LIGHT, color:GREEN, borderRadius:8,
+        fontSize:13, fontWeight:600, cursor:"pointer", marginBottom:14 }}>
+        + Ajouter un onduleur
+      </button>
+
+      {/* General photos */}
+      <div style={{ background:WHITE, border:"1px solid "+BORDER, borderRadius:9, padding:"12px 14px" }}>
+        <div style={{ fontWeight:700, fontSize:11, color:GREEN, textTransform:"uppercase",
+          letterSpacing:"0.07em", marginBottom:10 }}>Photos générales</div>
+        <PhotoZone catKey="maint_general" label="📷 Photos de l'installation"
+          items={photos.general||[]} hiRes={true} allSections={[]}
+          onAdd={function(arr){ setLocalData(function(prev){ return Object.assign({}, prev, { photos: Object.assign({}, prev.photos||{}, { general: (prev.photos&&prev.photos.general||[]).concat(arr) }) }); }); }}
+          onDelete={function(i){ setLocalData(function(prev){ return Object.assign({}, prev, { photos: Object.assign({}, prev.photos||{}, { general: (prev.photos&&prev.photos.general||[]).filter(function(_,j){ return j!==i; }) }) }); }); }}
+          onUpdate={function(i,u){ setLocalData(function(prev){ var a=[].concat((prev.photos&&prev.photos.general)||[]); a[i]=u; return Object.assign({}, prev, { photos: Object.assign({}, prev.photos||{}, { general: a }) }); }); }}
+          onReorder={function(f,t){ setLocalData(function(prev){ var a=[].concat((prev.photos&&prev.photos.general)||[]); var it=a.splice(f,1)[0]; a.splice(t,0,it); return Object.assign({}, prev, { photos: Object.assign({}, prev.photos||{}, { general: a }) }); }); }}
+          onReceiveCross={function(){}} onMoveTo={function(){}}
+        />
+      </div>
+    </div>
+  );
+}
+
 
 
 // ── HistoryPanel (contrôle) ─────────────────────────────────────────────────
@@ -2752,11 +3654,12 @@ function HistoryPanel({ ref: refChantier, sheetId, sheetLabel, onRestore, onClos
   );
 }
 
-// ── ChantierPanel (lecture seule) ────────────────────────────────────────────
+// ── ChantierPanel (lecture seule — fiche complète) ─────────────────────────
 function ChantierPanel({ refChantier, onClose }) {
   var [chData, setChData] = useState(null);
   var [loading, setLoading] = useState(true);
   var [error, setError] = useState(false);
+  var [openSection, setOpenSection] = useState("client");
 
   useEffect(function() {
     if (!refChantier) return;
@@ -2768,134 +3671,186 @@ function ChantierPanel({ refChantier, onClose }) {
   }, [refChantier]);
 
   function tv(v) { return v || "—"; }
-  function ROw({ label, value }) {
-    if (!value) return null;
+
+  function Section({ id, title, children }) {
+    var open = openSection === id;
     return (
-      <div style={{ display:"flex", gap:8, padding:"5px 0", borderBottom:"1px solid #f0f0ec", fontSize:13 }}>
-        <span style={{ flex:"0 0 140px", color:MUTED, fontSize:12 }}>{label}</span>
-        <span style={{ flex:1, fontWeight:500 }}>{value}</span>
+      <div style={{ marginBottom: 8, borderRadius: 8, border: "1px solid #e8e8e4", overflow: "hidden" }}>
+        <div onClick={function(){ setOpenSection(open ? null : id); }}
+          style={{ padding: "9px 14px", background: open ? GREEN_LIGHT : "#fafaf8",
+            display: "flex", justifyContent: "space-between", alignItems: "center",
+            cursor: "pointer", userSelect: "none" }}>
+          <span style={{ fontWeight: 700, fontSize: 12, color: GREEN }}>{title}</span>
+          <span style={{ fontSize: 11, color: MUTED, transform: open?"rotate(180deg)":"none", transition:"transform 0.2s" }}>▼</span>
+        </div>
+        {open && <div style={{ padding: "10px 14px", background: WHITE }}>{children}</div>}
       </div>
     );
   }
 
+  function Row({ label, value }) {
+    if (!value || value === "—") return null;
+    return (
+      <div style={{ display:"flex", gap:8, padding:"5px 0",
+        borderBottom:"1px solid #f5f5f0", fontSize:13, alignItems:"flex-start" }}>
+        <span style={{ flex:"0 0 130px", color:MUTED, fontSize:11, paddingTop:1 }}>{label}</span>
+        <span style={{ flex:1, fontWeight:500, wordBreak:"break-word" }}>{value}</span>
+      </div>
+    );
+  }
+
+  function Badge({ v }) {
+    if (!v || v === "NON") return null;
+    return <span style={{ background: GREEN, color: WHITE, borderRadius:4,
+      padding:"1px 7px", fontSize:11, fontWeight:600, marginLeft:6 }}>OUI</span>;
+  }
+
   return (
-    <div style={{ position:"fixed", top:0, right:0, bottom:0, width:"min(480px,100vw)",
+    <div style={{ position:"fixed", top:0, right:0, bottom:0, width:"min(500px,100vw)",
       background:WHITE, boxShadow:"-4px 0 28px rgba(0,0,0,0.15)", zIndex:9990,
       display:"flex", flexDirection:"column", fontFamily:"inherit" }}>
+
       {/* Header */}
       <div style={{ padding:"13px 16px", borderBottom:"1px solid #e8e8e4",
         display:"flex", alignItems:"center", justifyContent:"space-between",
         background:"#2e8b57", color:WHITE, flexShrink:0 }}>
         <div>
-          <div style={{ fontWeight:700, fontSize:13 }}>📄 Feuille de chantier — {refChantier}</div>
-          <div style={{ fontSize:11, opacity:0.75, marginTop:2 }}>Lecture seule — données planifiées</div>
+          <div style={{ fontWeight:700, fontSize:14 }}>📋 Briefing de Chantier</div>
+          <div style={{ fontSize:11, opacity:0.75, marginTop:2 }}>
+            {refChantier} — Lecture seule
+          </div>
         </div>
-        <button onClick={onClose} style={{ background:"rgba(255,255,255,0.18)", border:"none",
-          color:WHITE, borderRadius:6, padding:"3px 9px", cursor:"pointer", fontSize:15 }}>✕</button>
+        <button onClick={onClose} style={{ background:"rgba(255,255,255,0.2)", border:"none",
+          color:WHITE, borderRadius:6, padding:"4px 10px", cursor:"pointer", fontSize:16 }}>✕</button>
       </div>
 
-      <div style={{ flex:1, overflow:"auto", padding:"12px 14px" }}>
+      {/* Read-only badge */}
+      <div style={{ background:"#fff8e1", borderBottom:"1px solid #ffe082",
+        padding:"6px 14px", fontSize:11, color:"#856404", flexShrink:0,
+        display:"flex", alignItems:"center", gap:6 }}>
+        👁️ Données du briefing — modifications uniquement dans l'app Briefing de Chantier
+      </div>
+
+      <div style={{ flex:1, overflow:"auto", padding:"10px 12px" }}>
         {loading && <div style={{ textAlign:"center", padding:48, color:"#aaa", fontSize:13 }}>⏳ Chargement…</div>}
         {error && (
-          <div style={{ textAlign:"center", padding:40, color:"#e74c3c", fontSize:13 }}>
-            ⚠️ Aucune feuille de chantier trouvée pour la référence <strong>{refChantier}</strong>
+          <div style={{ textAlign:"center", padding:40, fontSize:13 }}>
+            <div style={{ fontSize:24, marginBottom:8 }}>⚠️</div>
+            <div style={{ color:"#c0392b", fontWeight:600 }}>Aucun briefing trouvé</div>
+            <div style={{ color:MUTED, marginTop:4, fontSize:12 }}>Référence : {refChantier}</div>
           </div>
         )}
+
         {chData && (
           <div>
-            {/* Client */}
-            <div style={{ fontWeight:700, fontSize:11, color:GREEN, textTransform:"uppercase",
-              letterSpacing:"0.07em", marginBottom:8, marginTop:4 }}>👤 Client</div>
-            <ROw label="Nom" value={tv((chData.client||{}).nom)} />
-            <ROw label="Adresse" value={tv((chData.client||{}).adresse)} />
-            <ROw label="Tél." value={(chData.client||{}).tel} />
-            <ROw label="Email" value={(chData.client||{}).email} />
-            <ROw label="Project Manager" value={(chData.weGreen||{}).manager} />
-            <ROw label="Date chantier" value={chData.date} />
+            {/* ─ Client ─ */}
+            <Section id="client" title="👤 Client & chantier">
+              <Row label="Nom" value={tv((chData.client||{}).nom)} />
+              <Row label="Adresse" value={tv((chData.client||{}).adresse)} />
+              <Row label="Téléphone" value={(chData.client||{}).tel} />
+              <Row label="Email" value={(chData.client||{}).email} />
+              <Row label="Project Manager" value={(chData.weGreen||{}).manager} />
+              <Row label="Tel PM" value={(chData.weGreen||{}).tel} />
+              <Row label="Date chantier" value={chData.date} />
+            </Section>
 
-            {/* Installations */}
+            {/* ─ Logistique ─ */}
+            <Section id="logistique" title="🚛 Logistique">
+              <Row label="Parking" value={(chData.logistique||{}).parking} />
+              <Row label="Haut. corniche" value={(chData.logistique||{}).hauteurCorniche && ((chData.logistique||{}).hauteurCorniche + " m")} />
+              <Row label="Haut. toit plat" value={(chData.logistique||{}).hauteurToitPlat && ((chData.logistique||{}).hauteurToitPlat + " m")} />
+              <Row label="Accès toiture" value={(chData.logistique||{}).acces === "Autre" ? ((chData.logistique||{}).autreAcces || "Autre") : (chData.logistique||{}).acces} />
+              <Row label="Engins" value={["lift","nacelle","manitou","grue"].filter(function(k){ return (chData.logistique||{})[k]==="OUI"; }).map(function(k){ return k.charAt(0).toUpperCase()+k.slice(1); }).join(", ")} />
+              <Row label="Tuiles réserve" value={(chData.logistique||{}).tuileReserve} />
+            </Section>
+
+            {/* ─ Installations ─ */}
             {(chData.installations||[]).map(function(inst, instIdx) {
               var t = inst.tech || {};
               var strs = inst.strings || [];
+              var pfx = (chData.installations||[]).length > 1 ? " " + (instIdx+1) : "";
               return (
-                <div key={instIdx} style={{ marginTop:14 }}>
-                  {(chData.installations||[]).length > 1 && (
-                    <div style={{ background:GREEN, color:WHITE, borderRadius:5, padding:"3px 10px",
-                      fontWeight:700, fontSize:11, display:"inline-block", marginBottom:8 }}>
-                      Installation {instIdx+1}
-                    </div>
-                  )}
-                  <div style={{ fontWeight:700, fontSize:11, color:GREEN, textTransform:"uppercase",
-                    letterSpacing:"0.07em", marginBottom:8 }}>🔧 Technique</div>
-                  {t.panneaux && (t.panneaux.type||t.panneaux.nbr) && (
-                    <ROw label="Panneaux" value={[t.panneaux.type, t.panneaux.nbr&&t.panneaux.nbr+" pcs", t.panneaux.kWc&&t.panneaux.kWc+" kWc"].filter(Boolean).join(" — ")} />
-                  )}
-                  {(t.onduleurs||[]).map(function(o,i){
-                    return <ROw key={i} label={"Onduleur "+(i+1)} value={[o.type, o.kva&&o.kva+" kVA"].filter(Boolean).join(" — ")} />;
-                  })}
-                  {t.batterie && t.batterie.inclus==="OUI" && (
-                    <ROw label="Batterie" value={[t.batterie.qty&&t.batterie.qty+"×", t.batterie.kwh&&t.batterie.kwh+" kWh", t.batterie.type].filter(Boolean).join(" ")} />
-                  )}
-                  {t.borne && t.borne.inclus==="OUI" && (
-                    <ROw label="Borne recharge" value={[t.borne.qty&&t.borne.qty+"×", t.borne.type].filter(Boolean).join(" ")} />
-                  )}
-                  {t.reseau && <ROw label="Réseau" value={t.reseau} />}
-                  {t.amperageDisj && <ROw label="Disjoncteur général" value={t.amperageDisj+" A"} />}
-                  {t.branchementOnduleur && <ROw label="Branchement onduleur" value={t.branchementOnduleur} />}
-                  {t.distances && (t.distances.onduleurTGBT||t.distances.onduleurTD) && (
-                    <ROw label="Distances" value={[
-                      t.distances.onduleurTGBT&&"Ond→TGBT: "+t.distances.onduleurTGBT+"m",
-                      t.distances.onduleurTD&&"Ond→TD: "+t.distances.onduleurTD+"m",
-                      t.distances.borneTGBT&&"Borne→TGBT: "+t.distances.borneTGBT+"m"
-                    ].filter(Boolean).join(" | ")} />
-                  )}
-                  {t.compteur && (t.compteur.serie||t.compteur.ean) && (
-                    <ROw label="Compteur réseau" value={[t.compteur.serie&&"N° "+t.compteur.serie, t.compteur.ean&&"EAN: "+t.compteur.ean].filter(Boolean).join(" — ")} />
-                  )}
+                <div key={instIdx}>
+                  <Section id={"tech"+instIdx} title={"🔧 Technique" + pfx}>
+                    {t.panneaux && (t.panneaux.type || t.panneaux.nbr) && (
+                      <Row label="Panneaux" value={[t.panneaux.type, t.panneaux.nbr && t.panneaux.nbr+" pcs", t.panneaux.kWc && t.panneaux.kWc+" kWc"].filter(Boolean).join(" — ")} />
+                    )}
+                    {t.panneaux2 && t.panneaux2.active && (t.panneaux2.type || t.panneaux2.nbr) && (
+                      <Row label="Panneaux 2" value={[t.panneaux2.type, t.panneaux2.nbr && t.panneaux2.nbr+" pcs", t.panneaux2.kWc && t.panneaux2.kWc+" kWc"].filter(Boolean).join(" — ")} />
+                    )}
+                    <Row label="Toiture" value={[t.toiture && t.toiture.main, t.toiture && t.toiture.main==="Incliné" && (t.toiture.sub||[]).join(", "), t.toiture && t.toiture.main==="Plat" && t.toiture.orientPlat].filter(Boolean).join(" — ")} />
+                    {(t.onduleurs||[]).map(function(o, i) {
+                      return <Row key={i} label={"Onduleur " + (i+1)} value={[o.type, o.kva && o.kva+" kVA"].filter(Boolean).join(" — ")} />;
+                    })}
+                    {t.batterie && t.batterie.inclus === "OUI" && (
+                      <Row label="Batterie" value={[t.batterie.qty && t.batterie.qty+"×", t.batterie.kwh && t.batterie.kwh+" kWh", t.batterie.type].filter(Boolean).join(" ")} />
+                    )}
+                    {t.borne && t.borne.inclus === "OUI" && (
+                      <Row label="Borne recharge" value={[t.borne.qty && t.borne.qty+"×", t.borne.type].filter(Boolean).join(" ")} />
+                    )}
+                    {t.ems && t.ems.inclus === "OUI" && <Row label="EMS" value={t.ems.modele || "OUI"} />}
+                    <Row label="Compteur vert" value={t.compteurVert === "OUI" ? "OUI" : null} />
+                    <Row label="Greenbox" value={t.greenbox === "OUI" ? "OUI" : null} />
+                    <Row label="Réseau" value={t.reseau} />
+                    <Row label="Disjoncteur" value={t.amperageDisj && (t.amperageDisj + " A")} />
+                    <Row label="Branchement" value={t.branchementOnduleur} />
+                    <Row label="Ond→TGBT" value={t.distances && t.distances.onduleurTGBT && (t.distances.onduleurTGBT + " m")} />
+                    <Row label="Ond→TD" value={t.distances && t.distances.onduleurTD && (t.distances.onduleurTD + " m")} />
+                    <Row label="Borne→TGBT" value={t.distances && t.distances.borneTGBT && (t.distances.borneTGBT + " m")} />
+                    <Row label="Compteur réseau" value={t.compteur && [t.compteur.serie && "N° "+t.compteur.serie, t.compteur.ean && "EAN: "+t.compteur.ean].filter(Boolean).join(" — ")} />
+                    {t.accessoires && <Row label="Accessoires" value={t.accessoires} />}
+                  </Section>
+
                   {strs.length > 0 && (
-                    <div style={{ marginTop:10 }}>
-                      <div style={{ fontWeight:700, fontSize:11, color:GREEN, textTransform:"uppercase",
-                        letterSpacing:"0.07em", marginBottom:6 }}>📊 Strings</div>
-                      <div style={{ background:"#f8f8f6", borderRadius:7, padding:"8px 10px" }}>
-                        {strs.map(function(s,i){
-                          return (
-                            <div key={i} style={{ display:"flex", gap:8, fontSize:12, padding:"3px 0",
-                              borderBottom:i<strs.length-1?"1px solid #eee":"none" }}>
-                              <span style={{ fontWeight:700, color:DC_COLOR, minWidth:42 }}>STR {i+1}</span>
-                              <span style={{ color:MUTED }}>Ond. {s.onduleur}</span>
-                              <span>{s.count||"?"} PV</span>
-                              <span style={{ marginLeft:"auto", color:MUTED }}>{s.orient==="Libre"?(s.orientLibre||"?"):s.orient||"?"}</span>
-                            </div>
-                          );
-                        })}
+                    <Section id={"strings"+instIdx} title={"📊 Strings" + pfx}>
+                      <div style={{ overflowX:"auto" }}>
+                        <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12 }}>
+                          <thead>
+                            <tr style={{ background: DC_COLOR }}>
+                              {["String","Onduleur","PV","Orientation"].map(function(h){
+                                return <th key={h} style={{ color:WHITE, padding:"5px 8px",
+                                  textAlign:"left", fontWeight:600 }}>{h}</th>;
+                              })}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {strs.map(function(s, i) {
+                              return (
+                                <tr key={i} style={{ background: i%2===0?"#f8f8f6":WHITE }}>
+                                  <td style={{ padding:"4px 8px", fontWeight:600, color:DC_COLOR }}>STR {i+1}</td>
+                                  <td style={{ padding:"4px 8px" }}>Ond. {s.onduleur}</td>
+                                  <td style={{ padding:"4px 8px" }}>{s.count||"?"}</td>
+                                  <td style={{ padding:"4px 8px" }}>{s.orient==="Libre"?(s.orientLibre||"?"):(s.orient||"?")}</td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
                       </div>
-                    </div>
+                    </Section>
                   )}
                 </div>
               );
             })}
 
-            {/* Logistique */}
-            {chData.logistique && (
-              <div style={{ marginTop:14 }}>
-                <div style={{ fontWeight:700, fontSize:11, color:GREEN, textTransform:"uppercase",
-                  letterSpacing:"0.07em", marginBottom:8 }}>🚛 Logistique</div>
-                <ROw label="Parking" value={(chData.logistique||{}).parking} />
-                <ROw label="Hauteur corniche" value={(chData.logistique||{}).hauteurCorniche&&(chData.logistique.hauteurCorniche+" m")} />
-                <ROw label="Accès toiture" value={(chData.logistique||{}).acces} />
-              </div>
-            )}
-
-            {/* Note PM */}
+            {/* ─ Note PM ─ */}
             {chData.pmNote && (
-              <div style={{ marginTop:14 }}>
-                <div style={{ fontWeight:700, fontSize:11, color:GREEN, textTransform:"uppercase",
-                  letterSpacing:"0.07em", marginBottom:8 }}>📝 Note PM</div>
-                <div style={{ background:"#fffdf0", border:"1px solid #e8e0b0", borderRadius:7,
-                  padding:"10px 12px", fontSize:13, whiteSpace:"pre-wrap", lineHeight:1.6 }}>
+              <Section id="pmNote" title="📝 Note PM">
+                <div style={{ background:"#fffdf0", border:"1px solid #e8e0b0",
+                  borderRadius:7, padding:"10px 12px", fontSize:13,
+                  whiteSpace:"pre-wrap", lineHeight:1.6 }}>
                   {chData.pmNote}
                 </div>
-              </div>
+              </Section>
+            )}
+
+            {/* ─ Commentaires ─ */}
+            {chData.comments && (
+              <Section id="comments" title="💬 Commentaires">
+                <div style={{ fontSize:13, whiteSpace:"pre-wrap", lineHeight:1.6, color:"#333" }}>
+                  {chData.comments}
+                </div>
+              </Section>
             )}
           </div>
         )}
@@ -2950,7 +3905,7 @@ function SheetSelector({ refChantier, currentId, onSelect, onNew, onDelete }) {
     <div style={{ background: WHITE, borderBottom: "1px solid #e8e8e4", padding: "10px 14px" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: showNew || list.length > 0 ? 8 : 0 }}>
         <div style={{ fontWeight: 700, fontSize: 12, color: GREEN, textTransform: "uppercase", letterSpacing: "0.06em" }}>
-          📋 Feuilles de contrôle — {refChantier}
+          📋 Rapports de chantier — {refChantier}
           {loadingList && <span style={{ fontWeight: 400, color: MUTED, marginLeft: 8 }}>⏳</span>}
           {!loadingList && list.length > 0 && <span style={{ fontWeight: 400, color: MUTED, marginLeft: 6 }}>({list.length})</span>}
         </div>
@@ -2966,7 +3921,7 @@ function SheetSelector({ refChantier, currentId, onSelect, onNew, onDelete }) {
           <input type="text" value={newLabel}
             onChange={function(e){ setNewLabel(e.target.value); }}
             onKeyDown={function(e){ if(e.key==="Enter") handleCreate(); }}
-            placeholder="Nom de la visite : ex. Contrôle initial, SAV 22/04…"
+            placeholder="Nom de la visite : ex. Rapport initial, SAV 22/04…"
             style={{ flex: 1, minWidth: 200, fontSize: 13 }} autoFocus />
           <button onClick={handleCreate} disabled={!newLabel.trim() || creating}
             style={{ background: creating || !newLabel.trim() ? "#aaa" : GREEN, color: WHITE, border: "none", borderRadius: 7, padding: "7px 16px", fontSize: 13, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
@@ -3033,6 +3988,38 @@ function SheetSelector({ refChantier, currentId, onSelect, onNew, onDelete }) {
             );
           })}
         </div>
+      )}
+    </div>
+  );
+}
+
+// ── LockBanner ──────────────────────────────────────────────────────────────
+function LockBanner({ tab, onUnlock, isWGE }) {
+  var color = tab === "dc" ? DC_COLOR : AC_COLOR;
+  var label = tab === "dc" ? "DC — Couverture & Câblage" : "AC — Électricité";
+  return (
+    <div style={{ background: "#fff3cd", border: "1.5px solid #ffc107",
+      borderRadius: 10, padding: "12px 16px", marginBottom: 14,
+      display: "flex", alignItems: "center", justifyContent: "space-between",
+      flexWrap: "wrap", gap: 8 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <span style={{ fontSize: 20 }}>🔒</span>
+        <div>
+          <div style={{ fontWeight: 700, fontSize: 13, color: "#856404" }}>
+            Chantier clôturé — page {label} verrouillée
+          </div>
+          <div style={{ fontSize: 11, color: "#856404", opacity: 0.8, marginTop: 2 }}>
+            Les modifications sont désactivées sur cette page
+          </div>
+        </div>
+      </div>
+      {isWGE && (
+        <button onClick={onUnlock}
+          style={{ background: "#856404", color: "#fff", border: "none",
+            borderRadius: 7, padding: "7px 14px", fontSize: 12,
+            fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}>
+          🔓 Déverrouiller (PM)
+        </button>
       )}
     </div>
   );
@@ -3162,7 +4149,7 @@ function App() {
         ok = await supaUpdate(currentSheetId, data);
       } else {
         // Pas encore de feuille ouverte : créer automatiquement
-        var label = "Contrôle " + new Date().toLocaleDateString("fr-BE", { day:"2-digit", month:"2-digit", year:"numeric" });
+        var label = "Rapport " + new Date().toLocaleDateString("fr-BE", { day:"2-digit", month:"2-digit", year:"numeric" });
         var created = await supaCreate(ref, label, data);
         if (created) { setCurrentSheetId(created.id); ok = true; }
       }
@@ -3265,13 +4252,13 @@ function App() {
   var acComp = calcACCompletion(data);
 
   return (
-    <div style={{ minHeight: "100vh", background: BG, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }}>
+    <div style={{ minHeight: "100vh", background:"#f4f4f0", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }}>
       {/* App Header */}
       <div id="no-print" style={{ background: GREEN, color: WHITE, padding: "10px 14px", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
         <img src={LOGO_SRC} alt="We Green" style={{ height: 28, borderRadius: 4, flexShrink: 0 }} />
         <div style={{ flex: 1 }}>
-          <div style={{ fontWeight: 700, fontSize: 15 }}>Feuille de Contrôle Chantier</div>
-          <div style={{ fontSize: 11, opacity: 0.8 }}>We Green Energy PV</div>
+          <div style={{ fontWeight: 700, fontSize: 15 }}>Rapport de Chantier</div>
+          <div style={{ fontSize: 11, opacity: 0.8 }}>Rapport de Chantier</div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           {saveStatus === "saving" && <span style={{ fontSize: 11, opacity: 0.8 }}>⏳ Sauvegarde…</span>}
@@ -3338,28 +4325,72 @@ function App() {
       />
 
       {/* Tabs */}
-      <div id="no-print" style={{ display: "flex", background: WHITE, borderBottom: "2px solid #e8e8e4", position: "sticky", top: 0, zIndex: 100, boxShadow: "0 2px 8px rgba(0,0,0,0.06)" }}>
-        <button onClick={function(){ setActiveTab("dc"); }}
-          style={{ flex: 1, padding: "12px 8px", background: activeTab==="dc" ? DC_LIGHT : WHITE, color: activeTab==="dc" ? DC_COLOR : MUTED, fontWeight: activeTab==="dc" ? 700 : 400, border: "none", borderBottom: activeTab==="dc" ? "3px solid "+DC_COLOR : "3px solid transparent", fontSize: 14, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
-          <span>🟦 DC</span>
-          {dcComp.total > 0 && <span style={{ fontSize: 12 }}>({dcComp.pct}%)</span>}
-          {dcComp.nokCount > 0 && <span style={{ background: "#e74c3c", color: WHITE, borderRadius: 10, padding: "1px 7px", fontSize: 11, fontWeight: 700 }}>{dcComp.nokCount} NOK</span>}
-        </button>
-        <button onClick={function(){ setActiveTab("ac"); }}
-          style={{ flex: 1, padding: "12px 8px", background: activeTab==="ac" ? AC_LIGHT : WHITE, color: activeTab==="ac" ? AC_COLOR : MUTED, fontWeight: activeTab==="ac" ? 700 : 400, border: "none", borderBottom: activeTab==="ac" ? "3px solid "+AC_COLOR : "3px solid transparent", fontSize: 14, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
-          <span>🟥 AC</span>
-          {acComp.total > 0 && <span style={{ fontSize: 12 }}>({acComp.pct}%)</span>}
-          {acComp.nokCount > 0 && <span style={{ background: "#e74c3c", color: WHITE, borderRadius: 10, padding: "1px 7px", fontSize: 11, fontWeight: 700 }}>{acComp.nokCount} NOK</span>}
-        </button>
-      </div>
+      {(function(){
+        var bothLocked = data.meta.dcLocked && data.meta.acLocked;
+        var tabs = [
+          { id: "dc", emoji: "🟦", label: "DC", locked: data.meta.dcLocked, color: DC_COLOR, bg: DC_LIGHT,
+            badge: dcComp.total > 0 ? dcComp.pct + "%" : null, nok: dcComp.nokCount },
+          { id: "ac", emoji: "🟥", label: "AC", locked: data.meta.acLocked, color: AC_COLOR, bg: AC_LIGHT,
+            badge: acComp.total > 0 ? acComp.pct + "%" : null, nok: acComp.nokCount },
+        ];
+        if (bothLocked) {
+          tabs.push({ id: "sav", emoji: "🔧", label: "SAV", color: "#f39c12", bg: "#fffdf0",
+            badge: (data.sav||[]).length > 0 ? (data.sav||[]).length + " inter." : null, nok: 0 });
+          tabs.push({ id: "maintenance", emoji: "🔩", label: "Maintenance", color: GREEN, bg: GREEN_LIGHT,
+            badge: (data.maintenanceVisites||[]).length > 0 ? (data.maintenanceVisites||[]).length + " visites" : null, nok: 0 });
+        }
+        return (
+          <div id="no-print" style={{ display:"flex", background:WHITE, borderBottom:"2px solid #e8e8e4",
+            position:"sticky", top:0, zIndex:100, boxShadow:"0 2px 8px rgba(0,0,0,0.06)", overflowX:"auto" }}>
+            {tabs.map(function(t) {
+              var isActive = activeTab === t.id;
+              return (
+                <button key={t.id} onClick={function(){ setActiveTab(t.id); }}
+                  style={{ flex: 1, minWidth: 80, padding:"10px 6px",
+                    background: isActive ? t.bg : WHITE, color: isActive ? t.color : MUTED,
+                    fontWeight: isActive ? 700 : 400, border:"none",
+                    borderBottom: isActive ? "3px solid "+t.color : "3px solid transparent",
+                    fontSize: 13, cursor:"pointer", fontFamily:"inherit",
+                    display:"flex", alignItems:"center", justifyContent:"center",
+                    gap:4, flexDirection:"column", whiteSpace:"nowrap" }}>
+                  <span style={{ display:"flex", alignItems:"center", gap:4 }}>
+                    {t.emoji} {t.label} {t.locked ? "🔒" : ""}
+                  </span>
+                  <span style={{ display:"flex", gap:4, alignItems:"center" }}>
+                    {t.badge && <span style={{ fontSize:10, color:isActive?t.color:MUTED }}>{t.badge}</span>}
+                    {t.nok > 0 && <span style={{ background:"#e74c3c", color:WHITE, borderRadius:10,
+                      padding:"0px 5px", fontSize:10, fontWeight:700 }}>{t.nok} NOK</span>}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        );
+      })()}
 
       {/* Tab content */}
       <div style={{ maxWidth: 800, margin: "0 auto", padding: "14px" }}>
+        <div style={{ display: activeTab==="sav" ? "block" : "none" }}>
+          <SAVTab data={data} setData={setData} />
+        </div>
+        <div style={{ display: activeTab==="maintenance" ? "block" : "none" }}>
+          <MaintenanceTab data={data} setData={setData} />
+        </div>
         <div style={{ display: activeTab==="dc" ? "block" : "none" }}>
-          <DCTab data={data} setData={setData} />
+          <DCTab data={data} setData={setData}
+            locked={!!data.meta.dcLocked}
+            isWGE={user && user.type === "wge"}
+            onUnlock={function(){ setData(function(prev){ var n=Object.assign({},prev);
+              n.meta=Object.assign({},prev.meta,{dcLocked:false}); return n; }); }}
+          />
         </div>
         <div style={{ display: activeTab==="ac" ? "block" : "none" }}>
-          <ACTab data={data} setData={setData} />
+          <ACTab data={data} setData={setData}
+            locked={!!data.meta.acLocked}
+            isWGE={user && user.type === "wge"}
+            onUnlock={function(){ setData(function(prev){ var n=Object.assign({},prev);
+              n.meta=Object.assign({},prev.meta,{acLocked:false}); return n; }); }}
+          />
         </div>
       </div>
 
