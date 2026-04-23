@@ -25,6 +25,22 @@ button { font-family: inherit; cursor: pointer; }
   .photo-grid-print img { width: 100%; height: 160px; object-fit: cover; border-radius: 4px; }
 }
 .print-only { display: none; }
+/* Locked section: disable form controls but keep photos interactive */
+.locked-section input,
+.locked-section select,
+.locked-section textarea,
+.locked-section button:not(.photo-action):not([data-lightbox]) {
+  pointer-events: none !important;
+  opacity: 0.6;
+}
+.locked-section .check-item {
+  pointer-events: none !important;
+  opacity: 0.7;
+}
+.locked-section {
+  position: relative;
+}
+
 @media (max-width: 640px) {
   body { font-size: 15px; }
   input, select, textarea { font-size: 16px !important; padding: 11px 12px; border-radius: 8px; }
@@ -1162,7 +1178,7 @@ function PhotoZone({ catKey, label, items, onAdd, onDelete, onUpdate, onReorder,
                   : <div style={{ width:"100%", height:isMobile?90:75, display:"flex", alignItems:"center", justifyContent:"center", background:"#f4f4f0", fontSize:11, color:MUTED }}>PDF</div>}
                 {/* Action bar — row 1: 4 main actions */}
                 <div style={{ display:"flex", borderTop:"1px solid "+BORDER }}>
-                  {item.url && <button title="Agrandir" onClick={function(e){ e.stopPropagation(); setPreviewIdx(i); setPreviewZoomed(false); }}
+                  {item.url && <button className="photo-action" title="Agrandir" onClick={function(e){ e.stopPropagation(); setPreviewIdx(i); setPreviewZoomed(false); }}
                     style={{ flex:1, background:"none", border:"none", borderRight:"1px solid "+BORDER, cursor:"pointer", fontSize:isMobile?18:15, padding:"6px 0", color:"#555" }}>🔍</button>}
                   {item.url && <button title="Annoter / dessiner / écrire" onClick={function(e){ e.stopPropagation(); setAnnotating(i); }}
                     style={{ flex:1, background:"none", border:"none", borderRight:"1px solid "+BORDER, cursor:"pointer", fontSize:isMobile?18:15, padding:"6px 0", color:"#2980b9" }}>✏️</button>}
@@ -2049,7 +2065,7 @@ function DCTab({ data, setData, locked, isWGE, onUnlock }) {
   return (
     <div>
       {locked && <LockBanner tab="dc" onUnlock={onUnlock} isWGE={isWGE} />}
-      <div style={{ pointerEvents: locked ? "none" : "auto", opacity: locked ? 0.65 : 1, userSelect: locked ? "none" : "auto" }}>
+      <div className={locked ? "locked-section" : ""}>
       <CompletionBar done={comp.done} total={comp.total} nokCount={comp.nokCount} color={DC_COLOR} />
       <NOKSummary nokItems={nokItems} tab="DC" />
 
@@ -2429,7 +2445,7 @@ function ACTab({ data, setData, locked, isWGE, onUnlock }) {
   return (
     <div>
       {locked && <LockBanner tab="ac" onUnlock={onUnlock} isWGE={isWGE} />}
-      <div style={{ pointerEvents: locked ? "none" : "auto", opacity: locked ? 0.65 : 1, userSelect: locked ? "none" : "auto" }}>
+      <div className={locked ? "locked-section" : ""}>
       <CompletionBar done={comp.done} total={comp.total} nokCount={comp.nokCount} color={AC_COLOR} />
       <NOKSummary nokItems={nokItems} tab="AC" />
 
@@ -2677,19 +2693,24 @@ async function supaLoadMaint(ref) {
   } catch(e) { return []; }
 }
 
-async function supaCreateMaint(ref, label, data) {
+async function supaCreateMaint(ref, label, visitData) {
   try {
+    var payload = { ref: ref, label: label || "", data: visitData,
+      updated_at: new Date().toISOString() };
     var res = await fetch(SUPA_URL + "/rest/v1/maintenance_onduleur", {
       method: "POST",
       headers: { "apikey": SUPA_KEY, "Authorization": "Bearer " + SUPA_KEY,
         "Content-Type": "application/json", "Prefer": "return=representation" },
-      body: JSON.stringify({ ref: ref, label: label || "", data: data,
-        updated_at: new Date().toISOString() })
+      body: JSON.stringify(payload)
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      var errText = await res.text();
+      console.error("[Maintenance] supaCreateMaint HTTP " + res.status + ":", errText);
+      return null;
+    }
     var rows = await res.json();
     return rows && rows.length > 0 ? rows[0] : null;
-  } catch(e) { return null; }
+  } catch(e) { console.error("[Maintenance] supaCreateMaint error:", e); return null; }
 }
 
 async function supaUpdateMaint(id, data) {
@@ -3852,6 +3873,55 @@ function ChantierPanel({ refChantier, onClose }) {
                 </div>
               </Section>
             )}
+
+            {/* ─ Photos du briefing ─ */}
+            {chData.photos && Object.keys(chData.photos).some(function(k){ return (chData.photos[k]||[]).some(function(p){ return p && p.url; }); }) && (
+              <Section id="photos" title="📷 Photos du briefing">
+                {Object.entries(chData.photos).map(function([catKey, items]) {
+                  var withUrl = (items||[]).filter(function(p){ return p && p.url; });
+                  if (!withUrl.length) return null;
+                  var catLabel = catKey.replace(/_/g, ' ').replace(/\w/g, function(c){ return c.toUpperCase(); });
+                  return (
+                    <div key={catKey} style={{ marginBottom: 14 }}>
+                      <div style={{ fontSize: 11, fontWeight: 600, color: MUTED,
+                        textTransform: "uppercase", letterSpacing: "0.05em",
+                        marginBottom: 6 }}>{catLabel}</div>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 6 }}>
+                        {withUrl.map(function(p, i) {
+                          return (
+                            <div key={i} style={{ borderRadius: 7, overflow: "hidden",
+                              border: "1px solid " + BORDER }}>
+                              <img src={p.url} alt={p.name||"photo"}
+                                style={{ width: "100%", aspectRatio: "4/3",
+                                  objectFit: "cover", display: "block", cursor: "pointer" }}
+                                onClick={function(){ window.open(p.url, "_blank"); }}
+                              />
+                              {p.name && (
+                                <div style={{ fontSize: 10, color: MUTED, padding: "3px 6px",
+                                  background: "#fafaf8", overflow: "hidden",
+                                  textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                  {p.name}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </Section>
+            )}
+
+            {/* ─ Calepinage ─ */}
+            {chData.calepinage && chData.calepinage.image && (
+              <Section id="calepinage" title="📐 Calepinage">
+                <img src={chData.calepinage.image} alt="Calepinage"
+                  style={{ width: "100%", borderRadius: 7, cursor: "pointer" }}
+                  onClick={function(){ window.open(chData.calepinage.image, "_blank"); }}
+                />
+              </Section>
+            )}
           </div>
         )}
       </div>
@@ -4327,13 +4397,15 @@ function App() {
       {/* Tabs */}
       {(function(){
         var bothLocked = data.meta.dcLocked && data.meta.acLocked;
+        var hasSAVOrMaint = (data.sav||[]).length > 0 || (data.maintenanceVisites||[]).length > 0;
+        var showExtraTabs = bothLocked || hasSAVOrMaint;
         var tabs = [
           { id: "dc", emoji: "🟦", label: "DC", locked: data.meta.dcLocked, color: DC_COLOR, bg: DC_LIGHT,
             badge: dcComp.total > 0 ? dcComp.pct + "%" : null, nok: dcComp.nokCount },
           { id: "ac", emoji: "🟥", label: "AC", locked: data.meta.acLocked, color: AC_COLOR, bg: AC_LIGHT,
             badge: acComp.total > 0 ? acComp.pct + "%" : null, nok: acComp.nokCount },
         ];
-        if (bothLocked) {
+        if (showExtraTabs) {
           tabs.push({ id: "sav", emoji: "🔧", label: "SAV", color: "#f39c12", bg: "#fffdf0",
             badge: (data.sav||[]).length > 0 ? (data.sav||[]).length + " inter." : null, nok: 0 });
           tabs.push({ id: "maintenance", emoji: "🔩", label: "Maintenance", color: GREEN, bg: GREEN_LIGHT,
@@ -4379,7 +4451,7 @@ function App() {
         <div style={{ display: activeTab==="dc" ? "block" : "none" }}>
           <DCTab data={data} setData={setData}
             locked={!!data.meta.dcLocked}
-            isWGE={user && user.type === "wge"}
+            isWGE={user && (user.type === "wge" || (user.email && user.email.endsWith("@we-green.be")))}
             onUnlock={function(){ setData(function(prev){ var n=Object.assign({},prev);
               n.meta=Object.assign({},prev.meta,{dcLocked:false}); return n; }); }}
           />
@@ -4387,7 +4459,7 @@ function App() {
         <div style={{ display: activeTab==="ac" ? "block" : "none" }}>
           <ACTab data={data} setData={setData}
             locked={!!data.meta.acLocked}
-            isWGE={user && user.type === "wge"}
+            isWGE={user && (user.type === "wge" || (user.email && user.email.endsWith("@we-green.be")))}
             onUnlock={function(){ setData(function(prev){ var n=Object.assign({},prev);
               n.meta=Object.assign({},prev.meta,{acLocked:false}); return n; }); }}
           />
