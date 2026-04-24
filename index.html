@@ -2746,6 +2746,52 @@ async function supaDeleteMaint(id) {
 }
 
 
+
+function MaintField({label,value,onChange,placeholder="",type="text",unit}){
+  return(
+    <div>
+      {label&&<label style={LBL}>{label}</label>}
+      <div style={{display:"flex",alignItems:"center",gap:6}}>
+        <input type={type} value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder} style={{flex:1,minWidth:0}}/>
+        {unit&&<span style={{fontSize:12,color:MUTED,whiteSpace:"nowrap"}}>{unit}</span>}
+      </div>
+    </div>
+  );
+}
+
+/* ── Toggle OUI/NON ── */
+
+function MaintToggle({value,onChange}){
+  return(
+    <div style={{display:"flex",gap:5}}>
+      {["OUI","NON"].map(o=>(
+        <button key={o} onClick={()=>onChange(value===o?null:o)} style={{
+          padding:"5px 12px",borderRadius:6,fontSize:13,fontWeight:value===o?700:400,cursor:"pointer",
+          border:`1px solid ${value===o?(o==="OUI"?GREEN:"#e74c3c"):BORDER}`,
+          background:value===o?(o==="OUI"?GREEN_LIGHT:"#fdf0f0"):WHITE,
+          color:value===o?(o==="OUI"?GREEN:"#e74c3c"):MUTED
+        }}>{o}</button>
+      ))}
+    </div>
+  );
+}
+
+/* ── Chip ── */
+
+function MaintChip({label,selected,color,onClick}){
+  const c=color||GREEN;
+  return(
+    <button onClick={onClick} style={{
+      padding:"5px 12px",borderRadius:6,fontSize:13,fontWeight:selected?700:400,cursor:"pointer",
+      border:`1px solid ${selected?c:BORDER}`,
+      background:selected?c:WHITE,
+      color:selected?W:MUTED
+    }}>{label}</button>
+  );
+}
+
+/* ── PhotoZone ── */
+
 function MaintStringTable({strings,onUpdate,onAdd,onDelete}){
   const thSt={color:WHITE,padding:"7px 10px",fontSize:12,fontWeight:700,background:GREEN};
   const tdSt={padding:"4px 8px",border:`1px solid ${BORDER}`,textAlign:"center"};
@@ -2810,7 +2856,7 @@ function MaintStringTable({strings,onUpdate,onAdd,onDelete}){
       </div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:8,flexWrap:"wrap",gap:8}}>
         <div style={{fontSize:11,color:MUTED}}>Isolement &gt; 0,5 MΩ = OK · Tension : écart &gt; 5% = rouge</div>
-        <button onClick={onAdd} style={{fontSize:12,color:GREEN,background:"none",border:`1px dashed ${GM}`,borderRadius:6,padding:"3px 10px",cursor:"pointer"}}>+ String</button>
+        <button onClick={onAdd} style={{fontSize:12,color:GREEN,background:"none",border:`1px dashed ${GREEN_MID}`,borderRadius:6,padding:"3px 10px",cursor:"pointer"}}>+ String</button>
       </div>
     </div>
   );
@@ -2859,10 +2905,10 @@ function MaintOnduleurCard({idx,ond,onChange,onDelete}){
           <div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:14,alignItems:"start"}}>
             <div style={{display:"flex",flexDirection:"column",gap:10}}>
               <div style={G2}>
-                <Field label="Modèle" value={ond.modele||""} onChange={v=>set("modele",v)} placeholder="Ex: Deye SUN-8K-SG03LP1"/>
-                <Field label="Numéro de série" value={ond.serie||""} onChange={v=>set("serie",v)} placeholder="S/N…"/>
+                <MaintField label="Modèle" value={ond.modele||""} onChange={v=>set("modele",v)} placeholder="Ex: Deye SUN-8K-SG03LP1"/>
+                <MaintField label="Numéro de série" value={ond.serie||""} onChange={v=>set("serie",v)} placeholder="S/N…"/>
               </div>
-              <Field label="Emplacement / repère" value={ond.emplacement||""} onChange={v=>set("emplacement",v)} placeholder="Ex: Local technique R+1"/>
+              <MaintField label="Emplacement / repère" value={ond.emplacement||""} onChange={v=>set("emplacement",v)} placeholder="Ex: Local technique R+1"/>
             </div>
             <div style={{minWidth:100}}>
               <div style={{...LBL,marginBottom:4}}>Fiche signalétique</div>
@@ -2911,8 +2957,8 @@ function MaintOnduleurCard({idx,ond,onChange,onDelete}){
             {/* Si rouge ou bleu, champ description */}
             {(ond.ledRouge||ond.ledBleu)&&(
               <div style={{marginTop:8,display:"flex",flexDirection:"column",gap:6}}>
-                {ond.ledRouge&&<Field label="Description LED Rouge" value={ond.ledRougeDesc||""} onChange={v=>set("ledRougeDesc",v)} placeholder="Description du code/comportement…"/>}
-                {ond.ledBleu&&<Field label="Description LED Bleu" value={ond.ledBleuDesc||""} onChange={v=>set("ledBleuDesc",v)} placeholder="Description de l'anomalie de communication…"/>}
+                {ond.ledRouge&&<MaintField label="Description LED Rouge" value={ond.ledRougeDesc||""} onChange={v=>set("ledRougeDesc",v)} placeholder="Description du code/comportement…"/>}
+                {ond.ledBleu&&<MaintField label="Description LED Bleu" value={ond.ledBleuDesc||""} onChange={v=>set("ledBleuDesc",v)} placeholder="Description de l'anomalie de communication…"/>}
               </div>
             )}
           </div>
@@ -2921,7 +2967,7 @@ function MaintOnduleurCard({idx,ond,onChange,onDelete}){
           <div>
             <div style={{...LBL,marginBottom:8,fontSize:12,fontWeight:600}}>Mise à jour firmware effectuée</div>
             <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
-              <Toggle value={ond.majFirmware||null} onChange={v=>set("majFirmware",v)}/>
+              <MaintToggle value={ond.majFirmware||null} onChange={v=>set("majFirmware",v)}/>
               {ond.majFirmware==="OUI"&&(
                 <div style={{flex:1,minWidth:180}}>
                   <input value={ond.firmwareVersion||""} onChange={e=>set("firmwareVersion",e.target.value)}
@@ -2934,7 +2980,7 @@ function MaintOnduleurCard({idx,ond,onChange,onDelete}){
           {/* Redémarrage */}
           <div onClick={()=>set("redemarrage",!ond.redemarrage)}
             style={{padding:"10px 14px",background:ond.redemarrage?GREEN_LIGHT:"#f4f4f0",
-              border:`1px solid ${ond.redemarrage?GM:BORDER}`,borderRadius:8,
+              border:`1px solid ${ond.redemarrage?GREEN_MID:BORDER}`,borderRadius:8,
               display:"flex",alignItems:"flex-start",gap:10,cursor:"pointer"}}>
             <div style={{width:20,height:20,borderRadius:5,border:`2px solid ${ond.redemarrage?GREEN:BORDER}`,
               background:ond.redemarrage?GREEN:WHITE,display:"flex",alignItems:"center",
@@ -2958,7 +3004,7 @@ function MaintOnduleurCard({idx,ond,onChange,onDelete}){
                   rows={3} style={{width:"100%",resize:"vertical"}} placeholder="Comportement anormal observé…"/>
               </div>
 
-              <Field label="c) Message / Code d'erreur onduleur" value={(ond.erreur&&ond.erreur.code)||""}
+              <MaintField label="c) Message / Code d'erreur onduleur" value={(ond.erreur&&ond.erreur.code)||""}
                 onChange={v=>setE("code",v)} placeholder="Ex: E027, Grid fault…"/>
 
               <div>
@@ -2975,7 +3021,7 @@ function MaintOnduleurCard({idx,ond,onChange,onDelete}){
 
           {/* Mesures AC */}
           <div>
-            <div style={{fontSize:12,fontWeight:700,color:GREEN,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:10,paddingBottom:6,borderBottom:`1px solid ${GM}`}}>
+            <div style={{fontSize:12,fontWeight:700,color:GREEN,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:10,paddingBottom:6,borderBottom:`1px solid ${GREEN_MID}`}}>
               Mesures AC
             </div>
             <div style={G2}>
@@ -3038,7 +3084,7 @@ function MaintOnduleurCard({idx,ond,onChange,onDelete}){
 
           {/* Strings DC */}
           <div>
-            <div style={{fontSize:12,fontWeight:700,color:GREEN,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:10,paddingBottom:6,borderBottom:`1px solid ${GM}`}}>
+            <div style={{fontSize:12,fontWeight:700,color:GREEN,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:10,paddingBottom:6,borderBottom:`1px solid ${GREEN_MID}`}}>
               Mesures DC — Strings
             </div>
             <MaintStringTable
@@ -3313,91 +3359,60 @@ function SAVTab({ data, setData }) {
   );
 }
 
-// ── Maintenance Tab (wrapper around maintenance V1 logic) ─────────────────────
+// ── Maintenance Tab — stocké dans data.maintenanceVisites (comme SAV) ─────────
+function makeDefaultVisite() {
+  return {
+    id: Date.now(),
+    date: new Date().toISOString().slice(0, 10),
+    responsable: "",
+    onduleurs: [mkOnd(0)],
+    photosGenerales: []
+  };
+}
+
 function MaintenanceTab({ data, setData }) {
   var maintList = data.maintenanceVisites || [];
-  var [currentId, setCurrentId] = useState(null);
-  var [localData, setLocalData] = useState(null);
-  var [saving, setSaving] = useState(false);
-  var [listLoading, setListLoading] = useState(false);
-  var debRef = useRef(null);
+  var [currentIdx, setCurrentIdx] = useState(null);
+  var [photoState, setPhotoState] = useState({});
 
-  var ref = data.meta.ref;
-
-  useEffect(function() {
-    if (!ref) return;
-    setListLoading(true);
-    supaLoadMaint(ref).then(function(rows) {
-      setData(function(prev){ return Object.assign({}, prev, { maintenanceVisites: rows }); });
-      setListLoading(false);
+  function setMaintList(updater) {
+    setData(function(prev) {
+      return Object.assign({}, prev, {
+        maintenanceVisites: typeof updater === "function"
+          ? updater(prev.maintenanceVisites || [])
+          : updater
+      });
     });
-  }, [ref]);
-
-  function newVisite() {
-    if (!ref) { alert("Veuillez d\'abord saisir une référence chantier."); return; }
-    setListLoading(true);
-    var defaultData = {
-      meta: {
-        client: data.meta.client || "",
-        adresse: data.meta.adresse || "",
-        responsable: "",
-        date: new Date().toISOString().slice(0,10)
-      },
-      onduleurs: [mkOnd(0)],
-      photos: { general: [] }
-    };
-    var label = "Visite " + new Date().toLocaleDateString("fr-BE", { day:"2-digit", month:"2-digit", year:"numeric" });
-    supaCreateMaint(ref, label, defaultData)
-      .then(function(created) {
-        setListLoading(false);
-        if (created) {
-          setData(function(prev){ return Object.assign({}, prev, {
-            maintenanceVisites: [created].concat(prev.maintenanceVisites || [])
-          }); });
-          setCurrentId(created.id);
-          setLocalData(created.data);
-        } else {
-          alert("Erreur lors de la création de la visite. Vérifiez votre connexion.");
-        }
-      });
   }
 
-  function openVisite(visite) {
-    setCurrentId(visite.id);
-    setLocalData(visite.data);
+  function addVisite() {
+    var newVisite = makeDefaultVisite();
+    setMaintList(function(l) { return l.concat([newVisite]); });
+    setCurrentIdx((maintList.length)); // open it immediately
   }
 
-  // Auto-save localData
-  useEffect(function() {
-    if (!currentId || !localData) return;
-    if (debRef.current) clearTimeout(debRef.current);
-    debRef.current = setTimeout(function() {
-      setSaving(true);
-      supaUpdateMaint(currentId, localData).then(function() {
-        setSaving(false);
-        setData(function(prev){ return Object.assign({}, prev, {
-          maintenanceVisites: (prev.maintenanceVisites||[]).map(function(v){
-            return v.id === currentId ? Object.assign({}, v, { data: localData, updated_at: new Date().toISOString() }) : v;
-          })
-        }); });
-      });
-    }, 2000);
-    return function(){ if(debRef.current) clearTimeout(debRef.current); };
-  }, [localData, currentId]);
+  function updateVisite(idx, updated) {
+    setMaintList(function(l) {
+      return l.map(function(v, i) { return i === idx ? updated : v; });
+    });
+  }
+
+  function deleteVisite(idx) {
+    setMaintList(function(l) { return l.filter(function(_, i) { return i !== idx; }); });
+    if (currentIdx === idx) setCurrentIdx(null);
+    else if (currentIdx > idx) setCurrentIdx(currentIdx - 1);
+  }
 
   function fmtDate(iso) {
     if (!iso) return "—";
-    var d = new Date(iso);
-    return d.toLocaleDateString("fr-BE", { day:"2-digit", month:"2-digit", year:"numeric" });
+    return new Date(iso).toLocaleDateString("fr-BE", { day:"2-digit", month:"2-digit", year:"numeric" });
   }
 
   // ── List view ──────────────────────────────────────────────────────────────
-  if (!currentId) {
+  if (currentIdx === null) {
     return (
       <div>
-        {listLoading && <div style={{ textAlign:"center", padding:32, color:MUTED }}>⏳ Chargement…</div>}
-
-        {!listLoading && maintList.length === 0 && (
+        {maintList.length === 0 && (
           <div style={{ textAlign:"center", padding:"40px 20px", color:MUTED,
             background:"#fafaf8", borderRadius:10, border:"1.5px dashed "+BORDER, marginBottom:16 }}>
             <div style={{ fontSize:32, marginBottom:8 }}>🔩</div>
@@ -3406,44 +3421,39 @@ function MaintenanceTab({ data, setData }) {
           </div>
         )}
 
-        {maintList.map(function(visite) {
-          var d = visite.data || {};
-          var onds = d.onduleurs || [];
-          var ok = onds.filter(function(o){ return o.etat==="OK"; }).length;
-          var err = onds.filter(function(o){ return o.etat==="Erreur"; }).length;
+        {maintList.map(function(visite, i) {
+          var onds = visite.onduleurs || [];
+          var ok  = onds.filter(function(o) { return o.etat === "OK"; }).length;
+          var err = onds.filter(function(o) { return o.etat === "Erreur"; }).length;
           return (
-            <div key={visite.id} onClick={function(){ openVisite(visite); }}
-              style={{ background: WHITE, border: "1px solid "+BORDER, borderRadius: 9,
-                padding: "12px 14px", marginBottom: 8, cursor: "pointer",
-                display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap",
-                transition: "box-shadow 0.15s" }}>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 700, fontSize: 14, color: "#1a1a1a" }}>
-                  {visite.label || "Visite sans titre"}
+            <div key={visite.id || i} onClick={function() { setCurrentIdx(i); }}
+              style={{ background:WHITE, border:"1px solid "+BORDER, borderRadius:9,
+                padding:"12px 14px", marginBottom:8, cursor:"pointer",
+                display:"flex", alignItems:"center", gap:12, flexWrap:"wrap" }}>
+              <div style={{ flex:1, minWidth:0 }}>
+                <div style={{ fontWeight:700, fontSize:14 }}>
+                  🔩 Visite {i + 1}
                 </div>
-                <div style={{ fontSize: 11, color: MUTED, marginTop: 3 }}>
-                  {fmtDate((d.meta||{}).date)} {(d.meta||{}).responsable && "— " + (d.meta||{}).responsable}
+                <div style={{ fontSize:11, color:MUTED, marginTop:3 }}>
+                  {fmtDate(visite.date)}
+                  {visite.responsable && " — " + visite.responsable}
+                  {" — " + onds.length + " onduleur(s)"}
                 </div>
               </div>
-              {onds.length > 0 && (
-                <div style={{ display:"flex", gap:6 }}>
-                  {ok > 0 && <span style={{ background:"#f0fff4", border:"1px solid #a8e6c0",
-                    color:"#27ae60", borderRadius:5, padding:"2px 8px", fontSize:11, fontWeight:600 }}>
-                    {ok} OK
-                  </span>}
-                  {err > 0 && <span style={{ background:"#fdecea", border:"1px solid #f1948a",
-                    color:"#c0392b", borderRadius:5, padding:"2px 8px", fontSize:11, fontWeight:600 }}>
-                    {err} ⚠️
-                  </span>}
-                </div>
-              )}
-              <button onClick={function(e){ e.stopPropagation();
-                if(!window.confirm("Supprimer cette visite ?")) return;
-                supaDeleteMaint(visite.id).then(function(){
-                  setData(function(prev){ return Object.assign({}, prev, {
-                    maintenanceVisites: (prev.maintenanceVisites||[]).filter(function(v){ return v.id!==visite.id; })
-                  }); });
-                });
+              <div style={{ display:"flex", gap:6 }}>
+                {ok > 0 && <span style={{ background:"#f0fff4", border:"1px solid #a8e6c0",
+                  color:"#27ae60", borderRadius:5, padding:"2px 8px", fontSize:11, fontWeight:600 }}>
+                  {ok} OK
+                </span>}
+                {err > 0 && <span style={{ background:"#fdecea", border:"1px solid #f1948a",
+                  color:"#c0392b", borderRadius:5, padding:"2px 8px", fontSize:11, fontWeight:600 }}>
+                  {err} ⚠️
+                </span>}
+              </div>
+              <button onClick={function(e) {
+                e.stopPropagation();
+                if (!window.confirm("Supprimer cette visite ?")) return;
+                deleteVisite(i);
               }} style={{ background:"#fdecea", border:"none", color:"#c0392b",
                 borderRadius:6, padding:"5px 10px", fontSize:12, cursor:"pointer", minHeight:0 }}>
                 🗑
@@ -3453,46 +3463,53 @@ function MaintenanceTab({ data, setData }) {
           );
         })}
 
-        <button onClick={newVisite} disabled={listLoading}
+        <button onClick={addVisite}
           style={{ width:"100%", padding:"12px", border:"2px dashed "+GREEN_MID,
-            background: listLoading ? "#e8e8e4" : GREEN_LIGHT,
-            color: listLoading ? MUTED : GREEN, borderRadius:9,
-            fontSize:14, fontWeight:700, cursor: listLoading ? "not-allowed" : "pointer",
+            background:GREEN_LIGHT, color:GREEN, borderRadius:9,
+            fontSize:14, fontWeight:700, cursor:"pointer",
             display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
-          {listLoading ? "⏳ Création en cours…" : "+ Nouvelle visite de maintenance"}
+          + Nouvelle visite de maintenance
         </button>
       </div>
     );
   }
 
   // ── Detail view ────────────────────────────────────────────────────────────
-  if (!localData) return <div style={{ textAlign:"center", padding:32, color:MUTED }}>⏳</div>;
+  var visite = maintList[currentIdx];
+  if (!visite) { setCurrentIdx(null); return null; }
 
-  var onds = localData.onduleurs || [mkOnd(0)];
-  var photos = localData.photos || { general: [] };
-  var meta = localData.meta || {};
+  var onds = visite.onduleurs || [mkOnd(0)];
 
   function updateOnd(i, updated) {
-    setLocalData(function(prev){ var a=[].concat(prev.onduleurs||[]); a[i]=updated;
-      return Object.assign({}, prev, { onduleurs: a }); });
+    updateVisite(currentIdx, Object.assign({}, visite, {
+      onduleurs: onds.map(function(o, j) { return j === i ? updated : o; })
+    }));
   }
+
+  function setVisitePhotos(catKey, updater) {
+    var current = (visite.photos || {})[catKey] || [];
+    var updated2 = typeof updater === "function" ? updater(current) : updater;
+    updateVisite(currentIdx, Object.assign({}, visite, {
+      photos: Object.assign({}, visite.photos || {}, { [catKey]: updated2 })
+    }));
+  }
+
+  var visitePhotos = visite.photos || {};
 
   return (
     <div>
-      {/* Back + save status */}
+      {/* Back header */}
       <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:14,
         padding:"10px 14px", background:GREEN_LIGHT, borderRadius:9, border:"1px solid "+GREEN_MID }}>
-        <button onClick={function(){ setCurrentId(null); setLocalData(null); }}
+        <button onClick={function() { setCurrentIdx(null); }}
           style={{ background:GREEN, color:WHITE, border:"none", borderRadius:7,
             padding:"7px 14px", fontSize:13, fontWeight:600, cursor:"pointer" }}>
           ← Retour
         </button>
-        <div style={{ flex:1 }}>
-          <div style={{ fontWeight:700, fontSize:13, color:GREEN }}>
-            {(maintList.find(function(v){ return v.id===currentId; })||{}).label || "Visite maintenance"}
-          </div>
+        <div style={{ flex:1, fontWeight:700, fontSize:13, color:GREEN }}>
+          🔩 Visite {currentIdx + 1}
+          {visite.date && <span style={{ fontWeight:400, color:MUTED, marginLeft:8 }}>{fmtDate(visite.date)}</span>}
         </div>
-        {saving && <span style={{ fontSize:11, color:MUTED }}>⏳ Sauvegarde…</span>}
       </div>
 
       {/* Meta */}
@@ -3500,17 +3517,18 @@ function MaintenanceTab({ data, setData }) {
         padding:"12px 14px", marginBottom:14 }}>
         <div style={{ fontWeight:700, fontSize:11, color:GREEN, textTransform:"uppercase",
           letterSpacing:"0.07em", marginBottom:10 }}>Identification</div>
-        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(180px, 1fr))", gap:10 }}>
-          {[["Date","date","date"],["Responsable","responsable","text"],["Client","client","text"],["Adresse","adresse","text"]].map(function(f){
-            return (
-              <div key={f[1]}>
-                <label style={{ fontSize:12, color:MUTED, fontWeight:500, marginBottom:4, display:"block" }}>{f[0]}</label>
-                <input type={f[2]} value={meta[f[1]]||""} onChange={function(e){
-                  setLocalData(function(prev){ return Object.assign({}, prev, { meta: Object.assign({}, prev.meta||{}, {[f[1]]: e.target.value}) }); });
-                }} />
-              </div>
-            );
-          })}
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(180px,1fr))", gap:10 }}>
+          <div>
+            <label style={{ fontSize:12, color:MUTED, fontWeight:500, marginBottom:4, display:"block" }}>Date</label>
+            <input type="date" value={visite.date||""}
+              onChange={function(e){ updateVisite(currentIdx, Object.assign({},visite,{date:e.target.value})); }} />
+          </div>
+          <div>
+            <label style={{ fontSize:12, color:MUTED, fontWeight:500, marginBottom:4, display:"block" }}>Responsable</label>
+            <input type="text" value={visite.responsable||""}
+              onChange={function(e){ updateVisite(currentIdx, Object.assign({},visite,{responsable:e.target.value})); }}
+              placeholder="Nom de l'intervenant" />
+          </div>
         </div>
       </div>
 
@@ -3519,17 +3537,17 @@ function MaintenanceTab({ data, setData }) {
         return <MaintOnduleurCard key={ond.id||i} idx={i} ond={ond}
           onChange={function(u){ updateOnd(i, u); }}
           onDelete={onds.length > 1 ? function(){
-            setLocalData(function(prev){ return Object.assign({}, prev, {
-              onduleurs: (prev.onduleurs||[]).filter(function(_,j){ return j!==i; })
-            }); });
+            updateVisite(currentIdx, Object.assign({}, visite, {
+              onduleurs: onds.filter(function(_, j){ return j !== i; })
+            }));
           } : null}
         />;
       })}
 
       <button onClick={function(){
-        setLocalData(function(prev){ return Object.assign({}, prev, {
-          onduleurs: (prev.onduleurs||[]).concat([mkOnd((prev.onduleurs||[]).length)])
-        }); });
+        updateVisite(currentIdx, Object.assign({}, visite, {
+          onduleurs: onds.concat([mkOnd(onds.length)])
+        }));
       }} style={{ width:"100%", padding:"10px", border:"2px dashed "+GREEN_MID,
         background:GREEN_LIGHT, color:GREEN, borderRadius:8,
         fontSize:13, fontWeight:600, cursor:"pointer", marginBottom:14 }}>
@@ -3540,12 +3558,13 @@ function MaintenanceTab({ data, setData }) {
       <div style={{ background:WHITE, border:"1px solid "+BORDER, borderRadius:9, padding:"12px 14px" }}>
         <div style={{ fontWeight:700, fontSize:11, color:GREEN, textTransform:"uppercase",
           letterSpacing:"0.07em", marginBottom:10 }}>Photos générales</div>
-        <PhotoZone catKey="maint_general" label="📷 Photos de l'installation"
-          items={photos.general||[]} hiRes={true} allSections={[]}
-          onAdd={function(arr){ setLocalData(function(prev){ return Object.assign({}, prev, { photos: Object.assign({}, prev.photos||{}, { general: (prev.photos&&prev.photos.general||[]).concat(arr) }) }); }); }}
-          onDelete={function(i){ setLocalData(function(prev){ return Object.assign({}, prev, { photos: Object.assign({}, prev.photos||{}, { general: (prev.photos&&prev.photos.general||[]).filter(function(_,j){ return j!==i; }) }) }); }); }}
-          onUpdate={function(i,u){ setLocalData(function(prev){ var a=[].concat((prev.photos&&prev.photos.general)||[]); a[i]=u; return Object.assign({}, prev, { photos: Object.assign({}, prev.photos||{}, { general: a }) }); }); }}
-          onReorder={function(f,t){ setLocalData(function(prev){ var a=[].concat((prev.photos&&prev.photos.general)||[]); var it=a.splice(f,1)[0]; a.splice(t,0,it); return Object.assign({}, prev, { photos: Object.assign({}, prev.photos||{}, { general: a }) }); }); }}
+        <PhotoZone catKey={"maint_ph_"+visite.id} label="📷 Photos de l'installation"
+          items={visitePhotos["general"]||[]} hiRes={true} allSections={[]}
+          onAdd={function(arr){ setVisitePhotos("general", function(p){ return (p||[]).concat(arr); }); }}
+          onDelete={function(i){ if(!window.confirm("Supprimer ?")) return;
+            setVisitePhotos("general", function(p){ return (p||[]).filter(function(_,j){ return j!==i; }); }); }}
+          onUpdate={function(i,u){ setVisitePhotos("general", function(p){ var a=[].concat(p||[]); a[i]=u; return a; }); }}
+          onReorder={function(f,t){ setVisitePhotos("general", function(p){ var a=[].concat(p||[]); var it=a.splice(f,1)[0]; a.splice(t,0,it); return a; }); }}
           onReceiveCross={function(){}} onMoveTo={function(){}}
         />
       </div>
@@ -4197,6 +4216,17 @@ function App() {
   // Sync userRef with user state
   useEffect(function() { userRef.current = user; }, [user]);
 
+  // Vérifier que les tables Supabase existent au démarrage
+  useEffect(function() {
+    fetch(SUPA_URL + "/rest/v1/feuilles_controle?limit=0",
+      { headers: { "apikey": SUPA_KEY, "Authorization": "Bearer " + SUPA_KEY } })
+    .then(function(res) {
+      if (res.status === 404) {
+        console.warn("[Rapport] ⚠️ Table feuilles_controle introuvable dans ce projet Supabase. Exécutez le SQL dans le bon projet.");
+      }
+    }).catch(function(){});
+  }, []);
+
   // Lire ?ref= dans l'URL au chargement de la page
   useEffect(function() {
     try {
@@ -4345,11 +4375,22 @@ function App() {
           {saveStatus === "saving" && <span style={{ fontSize: 11, opacity: 0.8 }}>⏳ Sauvegarde…</span>}
           {saveStatus === "saved" && <span style={{ fontSize: 11, opacity: 0.8, color: "#a8e6c0" }}>✅ Sauvegardé</span>}
           {saveStatus === "error" && (
-            <span style={{ fontSize: 11, color: "#f1a0a0", cursor:"pointer" }}
-              onClick={function(){ alert("Erreur de sauvegarde.\nVérifiez la console (F12) pour le détail.\nMessage: [Contrôle] supaCreate HTTP ..."); }}
-              title="Cliquer pour plus d\'infos">
-              ❌ Erreur sauvegarde
-            </span>
+            <button onClick={async function(){
+              try {
+                var res = await fetch(SUPA_URL + "/rest/v1/feuilles_controle?limit=1",
+                  { headers: { "apikey": SUPA_KEY, "Authorization": "Bearer " + SUPA_KEY } });
+                if (res.ok) {
+                  alert("✅ Connexion Supabase OK (lecture)\n\nMais l\'écriture échoue.\nOuvrez F12 → Console pour voir l\'erreur exacte.\n\nVérifiez la RLS policy de feuilles_controle dans Supabase.");
+                } else {
+                  alert("❌ Connexion Supabase ÉCHOUÉE\nHTTP " + res.status + "\n\nVérifiez:\n1. SUPA_URL dans le fichier HTML\n2. SUPA_KEY dans le fichier HTML\n3. Que vous êtes dans le bon projet Supabase");
+                }
+              } catch(e) {
+                alert("❌ Impossible de joindre Supabase\n" + e.message + "\n\nProblème réseau ou CORS.");
+              }
+            }} style={{ fontSize:11, color:"#f1a0a0", background:"transparent",
+              border:"1px solid #f1a0a0", borderRadius:5, padding:"3px 8px", cursor:"pointer" }}>
+              ❌ Erreur — Tester
+            </button>
           )}
           {user && (
             <div style={{ display: "flex", alignItems: "center", gap: 5, padding: "3px 9px", background: user.type === "contractor" ? "#fff8f0" : "rgba(255,255,255,0.15)", border: "1px solid "+(user.type === "contractor" ? "#e8c080" : "rgba(255,255,255,0.3)"), borderRadius: 20 }}>
