@@ -105,6 +105,13 @@ button { font-family: inherit; cursor: pointer; }
 </div>
 
 <div id="root" style="display:none"></div>
+<script>
+document.addEventListener('click', function(e) {
+  if (!e.target.closest('.user-menu-wrap')) {
+    document.querySelectorAll('.user-menu-wrap > div:last-child').forEach(function(m){ m.style.display='none'; });
+  }
+});
+</script>
 
 <script>
 (function() {
@@ -391,14 +398,18 @@ function makeSlimCtrlData(data) {
   return slim;
 }
 
+// Briefing de Chantier uses its own Supabase project
+var BRIEFING_URL = "https://brodjywccrirlzplovxg.supabase.co";
+var BRIEFING_KEY = "sb_publishable_T4Syy3Nq5mLK0yqOUNgtEg_od2WUXEY";
+
 async function supaLoadChantier(ref) {
   try {
-    var res = await fetch(SUPA_URL + "/rest/v1/feuilles_chantier?ref=eq." + encodeURIComponent(ref) + "&select=data", {
-      headers: { "apikey": SUPA_KEY, "Authorization": "Bearer " + SUPA_KEY }
+    var res = await fetch(BRIEFING_URL + "/rest/v1/feuilles_chantier?ref=eq." + encodeURIComponent(ref) + "&select=data", {
+      headers: { "apikey": BRIEFING_KEY, "Authorization": "Bearer " + BRIEFING_KEY }
     });
     var rows = await res.json();
     if (rows && rows.length > 0) return rows[0].data;
-  } catch(e) {}
+  } catch(e) { console.error("[Rapport] supaLoadChantier error:", e); }
   return null;
 }
 
@@ -4164,18 +4175,6 @@ function HeaderSection({ data, setData, onLoad, onPrefill, prefillMsg, loading }
           <input type="text" value={data.meta.adresse||""} onChange={function(e){ setMeta("adresse",e.target.value); }} placeholder="Adresse du chantier" />
         </div>
         <div>
-          <label style={{ fontSize: 12, color: MUTED, fontWeight: 500, marginBottom: 4, display: "block" }}>Date du contrôle</label>
-          <input type="date" value={data.meta.dateControle||""} onChange={function(e){ setMeta("dateControle",e.target.value); }} />
-        </div>
-        <div>
-          <label style={{ fontSize: 12, color: MUTED, fontWeight: 500, marginBottom: 4, display: "block" }}>Contrôleur</label>
-          <input type="text" value={data.meta.controleur||""} onChange={function(e){ setMeta("controleur",e.target.value); }} placeholder="Votre nom" />
-        </div>
-        <div>
-          <label style={{ fontSize: 12, color: MUTED, fontWeight: 500, marginBottom: 4, display: "block" }}>Équipe présente</label>
-          <input type="text" value={data.meta.equipe||""} onChange={function(e){ setMeta("equipe",e.target.value); }} placeholder="Membres de l'équipe" />
-        </div>
-        <div>
           <label style={{ fontSize: 12, color: MUTED, fontWeight: 500, marginBottom: 4, display: "block" }}>Project Manager</label>
           <select value={data.meta.pm||""} onChange={function(e){ setMeta("pm",e.target.value); }}>
             <option value="">— Sélectionner —</option>
@@ -4293,7 +4292,6 @@ function App() {
     if (!ref) return;
     setLoading(true);
     isLoadingData.current = true;
-    // Mettre la ref dans l'URL
     try { window.history.replaceState(null, "", "?ref=" + encodeURIComponent(ref)); } catch(e) {}
     var list = await supaLoadList(ref);
     if (list.length > 0) {
@@ -4301,12 +4299,32 @@ function App() {
       if (row && row.data) {
         setData(deepMerge(makeDefaultData(), row.data));
         setCurrentSheetId(list[0].id);
+        setCurrentSheetLabel(row.label || "");
+        prevDataRef.current = null;
+        if (userRef.current && row.ref) supaCtrlLogAudit(row.ref, list[0].id, userRef.current, "load", {});
       }
     } else {
+      // Aucune feuille → auto-prefill depuis le Briefing de Chantier
       setCurrentSheetId(null);
+      var chantierData = await supaLoadChantier(ref);
+      if (chantierData) {
+        var client = chantierData.client || {};
+        var weGreen = chantierData.weGreen || {};
+        setData(function(prev) {
+          var n = deepMerge(makeDefaultData(), prev);
+          n.meta = Object.assign({}, n.meta, {
+            ref: ref,
+            client: client.nom || "",
+            adresse: client.adresse || "",
+            pm: weGreen.manager || ""
+          });
+          return n;
+        });
+        setPrefillMsg("✅ Pré-rempli depuis le Briefing — " + (client.nom || ref));
+        setTimeout(function(){ setPrefillMsg(""); }, 5000);
+      }
     }
     setLoading(false);
-    // Laisser React faire le rendu avant de réactiver la sauvegarde
     setTimeout(function(){ isLoadingData.current = false; }, 3000);
   }
 
@@ -4340,10 +4358,14 @@ function App() {
     }, 500);
   }
 
-  // Pre-fill from feuilles_chantier
+  // Pre-fill from feuilles_chantier (briefing)
   async function prefillFromChantier(ref) {
     var chantierData = await supaLoadChantier(ref);
-    if (!chantierData) { setPrefillMsg("⚠️ Aucune feuille de chantier trouvée pour cette référence."); setTimeout(function(){ setPrefillMsg(""); }, 4000); return; }
+    if (!chantierData) {
+      setPrefillMsg("⚠️ Aucun Briefing trouvé pour cette référence.");
+      setTimeout(function(){ setPrefillMsg(""); }, 4000);
+      return;
+    }
     var client = chantierData.client || {};
     var weGreen = chantierData.weGreen || {};
     setData(function(prev) {
@@ -4355,8 +4377,8 @@ function App() {
         })
       });
     });
-    setPrefillMsg("✅ Informations importées depuis la feuille de chantier");
-    setTimeout(function(){ setPrefillMsg(""); }, 4000);
+    setPrefillMsg("✅ Importé depuis le Briefing — " + (client.nom||ref));
+    setTimeout(function(){ setPrefillMsg(""); }, 5000);
   }
 
   var dcComp = calcDCCompletion(data);
@@ -4418,10 +4440,36 @@ function App() {
             style={{ background: "rgba(255,255,255,0.2)", border: "none", color: WHITE, borderRadius: 6, padding: "5px 10px", fontSize: 12, cursor: "pointer" }}>
             🖨️ Imprimer
           </button>
-          <button onClick={function(){ window.wgeSignOut(); }}
-            style={{ background: "rgba(255,255,255,0.15)", border: "none", color: WHITE, borderRadius: 6, padding: "5px 10px", fontSize: 12, cursor: "pointer" }}>
-            Déco.
-          </button>
+          {user && (
+            <div style={{ position:"relative" }} className="user-menu-wrap">
+              <button onClick={function(e){
+                var m=e.currentTarget.nextSibling;
+                m.style.display=m.style.display==="block"?"none":"block";
+              }} style={{ display:"flex", alignItems:"center", gap:6, padding:"5px 10px",
+                background: user.type==="contractor" ? "#fff8f0" : "rgba(255,255,255,0.18)",
+                border: "1px solid "+(user.type==="contractor" ? "#e8c080" : "rgba(255,255,255,0.35)"),
+                borderRadius:20, cursor:"pointer", color: user.type==="contractor" ? "#7a4800" : WHITE }}>
+                <span style={{ fontSize:13 }}>{user.type==="contractor" ? "🔧" : "🌿"}</span>
+                <span style={{ fontSize:12, fontWeight:600, maxWidth:120, overflow:"hidden",
+                  textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{user.name}</span>
+                <span style={{ fontSize:9, opacity:0.7 }}>▼</span>
+              </button>
+              <div style={{ display:"none", position:"absolute", right:0, top:"calc(100% + 6px)",
+                background:WHITE, border:"1px solid "+BORDER, borderRadius:8,
+                boxShadow:"0 4px 16px rgba(0,0,0,0.12)", zIndex:9999, minWidth:160, overflow:"hidden" }}>
+                <div style={{ padding:"10px 14px", borderBottom:"1px solid #f0f0ec" }}>
+                  <div style={{ fontSize:12, fontWeight:700, color:"#1a1a1a" }}>{user.name}</div>
+                  <div style={{ fontSize:11, color:MUTED }}>{user.email}</div>
+                </div>
+                <button onClick={function(){ window.wgeSignOut(); }}
+                  style={{ width:"100%", padding:"10px 14px", background:"none", border:"none",
+                    textAlign:"left", fontSize:13, color:"#c0392b", cursor:"pointer",
+                    display:"flex", alignItems:"center", gap:8, fontFamily:"inherit" }}>
+                  🚪 Déconnexion
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
