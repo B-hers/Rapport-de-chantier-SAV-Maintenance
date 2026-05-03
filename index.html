@@ -1113,10 +1113,11 @@ function PhotoZone({ catKey, label, items, onAdd, onDelete, onUpdate, onReorder,
   const handleFiles = async function(files) {
     const arr = Array.from(files).filter(function(f) { return f.type.startsWith("image/") || f.type === "application/pdf"; });
     const result = [];
+    const addedAt = new Date().toISOString();
     for (let i=0; i<arr.length; i++) {
       const f = arr[i];
       const url = f.type.startsWith("image/") ? await compressImg(f, hiRes) : null;
-      result.push({ name: f.name, url, type: f.type });
+      result.push({ name: f.name, url, type: f.type, addedAt: addedAt });
     }
     onAdd(result);
   };
@@ -1125,7 +1126,8 @@ function PhotoZone({ catKey, label, items, onAdd, onDelete, onUpdate, onReorder,
     const imgs = Array.from((e.clipboardData && e.clipboardData.items)||[]).filter(function(i){ return i.type.startsWith("image/"); });
     if (!imgs.length) return; e.preventDefault();
     const result = [];
-    for (let i=0; i<imgs.length; i++) { const blob = imgs[i].getAsFile(); result.push({ name: "colle_"+Date.now()+".jpg", url: await compressImg(blob, hiRes), type: blob.type }); }
+    const addedAt = new Date().toISOString();
+    for (let i=0; i<imgs.length; i++) { const blob = imgs[i].getAsFile(); result.push({ name: "colle_"+Date.now()+".jpg", url: await compressImg(blob, hiRes), type: blob.type, addedAt: addedAt }); }
     onAdd(result);
   };
 
@@ -3694,6 +3696,288 @@ function MaintenanceTab({ data, setData }) {
 
 
 
+
+// ── ProgressPanel (avancement par jour, basé sur les photos) ────────────────
+function ProgressPanel({ data, onClose }) {
+
+  var [expandedDay, setExpandedDay] = useState(null);
+  var [expandedSection, setExpandedSection] = useState(null);
+
+  // Build label map for all photo categories
+  var sectionLabels = {};
+  DC_SECTIONS.forEach(function(s) {
+    (s.photoCats||[]).forEach(function(c) {
+      sectionLabels[c.key] = { tab: "DC", tabColor: DC_COLOR, section: s.label.replace(/^\d+\s*·\s*/, ""), cat: c.label };
+    });
+    // string photos
+    for (var i=0; i<20; i++) {
+      sectionLabels["string_ph_"+i] = { tab: "DC", tabColor: DC_COLOR, section: "Strings", cat: "String "+(i+1) };
+    }
+  });
+  AC_SECTIONS.forEach(function(s) {
+    (s.photoCats||[]).forEach(function(c) {
+      sectionLabels[c.key] = { tab: "AC", tabColor: AC_COLOR, section: s.label.replace(/^\d+\s*·\s*/, ""), cat: c.label };
+    });
+  });
+  // Extra AC photo keys
+  ["ac_pre_general","ac_pre_tgbt","ac_pre_compteur"].forEach(function(k){
+    sectionLabels[k] = { tab:"AC", tabColor:AC_COLOR, section:"Pré-chantier", cat: k.replace("ac_pre_","").replace(/_/g," ") };
+  });
+  ["ac_post_tubages","ac_post_tgbt"].forEach(function(k){
+    sectionLabels[k] = { tab:"AC", tabColor:AC_COLOR, section:"Après-chantier", cat: k.replace("ac_post_","").replace(/_/g," ") };
+  });
+  ["ac_config_ph","ac_schema_ph","mesure_terre_ph"].forEach(function(k){
+    sectionLabels[k] = { tab:"AC", tabColor:AC_COLOR, section:"Configuration", cat: k.replace(/_ph$/,"").replace(/_/g," ") };
+  });
+  for (var i=0; i<8; i++) {
+    sectionLabels["ac_app_"+i] = { tab:"AC", tabColor:AC_COLOR, section:"Onduleurs / Bornes", cat:"Appareil "+(i+1) };
+    sectionLabels["ac_tab_"+i] = { tab:"AC", tabColor:AC_COLOR, section:"Tableaux", cat:"Tableau "+(i+1) };
+  }
+  // SAV photos
+  Object.keys(data.savPhotos||{}).forEach(function(k){
+    var isBefore = k.startsWith("sav_avant_");
+    sectionLabels[k] = { tab:"SAV", tabColor:"#f39c12", section:"SAV", cat: isBefore ? "Avant" : "Après" };
+  });
+  // Maintenance photos
+  (data.maintenanceVisites||[]).forEach(function(v, vi){
+    if (v.photos) {
+      Object.keys(v.photos).forEach(function(k){
+        sectionLabels["maint_v"+vi+"_"+k] = { tab:"Maintenance", tabColor:GREEN, section:"Visite "+(vi+1), cat:k };
+      });
+    }
+  });
+
+  // Collect all photos with their date
+  var allPhotos = [];
+
+  function collectFromMap(photoMap, keyPrefix) {
+    Object.keys(photoMap||{}).forEach(function(catKey) {
+      (photoMap[catKey]||[]).forEach(function(p) {
+        if (!p || !p.url) return;
+        var fullKey = keyPrefix ? keyPrefix + catKey : catKey;
+        var label = sectionLabels[catKey] || sectionLabels[fullKey] || {
+          tab: "Autre", tabColor: MUTED, section: catKey, cat: catKey
+        };
+        allPhotos.push({
+          url: p.url,
+          name: p.name || "",
+          addedAt: p.addedAt || null,
+          catKey: catKey,
+          tab: label.tab,
+          tabColor: label.tabColor,
+          section: label.section,
+          cat: label.cat,
+        });
+      });
+    });
+  }
+
+  collectFromMap(data.dc.photos||{});
+  collectFromMap(data.ac.photos||{});
+  collectFromMap(data.savPhotos||{});
+  (data.maintenanceVisites||[]).forEach(function(v, vi){
+    collectFromMap(v.photos||{});
+  });
+
+  // Group by day
+  var byDay = {};
+  var noDate = [];
+  allPhotos.forEach(function(p) {
+    if (!p.addedAt) { noDate.push(p); return; }
+    var day = p.addedAt.slice(0, 10); // YYYY-MM-DD
+    if (!byDay[day]) byDay[day] = [];
+    byDay[day].push(p);
+  });
+
+  var days = Object.keys(byDay).sort().reverse(); // plus récent en premier
+
+  function fmtDay(isoDay) {
+    var d = new Date(isoDay + "T12:00:00");
+    return d.toLocaleDateString("fr-BE", { weekday:"long", day:"2-digit", month:"long", year:"numeric" });
+  }
+
+  function groupBySection(photos) {
+    var sections = {};
+    photos.forEach(function(p) {
+      var key = p.tab + "|" + p.section;
+      if (!sections[key]) sections[key] = { tab: p.tab, tabColor: p.tabColor, section: p.section, photos: [] };
+      sections[key].photos.push(p);
+    });
+    return Object.values(sections);
+  }
+
+  var totalPhotos = allPhotos.length;
+  var datedPhotos = allPhotos.filter(function(p){ return !!p.addedAt; }).length;
+
+  return (
+    <div style={{ position:"fixed", top:0, right:0, bottom:0, width:"min(520px,100vw)",
+      background:WHITE, boxShadow:"-4px 0 28px rgba(0,0,0,0.15)", zIndex:9990,
+      display:"flex", flexDirection:"column", fontFamily:"inherit" }}>
+
+      {/* Header */}
+      <div style={{ padding:"13px 16px", borderBottom:"1px solid #e8e8e4",
+        display:"flex", alignItems:"center", justifyContent:"space-between",
+        background:GREEN, color:WHITE, flexShrink:0 }}>
+        <div>
+          <div style={{ fontWeight:700, fontSize:14 }}>📅 Avancement par jour</div>
+          <div style={{ fontSize:11, opacity:0.75, marginTop:2 }}>
+            {data.meta.ref} — {data.meta.client || ""}
+            {totalPhotos > 0 && <span style={{ marginLeft:8 }}>{totalPhotos} photo{totalPhotos>1?"s":""}</span>}
+          </div>
+        </div>
+        <button onClick={onClose} style={{ background:"rgba(255,255,255,0.2)", border:"none",
+          color:WHITE, borderRadius:6, padding:"4px 10px", cursor:"pointer", fontSize:16 }}>✕</button>
+      </div>
+
+      {/* Info bar */}
+      {noDate.length > 0 && (
+        <div style={{ background:"#fff8e1", borderBottom:"1px solid #ffe082",
+          padding:"6px 14px", fontSize:11, color:"#856404", flexShrink:0 }}>
+          ℹ️ {noDate.length} photo{noDate.length>1?"s":""} sans date (uploadées avant cette version)
+        </div>
+      )}
+
+      <div style={{ flex:1, overflow:"auto", padding:"10px 12px" }}>
+
+        {totalPhotos === 0 && (
+          <div style={{ textAlign:"center", padding:"48px 20px", color:MUTED }}>
+            <div style={{ fontSize:40, marginBottom:12 }}>📷</div>
+            <div style={{ fontWeight:600, fontSize:14 }}>Aucune photo uploadée</div>
+            <div style={{ fontSize:12, marginTop:4 }}>Les photos apparaîtront ici une fois uploadées dans les sections DC et AC</div>
+          </div>
+        )}
+
+        {/* Days */}
+        {days.map(function(day) {
+          var dayPhotos = byDay[day];
+          var isOpen = expandedDay === day;
+          var sections = groupBySection(dayPhotos);
+
+          return (
+            <div key={day} style={{ marginBottom: 10, borderRadius:9,
+              border:"1px solid #e8e8e4", overflow:"hidden" }}>
+
+              {/* Day header */}
+              <div onClick={function(){ setExpandedDay(isOpen ? null : day); setExpandedSection(null); }}
+                style={{ padding:"11px 14px", background: isOpen ? GREEN_LIGHT : "#fafaf8",
+                  cursor:"pointer", userSelect:"none",
+                  display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+                <div>
+                  <div style={{ fontWeight:700, fontSize:13, color: isOpen ? GREEN : "#1a1a1a",
+                    textTransform:"capitalize" }}>
+                    📅 {fmtDay(day)}
+                  </div>
+                  <div style={{ display:"flex", gap:8, marginTop:4, flexWrap:"wrap" }}>
+                    {sections.map(function(s, si) {
+                      return (
+                        <span key={si} style={{ fontSize:11, background: s.tabColor+"22",
+                          color: s.tabColor, borderRadius:4, padding:"1px 7px", fontWeight:600 }}>
+                          {s.tab} — {s.section} ({s.photos.length})
+                        </span>
+                      );
+                    })}
+                  </div>
+                </div>
+                <div style={{ display:"flex", alignItems:"center", gap:8, flexShrink:0 }}>
+                  <span style={{ fontSize:12, color:MUTED }}>{dayPhotos.length} photo{dayPhotos.length>1?"s":""}</span>
+                  <span style={{ color:MUTED, fontSize:12, transform:isOpen?"rotate(180deg)":"none", transition:"transform 0.2s" }}>▼</span>
+                </div>
+              </div>
+
+              {/* Day content */}
+              {isOpen && (
+                <div style={{ padding:"12px 14px", background:WHITE }}>
+                  {sections.map(function(s, si) {
+                    var secKey = day + "|" + s.tab + "|" + s.section;
+                    var secOpen = expandedSection === secKey;
+                    return (
+                      <div key={si} style={{ marginBottom:8 }}>
+                        {/* Section row */}
+                        <div onClick={function(){ setExpandedSection(secOpen ? null : secKey); }}
+                          style={{ display:"flex", alignItems:"center", gap:8,
+                            padding:"7px 10px", borderRadius:7, cursor:"pointer",
+                            background: secOpen ? s.tabColor+"12" : "#f8f8f6",
+                            border:"1px solid "+(secOpen ? s.tabColor+"44" : "#e8e8e4") }}>
+                          <span style={{ width:8, height:8, borderRadius:"50%",
+                            background:s.tabColor, flexShrink:0 }} />
+                          <span style={{ flex:1, fontWeight:600, fontSize:12 }}>
+                            {s.tab} — {s.section}
+                          </span>
+                          <span style={{ fontSize:11, color:s.tabColor, fontWeight:700 }}>
+                            {s.photos.length} photo{s.photos.length>1?"s":""}
+                          </span>
+                          <span style={{ fontSize:10, color:MUTED, transform:secOpen?"rotate(180deg)":"none" }}>▼</span>
+                        </div>
+
+                        {/* Photos grid */}
+                        {secOpen && (
+                          <div style={{ display:"grid", gridTemplateColumns:"repeat(3, 1fr)",
+                            gap:6, padding:"8px 4px" }}>
+                            {s.photos.map(function(p, pi) {
+                              var time = p.addedAt
+                                ? new Date(p.addedAt).toLocaleTimeString("fr-BE", { hour:"2-digit", minute:"2-digit" })
+                                : "";
+                              return (
+                                <div key={pi} style={{ borderRadius:7, overflow:"hidden",
+                                  border:"1px solid "+BORDER, background:"#fafaf8" }}>
+                                  <img src={p.url} alt={p.name}
+                                    style={{ width:"100%", aspectRatio:"4/3",
+                                      objectFit:"cover", display:"block", cursor:"pointer" }}
+                                    onClick={function(){ window.open(p.url, "_blank"); }}
+                                  />
+                                  {(p.name || time) && (
+                                    <div style={{ fontSize:9, color:MUTED, padding:"2px 5px",
+                                      background:"#f4f4f0", lineHeight:1.4,
+                                      overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                                      {time && <span style={{ color:GREEN, fontWeight:700 }}>{time} </span>}
+                                      {p.name}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })}
+
+        {/* Photos sans date */}
+        {noDate.length > 0 && (
+          <div style={{ marginBottom:10, borderRadius:9, border:"1px dashed #e8e0b0", overflow:"hidden" }}>
+            <div onClick={function(){ setExpandedDay(expandedDay==="nodate" ? null : "nodate"); }}
+              style={{ padding:"10px 14px", background:"#fffdf0", cursor:"pointer",
+                display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+              <span style={{ fontWeight:600, fontSize:12, color:"#856404" }}>
+                📁 Photos sans date ({noDate.length})
+              </span>
+              <span style={{ fontSize:10, color:"#856404" }}>▼</span>
+            </div>
+            {expandedDay === "nodate" && (
+              <div style={{ display:"grid", gridTemplateColumns:"repeat(3, 1fr)", gap:6, padding:"10px" }}>
+                {noDate.map(function(p, pi) {
+                  return (
+                    <img key={pi} src={p.url} alt={p.name}
+                      style={{ width:"100%", aspectRatio:"4/3", objectFit:"cover",
+                        borderRadius:6, cursor:"pointer" }}
+                      onClick={function(){ window.open(p.url, "_blank"); }}
+                    />
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── HistoryPanel (contrôle) ─────────────────────────────────────────────────
 function HistoryPanel({ ref: refChantier, sheetId, sheetLabel, onRestore, onClose }) {
   var [tab, setTab] = useState("versions");
@@ -4441,6 +4725,7 @@ function App() {
   var [prefillMsg, setPrefillMsg] = useState("");
   var [showHistory, setShowHistory] = useState(false);
   var [showChantier, setShowChantier] = useState(false);
+  var [showProgress, setShowProgress] = useState(false);
   var debounceRef = useRef(null);
   var lastSavedRef = useRef(null);
   var isLoadingData = useRef(false); // guard : empêche la sauvegarde pendant le chargement
@@ -4685,6 +4970,12 @@ function App() {
               📄 Fiche chantier
             </button>
           )}
+          {data.meta.ref && (
+            <button onClick={function(){ setShowProgress(function(v){ return !v; }); }}
+              style={{ background:showProgress?"rgba(255,255,255,0.35)":"rgba(255,255,255,0.2)", border:"none", color:WHITE, borderRadius:6, padding:"5px 10px", fontSize:12, cursor:"pointer" }}>
+              📅 Avancement
+            </button>
+          )}
           <button onClick={function(){ window.print(); }}
             style={{ background: "rgba(255,255,255,0.2)", border: "none", color: WHITE, borderRadius: 6, padding: "5px 10px", fontSize: 12, cursor: "pointer" }}>
             🖨️ Imprimer
@@ -4854,6 +5145,18 @@ function App() {
           <ChantierPanel
             refChantier={data.meta.ref}
             onClose={function(){ setShowChantier(false); }}
+          />
+        </>
+      )}
+
+      {/* Progress panel */}
+      {showProgress && data.meta.ref && (
+        <>
+          <div onClick={function(){ setShowProgress(false); }}
+            style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.20)", zIndex:9989 }} />
+          <ProgressPanel
+            data={data}
+            onClose={function(){ setShowProgress(false); }}
           />
         </>
       )}
