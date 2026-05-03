@@ -710,6 +710,7 @@ function makeDefaultACPhotos() {
 function makeDefaultData() {
   return {
     meta: { ref: "", client: "", adresse: "", dateControle: "", controleur: "", equipe: "", pm: "",
+            nom_tache: "",
             dcLocked: false, acLocked: false },
     dc: { items: makeDefaultDCItems(), photos: makeDefaultDCPhotos(), stringTensions: {}, observations: "", signatureName: "", heureFin: "" },
     ac: { onduleurs: [makeDefaultOnduleur()], batteries: [], bornes: [], appareils: [],
@@ -4415,6 +4416,14 @@ function HeaderSection({ data, setData, onLoad, onPrefill, prefillMsg, loading }
             {PM_LIST.map(function(pm){ return <option key={pm} value={pm}>{pm}</option>; })}
           </select>
         </div>
+        {data.meta.nom_tache && (
+          <div style={{ gridColumn: "1 / -1" }}>
+            <label style={{ fontSize: 12, color: MUTED, fontWeight: 500, marginBottom: 4, display: "block" }}>Tâche Odoo</label>
+            <input type="text" value={data.meta.nom_tache||""} readOnly
+              style={{ background: "#f4f4f0", color: "#555", cursor: "default" }}
+              placeholder="Nom de la tâche" />
+          </div>
+        )}
       </div>
     </div>
   );
@@ -4460,16 +4469,17 @@ function App() {
     }).catch(function(){});
   }, []);
 
-  // Lire ?ref= dans l'URL au chargement de la page
+  // Lire ?ref= et &task= dans l'URL au chargement de la page
   useEffect(function() {
     try {
       var params = new URLSearchParams(window.location.search);
       var urlRef = params.get("ref");
+      var urlTask = params.get("task") || "";
       if (!urlRef) return;
       isLoadingData.current = true; // AVANT tout setData pour éviter la race condition
       setData(function(prev) {
         var n = Object.assign({}, prev);
-        n.meta = Object.assign({}, prev.meta, { ref: urlRef });
+        n.meta = Object.assign({}, prev.meta, { ref: urlRef, nom_tache: urlTask });
         return n;
       });
       loadData(urlRef);
@@ -4526,7 +4536,10 @@ function App() {
     if (!ref) return;
     setLoading(true);
     isLoadingData.current = true;
-    try { window.history.replaceState(null, "", "?ref=" + encodeURIComponent(ref)); } catch(e) {}
+    try {
+      var taskParam = (data && data.meta && data.meta.nom_tache) ? "&task=" + encodeURIComponent(data.meta.nom_tache) : "";
+      window.history.replaceState(null, "", "?ref=" + encodeURIComponent(ref) + taskParam);
+    } catch(e) {}
     var list = await supaLoadList(ref);
     if (list.length > 0) {
       var row = await supaLoadById(list[0].id);
@@ -4625,7 +4638,9 @@ function App() {
         <img src={LOGO_SRC} alt="We Green" style={{ height: 28, borderRadius: 4, flexShrink: 0 }} />
         <div style={{ flex: 1 }}>
           <div style={{ fontWeight: 700, fontSize: 15 }}>Rapport de Chantier</div>
-          <div style={{ fontSize: 11, opacity: 0.8 }}>Rapport de Chantier</div>
+          <div style={{ fontSize: 11, opacity: 0.8 }}>
+            {data.meta.nom_tache ? data.meta.nom_tache : "Rapport de Chantier"}
+          </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           {saveStatus === "saving" && <span style={{ fontSize: 11, opacity: 0.8 }}>⏳ Sauvegarde…</span>}
