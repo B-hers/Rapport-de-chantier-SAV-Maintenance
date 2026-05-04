@@ -88,7 +88,7 @@ button { font-family: inherit; cursor: pointer; }
 
     <!-- Panel WGE -->
     <div id="panel-wge" style="width:100%; display:flex; flex-direction:column; align-items:center; gap:14px;">
-      <div style="font-size:13px; color:#888; text-align:center; line-height:1.6">Connectez-vous avec votre compte<br><strong style="color:#1B6B3A">@we-green.be</strong></div>
+      <div style="font-size:13px; color:#888; text-align:center; line-height:1.6">Connectez-vous avec votre compte<br><strong style="color:#1B6B3A">@we-green.be</strong> ou <strong style="color:#1B6B3A">@we-green.fr</strong></div>
       <div id="wge-google-btn" style="min-height:44px; display:flex; align-items:center; justify-content:center; width:100%;">
         <div style="font-size:13px; color:#aaa">⏳ Chargement…</div>
       </div>
@@ -139,8 +139,9 @@ document.addEventListener('click', function(e) {
 (function() {
   var GOOGLE_CLIENT_ID_PLAIN = "765677431332-2leuvo90bvhnmid77hml6cj230av8eao.apps.googleusercontent.com";
   var ALLOWED_DOMAIN_PLAIN = "we-green.be";
-  // Code d'accès sous-traitants — identification uniquement, pas de protection de données sensibles
-  var ST_CODE = "0479627511";
+  var ALLOWED_DOMAINS_PLAIN = ["we-green.be", "we-green.fr"];
+  // Codes d'accès sous-traitants — identification uniquement, pas de protection de données sensibles
+  var ST_CODES = ["0479627511", "Wegreen001!"];
 
   function parseJwtPlain(token) {
     try { return JSON.parse(window.atob(token.split(".")[1].replace(/-/g,"+").replace(/_/g,"/"))); } catch(e) { return {}; }
@@ -164,14 +165,15 @@ document.addEventListener('click', function(e) {
           client_id: GOOGLE_CLIENT_ID_PLAIN,
           callback: function(response) {
             var payload = parseJwtPlain(response.credential);
-            if (!payload.email || !payload.email.endsWith("@" + ALLOWED_DOMAIN_PLAIN)) {
-              showErr("⛔ Accès réservé aux membres @" + ALLOWED_DOMAIN_PLAIN); return;
+            var emailAllowed = payload.email && ALLOWED_DOMAINS_PLAIN.some(function(d){ return payload.email.endsWith("@"+d); });
+            if (!emailAllowed) {
+              showErr("⛔ Accès réservé aux membres @we-green.be ou @we-green.fr"); return;
             }
             var u = { email: payload.email, name: payload.name || payload.email.split("@")[0], picture: payload.picture || "", type: "wge" };
             try { localStorage.setItem("wge_user", JSON.stringify(u)); } catch(e) {}
             showApp();
           },
-          hd: ALLOWED_DOMAIN_PLAIN
+          hd: "we-green.be",
         });
         var btnEl = document.getElementById("wge-google-btn");
         if (btnEl) { btnEl.innerHTML = ""; google.accounts.id.renderButton(btnEl, { theme: "outline", size: "large", text: "signin_with", shape: "rectangular", width: 280, locale: "fr" }); }
@@ -211,8 +213,8 @@ document.addEventListener('click', function(e) {
     if (!name) { showErr("⚠ Veuillez sélectionner ou saisir un nom."); return; }
     if (!pwd.value) { showErr("⚠ Veuillez entrer le code d'accès."); return; }
     var codeEntered = pwd.value.replace(/[\s\-\.]/g, "");
-    var codeRef = ST_CODE.replace(/[\s\-\.]/g, "");
-    if (codeEntered !== codeRef) { showErr("⛔ Code d'accès incorrect."); return; }
+    var codeAccepted = ST_CODES.some(function(c){ return codeEntered === c.replace(/[\s\-\.]/g,""); });
+    if (!codeAccepted) { showErr("⛔ Code d'accès incorrect."); return; }
     var u = { email: "sous-traitant@externe", name: name, picture: "", type: "contractor" };
     try { localStorage.setItem("wge_user", JSON.stringify(u)); } catch(e) {}
     showApp();
@@ -230,9 +232,9 @@ document.addEventListener('click', function(e) {
     if (stored) {
       var u = JSON.parse(stored);
       if (u && u.name && (
-        (u.type === "wge" && u.email && u.email.endsWith("@" + ALLOWED_DOMAIN_PLAIN)) ||
+        (u.type === "wge" && u.email && ALLOWED_DOMAINS_PLAIN.some(function(d){ return u.email.endsWith("@"+d); })) ||
         (u.type === "contractor" && u.name) ||
-        (!u.type && u.email && u.email.endsWith("@" + ALLOWED_DOMAIN_PLAIN)) // rétrocompat anciennes sessions
+        (!u.type && u.email && ALLOWED_DOMAINS_PLAIN.some(function(d){ return u.email.endsWith("@"+d); })) // rétrocompat anciennes sessions
       )) { showApp(); return; }
     }
   } catch(e) {}
@@ -291,6 +293,8 @@ const SUPA_URL = "https://qdepdtwrokazceyecege.supabase.co";
 const SUPA_KEY = "sb_publishable_U6PddofdvgpD5IgU4ZsPdg_wqB-5Scw";
 const GOOGLE_CLIENT_ID = "765677431332-2leuvo90bvhnmid77hml6cj230av8eao.apps.googleusercontent.com";
 const ALLOWED_DOMAIN = "we-green.be";
+const ALLOWED_DOMAINS = ["we-green.be", "we-green.fr"];
+function isWGEEmail(email) { return !!email && ALLOWED_DOMAINS.some(function(d){ return email.endsWith("@"+d); }); }
 
 // ── Supabase multi-feuilles ──────────────────────────────
 async function supaLoadList(ref) {
@@ -712,12 +716,12 @@ function makeDefaultData() {
     meta: { ref: "", client: "", adresse: "", dateControle: "", controleur: "", equipe: "", pm: "",
             nom_tache: "",
             dcLocked: false, acLocked: false },
-    dc: { items: makeDefaultDCItems(), photos: makeDefaultDCPhotos(), stringTensions: {}, observations: "", signatureName: "", heureFin: "" },
+    dc: { items: makeDefaultDCItems(), photos: makeDefaultDCPhotos(), stringTensions: {}, observations: "", signatureName: "", heureFin: "", journeesCloturees: [] },
     ac: { onduleurs: [makeDefaultOnduleur()], batteries: [], bornes: [], appareils: [],
           acTableaux: [{ type: "TGBT", nom: "" }],
           acConfig: { configSysteme: false, creationCentrale: false, connexionInternet: false, inviterClient: false, expliquerClient: false },
           acSchemas: { schemaUnifiliaire: false, schemaPosition: false, tgbtClient: false, tableauWegreen: false, onduleurBorne: false, compteur: false, terre: false, nommages: false },
-          items: makeDefaultACItems(), photos: makeDefaultACPhotos(), observations: "", signatureName: "", heureFin: "" },
+          items: makeDefaultACItems(), photos: makeDefaultACPhotos(), observations: "", signatureName: "", heureFin: "", journeesCloturees: [] },
     sav: [],
     savPhotos: {},
     maintenanceVisites: []
@@ -2269,6 +2273,21 @@ function DCTab({ data, setData, locked, isWGE, onUnlock }) {
         );
       })}
 
+      {/* Clôture de journée DC */}
+      <CloturJourneeBlock
+        tab="DC"
+        tabColor={DC_COLOR}
+        locked={locked}
+        journees={data.dc.journeesCloturees||[]}
+        setJournees={function(updater){
+          setData(function(prev){
+            var n=Object.assign({},prev); n.dc=Object.assign({},prev.dc);
+            n.dc.journeesCloturees = typeof updater==="function" ? updater(prev.dc.journeesCloturees||[]) : updater;
+            return n;
+          });
+        }}
+      />
+
       {/* Observations */}
       <SectionBlock icon="📝" label="Observations & Remarques DC" color={DC_COLOR} defaultOpen={false}>
         <textarea value={data.dc.observations||""} onChange={function(e){
@@ -2292,7 +2311,7 @@ function DCTab({ data, setData, locked, isWGE, onUnlock }) {
             borderRadius: 9, padding: "12px 28px", fontSize: 14,
             fontWeight: 700, cursor: "pointer", display: "inline-flex",
             alignItems: "center", gap: 8 }}>
-            🔒 Clôturer et verrouiller la page DC
+            🔒 Clôturer le chantier DC et verrouiller la page
           </button>
           <div style={{ fontSize: 11, color: MUTED, marginTop: 6 }}>
             À faire une fois le chantier DC terminé et validé
@@ -2789,6 +2808,21 @@ function ACTab({ data, setData, locked, isWGE, onUnlock }) {
         })()}
       </GrandTitre>
 
+      {/* Clôture de journée AC */}
+      <CloturJourneeBlock
+        tab="AC"
+        tabColor={AC_COLOR}
+        locked={locked}
+        journees={data.ac.journeesCloturees||[]}
+        setJournees={function(updater){
+          setData(function(prev){
+            var n=Object.assign({},prev); n.ac=Object.assign({},prev.ac);
+            n.ac.journeesCloturees = typeof updater==="function" ? updater(prev.ac.journeesCloturees||[]) : updater;
+            return n;
+          });
+        }}
+      />
+
       {/* Signature */}
       <SignatureBlock title="✍️ Signature Responsable AC"
         name={data.ac.signatureName} heureFin={data.ac.heureFin} color={AC_COLOR}
@@ -2808,7 +2842,7 @@ function ACTab({ data, setData, locked, isWGE, onUnlock }) {
             borderRadius: 9, padding: "12px 28px", fontSize: 14,
             fontWeight: 700, cursor: "pointer", display: "inline-flex",
             alignItems: "center", gap: 8 }}>
-            🔒 Clôturer et verrouiller la page AC
+            🔒 Clôturer le chantier AC et verrouiller la page
           </button>
           <div style={{ fontSize: 11, color: MUTED, marginTop: 6 }}>
             À faire une fois le chantier AC terminé et validé
@@ -3788,6 +3822,16 @@ function ProgressPanel({ data, onClose }) {
     collectFromMap(v.photos||{});
   });
 
+  // Collect journées clôturées
+  var allJourneesMap = {}; // day -> []
+  function addJournee(j) {
+    if (!j.date) return;
+    if (!allJourneesMap[j.date]) allJourneesMap[j.date] = [];
+    allJourneesMap[j.date].push(j);
+  }
+  (data.dc.journeesCloturees||[]).forEach(addJournee);
+  (data.ac.journeesCloturees||[]).forEach(addJournee);
+
   // Group by day
   var byDay = {};
   var noDate = [];
@@ -3797,6 +3841,8 @@ function ProgressPanel({ data, onClose }) {
     if (!byDay[day]) byDay[day] = [];
     byDay[day].push(p);
   });
+  // Ensure days with journées but no other photos are included
+  Object.keys(allJourneesMap).forEach(function(d){ if(!byDay[d]) byDay[d]=[]; });
 
   var days = Object.keys(byDay).sort().reverse(); // plus récent en premier
 
@@ -3861,6 +3907,7 @@ function ProgressPanel({ data, onClose }) {
           var dayPhotos = byDay[day];
           var isOpen = expandedDay === day;
           var sections = groupBySection(dayPhotos);
+          var dayJournees = allJourneesMap[day] || [];
 
           return (
             <div key={day} style={{ marginBottom: 10, borderRadius:9,
@@ -3877,6 +3924,12 @@ function ProgressPanel({ data, onClose }) {
                     📅 {fmtDay(day)}
                   </div>
                   <div style={{ display:"flex", gap:8, marginTop:4, flexWrap:"wrap" }}>
+                    {dayJournees.length > 0 && (
+                      <span style={{ fontSize:11, background:"#f39c1222", color:"#856404",
+                        borderRadius:4, padding:"1px 7px", fontWeight:700, border:"1px solid #f39c1244" }}>
+                        ✅ Journée clôturée · {dayJournees.map(function(j){ return j.tab+(j.auteur?" par "+j.auteur:""); }).join(", ")}
+                      </span>
+                    )}
                     {sections.map(function(s, si) {
                       return (
                         <span key={si} style={{ fontSize:11, background: s.tabColor+"22",
@@ -3896,6 +3949,31 @@ function ProgressPanel({ data, onClose }) {
               {/* Day content */}
               {isOpen && (
                 <div style={{ padding:"12px 14px", background:WHITE }}>
+
+                  {/* Journées clôturées du jour */}
+                  {dayJournees.map(function(j, ji) {
+                    return (
+                      <div key={j.id||ji} style={{ marginBottom:10, background:"#fffbf0",
+                        border:"1.5px solid #f39c12", borderRadius:8, padding:"10px 12px" }}>
+                        <div style={{ fontWeight:700, fontSize:12, color:"#856404", marginBottom:4,
+                          display:"flex", alignItems:"center", gap:8 }}>
+                          <span>📅 Clôture journée — {j.tab}</span>
+                          {j.heure && <span style={{ fontWeight:400, color:MUTED }}>à {j.heure}</span>}
+                        </div>
+                        <div style={{ fontSize:12, color:MUTED, marginBottom: j.note ? 8 : 0 }}>
+                          👤 {j.auteur}
+                        </div>
+                        {j.note && (
+                          <div style={{ fontSize:12, color:"#1a1a1a", lineHeight:1.5,
+                            background:"#fff", borderRadius:5, padding:"6px 9px",
+                            borderLeft:"3px solid #f39c12", whiteSpace:"pre-wrap" }}>
+                            {j.note}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+
                   {sections.map(function(s, si) {
                     var secKey = day + "|" + s.tab + "|" + s.section;
                     var secOpen = expandedSection === secKey;
@@ -4538,6 +4616,203 @@ function LockBanner({ tab, onUnlock, isWGE }) {
 }
 
 
+// ── CloturJourneeBlock ────────────────────────────────────────────────────────
+// Section "Clôture de journée" — affichée au-dessus de la clôture de chantier.
+// Auteur = utilisateur connecté (auto), heure = moment de confirmation (auto),
+// date = aujourd'hui par défaut (modifiable), commentaire libre.
+function CloturJourneeBlock({ tab, tabColor, journees, setJournees, locked }) {
+  var [showForm, setShowForm] = useState(false);
+  var [expanded, setExpanded] = useState(null);
+  var [formDate, setFormDate] = useState(function(){ return new Date().toISOString().slice(0,10); });
+  var [formNote, setFormNote] = useState("");
+
+  var sortedJournees = (journees||[]).slice().sort(function(a,b){ return b.date > a.date ? 1 : -1; });
+
+  // Récupère le nom de l'utilisateur connecté
+  function getCurrentUser() {
+    try { var u=JSON.parse(localStorage.getItem("wge_user")||"{}"); return u.name||"Inconnu"; } catch(e){ return "Inconnu"; }
+  }
+
+  function openForm() {
+    setFormDate(new Date().toISOString().slice(0,10));
+    setFormNote("");
+    setShowForm(true);
+    setExpanded(null);
+  }
+
+  function submitJournee() {
+    var now = new Date();
+    var entry = {
+      id: Date.now().toString(36) + Math.random().toString(36).slice(2,6),
+      date: formDate,
+      heure: now.toTimeString().slice(0,5),
+      auteur: getCurrentUser(),
+      note: formNote.trim(),
+      tab: tab
+    };
+    setJournees(function(prev){ return (prev||[]).concat([entry]); });
+    setShowForm(false);
+  }
+
+  function fmtDate(iso) {
+    var d=new Date(iso+"T12:00:00");
+    return d.toLocaleDateString("fr-BE",{weekday:"long",day:"2-digit",month:"long",year:"numeric"});
+  }
+
+  var currentUser = getCurrentUser();
+
+  return (
+    <div id="no-print" style={{ marginBottom: 8 }}>
+      <div style={{ background:"#fff8e8", border:"2px solid #f39c12", borderRadius:10, overflow:"hidden", marginBottom:8 }}>
+
+        {/* ── Bandeau titre ── */}
+        <div style={{ background:"#f39c12", padding:"10px 14px", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+          <div style={{ fontWeight:700, fontSize:13, color:"#fff", display:"flex", alignItems:"center", gap:8 }}>
+            <span style={{ fontSize:18 }}>📅</span>
+            Clôture de journée
+            {sortedJournees.length > 0 && (
+              <span style={{ background:"rgba(255,255,255,0.25)", borderRadius:12, padding:"1px 9px", fontSize:12 }}>
+                {sortedJournees.length} journée{sortedJournees.length>1?"s":""}
+              </span>
+            )}
+          </div>
+          {!locked && !showForm && (
+            <button onClick={openForm}
+              style={{ background:"#fff", border:"none", borderRadius:7, padding:"6px 14px",
+                fontSize:12, fontWeight:700, color:"#f39c12", cursor:"pointer", whiteSpace:"nowrap" }}>
+              ➕ Clôturer la journée
+            </button>
+          )}
+        </div>
+
+        {/* ── Sous-titre ── */}
+        <div style={{ padding:"7px 14px", fontSize:12, color:"#856404",
+          borderBottom: (sortedJournees.length>0||showForm) ? "1px solid #fdd98a" : "none" }}>
+          À compléter <strong>en fin de journée</strong> — votre clôture sera visible dans la feuille d'avancement.
+        </div>
+
+        {/* ── Formulaire ── */}
+        {showForm && (
+          <div style={{ padding:"14px", background:"#fffdf0",
+            borderBottom: sortedJournees.length>0 ? "1px solid #fdd98a" : "none" }}>
+
+            {/* Info auto (lecture seule) */}
+            <div style={{ background:"#fff", border:"1px solid #fdd98a", borderRadius:8,
+              padding:"9px 12px", marginBottom:12, display:"flex", flexWrap:"wrap", gap:16 }}>
+              <div>
+                <div style={{ fontSize:11, color:MUTED, fontWeight:500, marginBottom:2 }}>Chef d'équipe</div>
+                <div style={{ fontSize:13, fontWeight:700, color:"#1a1a1a" }}>👤 {currentUser}</div>
+              </div>
+              <div>
+                <div style={{ fontSize:11, color:MUTED, fontWeight:500, marginBottom:2 }}>Heure de clôture</div>
+                <div style={{ fontSize:13, fontWeight:700, color:"#1a1a1a" }}>
+                  🕐 Enregistrée à la confirmation
+                </div>
+              </div>
+            </div>
+
+            {/* Date (modifiable) */}
+            <div style={{ marginBottom:12 }}>
+              <label style={{ fontSize:12, color:MUTED, fontWeight:500, marginBottom:4, display:"block" }}>
+                Date de la journée
+                <span style={{ fontWeight:400, marginLeft:6, color:"#b8860b" }}>(aujourd'hui par défaut, modifiable)</span>
+              </label>
+              <input type="date" value={formDate} onChange={function(e){ setFormDate(e.target.value); }}
+                style={{ width:"100%", maxWidth:240 }} />
+            </div>
+
+            {/* Commentaire */}
+            <div style={{ marginBottom:14 }}>
+              <label style={{ fontSize:12, color:MUTED, fontWeight:500, marginBottom:4, display:"block" }}>
+                Commentaire de fin de journée <span style={{ fontWeight:400 }}>(optionnel)</span>
+              </label>
+              <textarea value={formNote} onChange={function(e){ setFormNote(e.target.value); }}
+                placeholder="Avancement du chantier, points en suspens, remarques particulières…"
+                style={{ width:"100%", minHeight:80, resize:"vertical" }} />
+            </div>
+
+            <div style={{ display:"flex", gap:10, flexWrap:"wrap" }}>
+              <button onClick={submitJournee}
+                style={{ background:"#f39c12", color:"#fff", border:"none", borderRadius:8,
+                  padding:"11px 22px", fontSize:13, fontWeight:700, cursor:"pointer",
+                  display:"inline-flex", alignItems:"center", gap:7 }}>
+                ✅ Confirmer la clôture
+              </button>
+              <button onClick={function(){ setShowForm(false); }}
+                style={{ background:"none", color:MUTED, border:"1px solid "+BORDER, borderRadius:8,
+                  padding:"11px 16px", fontSize:13, cursor:"pointer" }}>
+                Annuler
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ── Liste des journées ── */}
+        {sortedJournees.length > 0 && (
+          <div style={{ padding:"8px 14px 12px" }}>
+            {sortedJournees.map(function(j) {
+              var isOpen = expanded === j.id;
+              return (
+                <div key={j.id} style={{ background:"#fff", border:"1px solid #fdd98a",
+                  borderRadius:8, marginBottom:6, overflow:"hidden" }}>
+                  <div onClick={function(){ setExpanded(isOpen ? null : j.id); }}
+                    style={{ padding:"9px 12px", cursor:"pointer", display:"flex",
+                      alignItems:"center", justifyContent:"space-between",
+                      background: isOpen ? "#fffbf0" : "#fff", userSelect:"none" }}>
+                    <div>
+                      <div style={{ fontWeight:700, fontSize:12, color:"#856404", textTransform:"capitalize" }}>
+                        📅 {fmtDate(j.date)} {j.heure ? "— "+j.heure : ""}
+                      </div>
+                      <div style={{ fontSize:11, color:MUTED, marginTop:2 }}>
+                        👤 {j.auteur}
+                        {j.note && <span style={{ marginLeft:10, fontStyle:"italic" }}>
+                          "{j.note.slice(0,50)}{j.note.length>50?"…":""}"
+                        </span>}
+                      </div>
+                    </div>
+                    <div style={{ display:"flex", alignItems:"center", gap:8, flexShrink:0 }}>
+                      {!locked && (
+                        <button onClick={function(e){ e.stopPropagation();
+                          if(!window.confirm("Supprimer cette clôture de journée ?")) return;
+                          setJournees(function(prev){ return prev.filter(function(x){ return x.id!==j.id; }); }); }}
+                          style={{ background:"#fdecea", border:"1px solid #f1948a", color:"#c0392b",
+                            borderRadius:5, padding:"3px 8px", fontSize:11, cursor:"pointer", minHeight:0 }}>
+                          🗑
+                        </button>
+                      )}
+                      <span style={{ color:MUTED, fontSize:11,
+                        transform:isOpen?"rotate(180deg)":"none", transition:"transform 0.2s" }}>▼</span>
+                    </div>
+                  </div>
+                  {isOpen && (
+                    <div style={{ padding:"10px 12px", borderTop:"1px solid #fdd98a", background:"#fffdf8" }}>
+                      {j.note ? (
+                        <div style={{ fontSize:12, color:"#1a1a1a", lineHeight:1.6,
+                          background:"#fff8e8", borderRadius:6, padding:"8px 10px",
+                          borderLeft:"3px solid #f39c12", whiteSpace:"pre-wrap" }}>
+                          {j.note}
+                        </div>
+                      ) : (
+                        <div style={{ fontSize:12, color:MUTED, fontStyle:"italic" }}>Aucun commentaire.</div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {sortedJournees.length === 0 && !showForm && (
+          <div style={{ padding:"12px 14px", fontSize:12, color:MUTED, fontStyle:"italic", textAlign:"center" }}>
+            Aucune journée clôturée pour l'instant
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── WhatsAppNotify ────────────────────────────────────────────────────────────
 function WhatsAppNotify({ data, tab, dcComp, acComp }) {
   var [copied, setCopied] = useState(false);
@@ -4569,6 +4844,17 @@ function WhatsAppNotify({ data, tab, dcComp, acComp }) {
   var savStr = (data.sav||[]).length > 0 ? "SAV: " + (data.sav||[]).length + " intervention(s)" : "";
   var maintStr = (data.maintenanceVisites||[]).length > 0 ? "Maintenance: " + (data.maintenanceVisites||[]).length + " visite(s)" : "";
 
+  // Daily closure info
+  var allJournees = [];
+  (data.dc.journeesCloturees||[]).forEach(function(j){ allJournees.push(Object.assign({},j,{tab:"DC"})); });
+  (data.ac.journeesCloturees||[]).forEach(function(j){ allJournees.push(Object.assign({},j,{tab:"AC"})); });
+  // Find today's closures
+  var today = new Date().toISOString().slice(0,10);
+  var todayJournees = allJournees.filter(function(j){ return j.date === today; });
+  var journeeStr = todayJournees.length > 0
+    ? "📅 Journée clôturée (" + todayJournees.map(function(j){ return j.tab + (j.auteur ? " par " + j.auteur : ""); }).join(", ") + ")"
+    : "";
+
   var tabLabel = {dc:"DC", ac:"AC", sav:"SAV", maintenance:"Maintenance"}[tab] || tab;
 
   // Build lines array then join safely
@@ -4576,6 +4862,7 @@ function WhatsAppNotify({ data, tab, dcComp, acComp }) {
   if (adresse) msgLines.push("Adresse : " + adresse);
   if (pm) msgLines.push("PM : " + pm);
   msgLines.push("");
+  if (journeeStr) msgLines.push(journeeStr);
   msgLines.push(dcStr);
   msgLines.push(acStr);
   if (savStr) msgLines.push(savStr);
@@ -4607,7 +4894,7 @@ function WhatsAppNotify({ data, tab, dcComp, acComp }) {
       <div style={{ fontWeight: 700, fontSize: 13, color: GREEN, marginBottom: 10,
         display: "flex", alignItems: "center", gap: 8 }}>
         <span style={{ fontSize: 18 }}>📤</span>
-        Notifier — fin de l'étape {tabLabel}
+        {journeeStr ? "Notifier — journée clôturée" : "Notifier — fin de l'étape " + tabLabel}
       </div>
 
       {/* Preview toggle */}
@@ -5116,7 +5403,7 @@ function App() {
         <div style={{ display: activeTab==="dc" ? "block" : "none" }}>
           <DCTab data={data} setData={setData}
             locked={!!data.meta.dcLocked}
-            isWGE={user && (user.type === "wge" || (user.email && user.email.endsWith("@we-green.be")))}
+            isWGE={user && (user.type === "wge" || isWGEEmail(user.email))}
             onUnlock={function(){ setData(function(prev){ var n=Object.assign({},prev);
               n.meta=Object.assign({},prev.meta,{dcLocked:false}); return n; }); }}
           />
@@ -5124,7 +5411,7 @@ function App() {
         <div style={{ display: activeTab==="ac" ? "block" : "none" }}>
           <ACTab data={data} setData={setData}
             locked={!!data.meta.acLocked}
-            isWGE={user && (user.type === "wge" || (user.email && user.email.endsWith("@we-green.be")))}
+            isWGE={user && (user.type === "wge" || isWGEEmail(user.email))}
             onUnlock={function(){ setData(function(prev){ var n=Object.assign({},prev);
               n.meta=Object.assign({},prev.meta,{acLocked:false}); return n; }); }}
           />
