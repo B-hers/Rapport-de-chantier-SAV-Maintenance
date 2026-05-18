@@ -4378,10 +4378,14 @@ function ProgressPanel({ data, onClose }) {
                       </span>
                     )}
                     {sections.map(function(s, si) {
+                      // Collect unique uploaders for this section/day
+                      var uploaders = [];
+                      s.photos.forEach(function(p){ if(p.uploadedBy && !uploaders.includes(p.uploadedBy.split(" ")[0])) uploaders.push(p.uploadedBy.split(" ")[0]); });
                       return (
                         <span key={si} style={{ fontSize:11, background: s.tabColor+"22",
                           color: s.tabColor, borderRadius:4, padding:"1px 7px", fontWeight:600 }}>
                           {s.tab} — {s.section} ({s.photos.length})
+                          {uploaders.length > 0 && <span style={{ fontWeight:400, opacity:0.8 }}> · {uploaders.join(", ")}</span>}
                         </span>
                       );
                     })}
@@ -4459,14 +4463,20 @@ function ProgressPanel({ data, onClose }) {
                                       objectFit:"cover", display:"block", cursor:"pointer" }}
                                     onClick={function(){ window.open(p.url, "_blank"); }}
                                   />
-                                  {(p.name || time) && (
-                                    <div style={{ fontSize:9, color:MUTED, padding:"2px 5px",
-                                      background:"#f4f4f0", lineHeight:1.4,
-                                      overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
-                                      {time && <span style={{ color:GREEN, fontWeight:700 }}>{time} </span>}
-                                      {p.name}
-                                    </div>
-                                  )}
+                                  <div style={{ fontSize:9, padding:"3px 5px",
+                                    background:"#f4f4f0", lineHeight:1.5 }}>
+                                    {time && <span style={{ color:GREEN, fontWeight:700, marginRight:3 }}>{time}</span>}
+                                    {p.uploadedBy && (
+                                      <span style={{ color:"#8e44ad", fontWeight:700 }}>
+                                        👤 {p.uploadedBy.split(" ")[0]}
+                                      </span>
+                                    )}
+                                    {!p.uploadedBy && p.name && (
+                                      <span style={{ color:MUTED, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", display:"block" }}>
+                                        {p.name}
+                                      </span>
+                                    )}
+                                  </div>
                                 </div>
                               );
                             })}
@@ -4513,7 +4523,7 @@ function ProgressPanel({ data, onClose }) {
 }
 
 // ── HistoryPanel (contrôle) ─────────────────────────────────────────────────
-function HistoryPanel({ ref: refChantier, sheetId, sheetLabel, onRestore, onClose }) {
+function HistoryPanel({ refChantier, sheetId, sheetLabel, onRestore, onClose }) {
   var [tab, setTab] = useState("audit");
   var [versions, setVersions] = useState([]);
   var [auditLog, setAuditLog] = useState([]);
@@ -6049,7 +6059,7 @@ function App() {
           <div onClick={function(){ setShowHistory(false); }}
             style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.25)", zIndex:9989 }} />
           <HistoryPanel
-            ref={data.meta.ref}
+            refChantier={data.meta.ref}
             sheetId={currentSheetId}
             sheetLabel={currentSheetLabel}
             onRestore={restoreVersion}
