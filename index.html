@@ -5494,16 +5494,19 @@ function App() {
   var [showHistory, setShowHistory] = useState(false);
   var [showChantier, setShowChantier] = useState(false);
   var [showProgress, setShowProgress] = useState(false);
-  var textSaveTimer = useRef(null);
-  var photoSaveTimer = useRef(null);
-  var lastSavedRef = useRef(null);
-  var isLoadingData = useRef(false); // guard : empêche la sauvegarde pendant le chargement
-  var userRef = useRef(null);
-  var prevDataRef = useRef(null);
-  var latestDataRef = useRef(data); // toujours à jour, lu dans les timeouts pour éviter les closures périmées
+  var saveTimerRef       = useRef(null);
+  var isSavingRef        = useRef(false);   // mutex : empêche deux sauvegardes simultanées
+  var pendingSaveRef     = useRef(false);   // une modification est arrivée pendant une sauvegarde
+  var lastSavedRef       = useRef(null);
+  var isLoadingData      = useRef(false);
+  var userRef            = useRef(null);
+  var prevDataRef        = useRef(null);
+  var latestDataRef      = useRef(data);    // toujours synchronisé avec le state React
+  var currentSheetIdRef  = useRef(null);    // miroir de currentSheetId pour éviter les closures périmées
 
-  // Keep latestDataRef in sync with every render
+  // Toujours à jour
   useEffect(function() { latestDataRef.current = data; });
+  useEffect(function() { currentSheetIdRef.current = currentSheetId; }, [currentSheetId]);
 
   // Load user from localStorage
   useEffect(function() {
@@ -5513,28 +5516,23 @@ function App() {
     } catch(e) {}
   }, []);
 
-  // Sync userRef with user state + expose globally for PhotoZone
   useEffect(function() { userRef.current = user; window._wgeCurrentUser = user; }, [user]);
 
-  // Vérifier que les tables Supabase existent au démarrage
   useEffect(function() {
     fetch(SUPA_URL + "/rest/v1/feuilles_controle?limit=0",
       { headers: { "apikey": SUPA_KEY, "Authorization": "Bearer " + SUPA_KEY } })
     .then(function(res) {
-      if (res.status === 404) {
-        console.warn("[Rapport] ⚠️ Table feuilles_controle introuvable dans ce projet Supabase. Exécutez le SQL dans le bon projet.");
-      }
+      if (res.status === 404) console.warn("[Rapport] ⚠️ Table feuilles_controle introuvable.");
     }).catch(function(){});
   }, []);
 
-  // Lire ?ref= et &task= dans l'URL au chargement de la page
   useEffect(function() {
     try {
       var params = new URLSearchParams(window.location.search);
       var urlRef = params.get("ref");
       var urlTask = params.get("task") || "";
       if (!urlRef) return;
-      isLoadingData.current = true; // AVANT tout setData pour éviter la race condition
+      isLoadingData.current = true;
       setData(function(prev) {
         var n = Object.assign({}, prev);
         n.meta = Object.assign({}, prev.meta, { ref: urlRef, nom_tache: urlTask });
@@ -5544,79 +5542,152 @@ function App() {
     } catch(e) { isLoadingData.current = false; }
   }, []);
 
-  // ── Auto-save : données texte (debounce 1.5s) ─────────────────────────────
+  // ── Fusion des URLs Storage dans les données les plus récentes ────────────
+  // Après l'upload, on ne peut pas utiliser result.data tel quel (snapshot périmé).
+  // On prend latestDataRef (texte à jour) et on y injecte uniquement les URL Storage.
+  function mergeStorageUrls(latestData, dataWithUrls) {
+    var result = JSON.parse(JSON.stringify(latestData));
+
+    function mergePhotoArr(latestArr, storageArr) {
+      return (latestArr||[]).map(function(p, i) {
+        if (!p) return p;
+        var sp = storageArr && storageArr[i];
+        if (!sp) return p;
+        var merged = Object.assign({}, p);
+        if (sp.url && !sp.url.startsWith("data:") && p.url && p.url.startsWith("data:"))
+          merged.url = sp.url;
+        if (sp.drawingUrl && !sp.drawingUrl.startsWith("data:") && p.drawingUrl && p.drawingUrl.startsWith("data:"))
+          merged.drawingUrl = sp.drawingUrl;
+        return merged;
+      });
+    }
+    function mergePhotoMap(latestMap, storageMap) {
+      var m = Object.assign({}, latestMap);
+      Object.keys(storageMap||{}).forEach(function(k) {
+        m[k] = mergePhotoArr(m[k]||[], storageMap[k]||[]);
+      });
+      return m;
+    }
+    function mergeDocArr(latestArr, storageArr) {
+      return (latestArr||[]).map(function(d, i) {
+        if (!d) return d;
+        var sd = storageArr && storageArr[i];
+        if (sd && sd.url && !sd.url.startsWith("data:") && d.url && d.url.startsWith("data:"))
+          return Object.assign({}, d, { url: sd.url });
+        return d;
+      });
+    }
+
+    if (dataWithUrls.dc && result.dc)
+      result.dc.photos = mergePhotoMap(result.dc.photos, (dataWithUrls.dc||{}).photos);
+    if (dataWithUrls.ac && result.ac)
+      result.ac.photos = mergePhotoMap(result.ac.photos, (dataWithUrls.ac||{}).photos);
+    if (dataWithUrls.savPhotos)
+      result.savPhotos = mergePhotoMap(result.savPhotos, dataWithUrls.savPhotos);
+    if (dataWithUrls.maintenanceVisites) {
+      (dataWithUrls.maintenanceVisites||[]).forEach(function(sv, vi) {
+        if (!result.maintenanceVisites||!result.maintenanceVisites[vi]) return;
+        result.maintenanceVisites[vi].photos = mergePhotoMap(
+          result.maintenanceVisites[vi].photos, sv.photos||{});
+        result.maintenanceVisites[vi].photosGenerales = mergePhotoArr(
+          result.maintenanceVisites[vi].photosGenerales, sv.photosGenerales);
+      });
+    }
+    if (dataWithUrls.photosGenerales)
+      result.photosGenerales = mergePhotoArr(result.photosGenerales, dataWithUrls.photosGenerales);
+    if (dataWithUrls.admin && dataWithUrls.admin.sections && result.admin && result.admin.sections) {
+      Object.keys(dataWithUrls.admin.sections||{}).forEach(function(sk) {
+        if (!result.admin.sections[sk]) return;
+        result.admin.sections[sk].docs = mergeDocArr(
+          result.admin.sections[sk].docs, (dataWithUrls.admin.sections[sk]||{}).docs);
+      });
+    }
+    return result;
+  }
+
+  // ── Fonction de sauvegarde unifiée ────────────────────────────────────────
+  async function doSave() {
+    // Mutex : si une sauvegarde est déjà en cours, marquer et sortir
+    if (isSavingRef.current) { pendingSaveRef.current = true; return; }
+    isSavingRef.current = true;
+    pendingSaveRef.current = false;
+
+    try {
+      if (isLoadingData.current) return;
+      var d = latestDataRef.current; // snapshot du moment
+      var ref = d.meta.ref;
+      if (!ref || ref.trim().length < 2) { setSaveStatus("idle"); return; }
+      setSaveStatus("saving");
+
+      // ① Upload des base64 vers Storage
+      var uploadResult = await uploadAllBase64ToStorage(ref, d);
+
+      // ② Recombiner : texte le plus récent + URLs Storage (evite la perte de saisie)
+      var dataToSave;
+      if (uploadResult.changed) {
+        dataToSave = mergeStorageUrls(latestDataRef.current, uploadResult.data);
+        // Mettre à jour le state React pour éviter les re-uploads
+        setData(function(prev) { return mergeStorageUrls(prev, uploadResult.data); });
+        latestDataRef.current = dataToSave; // anticiper avant le prochain render
+      } else {
+        dataToSave = latestDataRef.current; // toujours le plus récent
+      }
+
+      // ③ Sauvegarder dans Supabase
+      var sheetId = currentSheetIdRef.current;
+      var ok = false;
+      if (sheetId) {
+        ok = await supaUpdate(sheetId, dataToSave);
+      } else {
+        var label = "Rapport " + new Date().toLocaleDateString("fr-BE", { day:"2-digit", month:"2-digit", year:"numeric" });
+        var created = await supaCreate(ref, label, dataToSave);
+        if (created) { setCurrentSheetId(created.id); currentSheetIdRef.current = created.id; ok = true; sheetId = created.id; }
+      }
+
+      // ④ Journal d'audit
+      if (ok && userRef.current && sheetId) {
+        var slim = makeSlimCtrlData(dataToSave);
+        var prevSlim = prevDataRef.current;
+        var changes = [];
+        if (prevSlim) {
+          if (JSON.stringify(prevSlim.meta||{}) !== JSON.stringify(dataToSave.meta||{})) changes.push("Infos chantier");
+          if (JSON.stringify((prevSlim.dc||{}).items||{}) !== JSON.stringify((dataToSave.dc||{}).items||{})) changes.push("DC");
+          if (JSON.stringify((prevSlim.ac||{}).items||{}) !== JSON.stringify((dataToSave.ac||{}).items||{})) changes.push("AC");
+          if (JSON.stringify(prevSlim.admin||{}) !== JSON.stringify(dataToSave.admin||{})) changes.push("Admin");
+        }
+        if (!prevSlim || changes.length) {
+          supaCtrlSaveVersion(ref, sheetId, slim, userRef.current, changes.join(" | ") || "Sauvegarde");
+          supaCtrlLogAudit(ref, sheetId, userRef.current, "save", { label: changes.join(" | ") || "Sauvegarde" });
+        }
+        prevDataRef.current = slim;
+      }
+
+      setSaveStatus(ok ? "saved" : "error");
+      setTimeout(function(){ setSaveStatus("idle"); }, 4000);
+
+    } catch(err) {
+      console.error("[doSave] erreur:", err);
+      setSaveStatus("error");
+      setTimeout(function(){ setSaveStatus("idle"); }, 4000);
+    } finally {
+      isSavingRef.current = false;
+      // Si des modifications sont arrivées pendant la sauvegarde → relancer
+      if (pendingSaveRef.current) {
+        saveTimerRef.current = setTimeout(doSave, 400);
+      }
+    }
+  }
+
+  // ── Déclencheur unique : surveille TOUTES les modifications ───────────────
   useEffect(function() {
     if (isLoadingData.current) return;
     var ref = data.meta.ref;
     if (!ref || ref.trim().length < 2) { setSaveStatus("idle"); return; }
-    if (textSaveTimer.current) clearTimeout(textSaveTimer.current);
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     setSaveStatus("saving");
-    textSaveTimer.current = setTimeout(async function() {
-      if (isLoadingData.current) { setSaveStatus("idle"); return; }
-      var currentData = latestDataRef.current;
-      var ok = false;
-      if (currentSheetId) {
-        ok = await supaUpdate(currentSheetId, currentData);
-      } else {
-        var label = "Rapport " + new Date().toLocaleDateString("fr-BE", { day:"2-digit", month:"2-digit", year:"numeric" });
-        var created = await supaCreate(ref, label, currentData);
-        if (created) { setCurrentSheetId(created.id); ok = true; }
-      }
-      if (ok && userRef.current && currentSheetId) {
-        var slim = makeSlimCtrlData(currentData);
-        var prevSlim = prevDataRef.current;
-        if (!prevSlim || JSON.stringify(prevSlim.meta||{}) !== JSON.stringify((currentData.meta||{})) ||
-            JSON.stringify(prevSlim.dc||{}) !== JSON.stringify(currentData.dc||{}) ||
-            JSON.stringify(prevSlim.ac||{}) !== JSON.stringify(currentData.ac||{})) {
-          var changes = [];
-          if (prevSlim && JSON.stringify(prevSlim.meta||{}) !== JSON.stringify(currentData.meta||{})) changes.push("Infos chantier");
-          if (prevSlim && JSON.stringify((prevSlim.dc||{}).items||{}) !== JSON.stringify((currentData.dc||{}).items||{})) changes.push("DC");
-          if (prevSlim && JSON.stringify((prevSlim.ac||{}).items||{}) !== JSON.stringify((currentData.ac||{}).items||{})) changes.push("AC");
-          if (prevSlim && JSON.stringify(prevSlim.admin||{}) !== JSON.stringify(currentData.admin||{})) changes.push("Admin");
-          var chgLabel = changes.join(" | ");
-          if (!prevSlim || chgLabel) {
-            supaCtrlSaveVersion(ref, currentSheetId, slim, userRef.current, chgLabel || "Sauvegarde");
-            supaCtrlLogAudit(ref, currentSheetId, userRef.current, "save", { label: chgLabel || "Sauvegarde" });
-          }
-          prevDataRef.current = slim;
-        }
-      }
-      setSaveStatus(ok ? "saved" : "error");
-      setTimeout(function(){ setSaveStatus("idle"); }, 4000);
-    }, 1500);
-    return function() { if (textSaveTimer.current) clearTimeout(textSaveTimer.current); };
-  }, [data.meta, data.dc?.items, data.dc?.observations, data.dc?.journeesCloturees,
-      data.ac?.onduleurs, data.ac?.items, data.ac?.observations, data.ac?.journeesCloturees,
-      data.sav, data.admin?.rgieConformite, data.admin?.notes, data.admin?.sections,
-      data.maintenanceVisites, currentSheetId]);
-
-  // ── Auto-save : photos (debounce 2.5s — upload Storage d'abord) ───────────
-  useEffect(function() {
-    if (isLoadingData.current) return;
-    var ref = latestDataRef.current.meta.ref;
-    if (!ref || ref.trim().length < 2) return;
-    if (photoSaveTimer.current) clearTimeout(photoSaveTimer.current);
-    setSaveStatus("saving");
-    photoSaveTimer.current = setTimeout(async function() {
-      if (isLoadingData.current) { setSaveStatus("idle"); return; }
-      var currentData = latestDataRef.current;
-      // Upload base64 vers Storage (no-op si déjà des URLs storage)
-      var result = await uploadAllBase64ToStorage(currentData.meta.ref, currentData);
-      if (result.changed) {
-        // Mettre à jour le state avec les URLs (évite re-upload au prochain save)
-        setData(function(prev) { return deepMerge(prev, result.data); });
-        currentData = result.data;
-      }
-      var ok = false;
-      if (currentSheetId) {
-        ok = await supaUpdate(currentSheetId, currentData);
-      }
-      setSaveStatus(ok ? "saved" : (currentSheetId ? "error" : "idle"));
-      if (ok) setTimeout(function(){ setSaveStatus("idle"); }, 4000);
-    }, 2500);
-    return function() { if (photoSaveTimer.current) clearTimeout(photoSaveTimer.current); };
-  }, [data.dc?.photos, data.ac?.photos, data.savPhotos, data.maintenanceVisites,
-      data.photosGenerales, data.admin?.sections, currentSheetId]);
+    saveTimerRef.current = setTimeout(doSave, 800);
+    return function() { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
+  }, [data]); // surveille TOUT — texte ET photos
 
   // Load from Supabase — charge la feuille la plus récente pour ce ref
   async function loadData(ref, urlTask) {
