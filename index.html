@@ -55,6 +55,12 @@ button { font-family: inherit; cursor: pointer; }
   pointer-events: none !important;
   opacity: 0.6;
 }
+/* Lightbox overlay is position:fixed and must always be fully interactive */
+.photo-lightbox-overlay,
+.photo-lightbox-overlay * {
+  pointer-events: all !important;
+  opacity: 1 !important;
+}
 .locked-section .check-item {
   pointer-events: none !important;
   opacity: 0.7;
@@ -291,10 +297,107 @@ const WA_GROUP = "https://chat.whatsapp.com/FTR311YfUk2L4HgNOE0wIX";
 // ── Supabase ──────────────────────────────────────────
 const SUPA_URL = "https://qdepdtwrokazceyecege.supabase.co";
 const SUPA_KEY = "sb_publishable_U6PddofdvgpD5IgU4ZsPdg_wqB-5Scw";
+const SUPA_STORAGE_BUCKET = "rapport-photos";
 const GOOGLE_CLIENT_ID = "765677431332-2leuvo90bvhnmid77hml6cj230av8eao.apps.googleusercontent.com";
 const ALLOWED_DOMAIN = "we-green.be";
 const ALLOWED_DOMAINS = ["we-green.be", "we-green.fr"];
 function isWGEEmail(email) { return !!email && ALLOWED_DOMAINS.some(function(d){ return email.endsWith("@"+d); }); }
+
+// ── Supabase Storage helpers ──────────────────────────────────────────────────
+// Upload un data: URL (image ou fichier) vers Supabase Storage → retourne l'URL publique ou le data: original si échec
+async function uploadFileToStorage(ref, catKey, dataUrl, fileName, mimeType) {
+  if (!dataUrl || !dataUrl.startsWith("data:")) return dataUrl;
+  try {
+    var fetchRes = await fetch(dataUrl);
+    var blob = await fetchRes.blob();
+    var mime = mimeType || blob.type || "application/octet-stream";
+    var ext = mime === "image/jpeg" ? "jpg" : mime === "image/png" ? "png" : mime === "application/pdf" ? "pdf" :
+              mime.includes("excel") || mime.includes("spreadsheet") ? "xlsx" : "bin";
+    var safeName = (fileName || "file").replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 60);
+    var path = encodeURIComponent(ref) + "/" + catKey + "/" + Date.now() + "-" + safeName + "." + ext;
+    var uploadRes = await fetch(SUPA_URL + "/storage/v1/object/" + SUPA_STORAGE_BUCKET + "/" + path, {
+      method: "POST",
+      headers: { "apikey": SUPA_KEY, "Authorization": "Bearer " + SUPA_KEY, "Content-Type": mime, "x-upsert": "true" },
+      body: blob
+    });
+    if (uploadRes.ok) return SUPA_URL + "/storage/v1/object/public/" + SUPA_STORAGE_BUCKET + "/" + path;
+    console.warn("[Storage] upload failed (" + uploadRes.status + "), keeping data URL");
+    return dataUrl;
+  } catch(e) {
+    console.warn("[Storage] upload error, keeping data URL:", e);
+    return dataUrl;
+  }
+}
+
+// Parcourt toutes les photos du rapport et upload les base64 vers Storage
+// Retourne { data: updatedData, changed: bool }
+async function uploadAllBase64ToStorage(ref, data) {
+  var changed = false;
+  var d = JSON.parse(JSON.stringify(data)); // deep clone
+
+  async function processPhotoMap(map) {
+    var newMap = {};
+    for (var catKey of Object.keys(map || {})) {
+      var arr = map[catKey] || [];
+      newMap[catKey] = await Promise.all(arr.map(async function(p) {
+        if (!p || !p.url) return p;
+        var np = p;
+        if (p.url && p.url.startsWith("data:")) {
+          var u = await uploadFileToStorage(ref, catKey, p.url, p.name);
+          if (u !== p.url) { np = Object.assign({}, np, { url: u }); changed = true; }
+        }
+        if (p.drawingUrl && p.drawingUrl.startsWith("data:")) {
+          var du = await uploadFileToStorage(ref, "draw_" + catKey, p.drawingUrl, "draw-" + (p.name||"img"));
+          if (du !== p.drawingUrl) { np = Object.assign({}, np, { drawingUrl: du }); changed = true; }
+        }
+        return np;
+      }));
+    }
+    return newMap;
+  }
+
+  async function processPhotoArray(arr) {
+    return Promise.all((arr||[]).map(async function(p) {
+      if (!p || !p.url || !p.url.startsWith("data:")) return p;
+      var u = await uploadFileToStorage(ref, "general", p.url, p.name);
+      if (u !== p.url) { changed = true; return Object.assign({}, p, { url: u }); }
+      return p;
+    }));
+  }
+
+  // DC photos
+  if (d.dc && d.dc.photos) d.dc.photos = await processPhotoMap(d.dc.photos);
+  // AC photos
+  if (d.ac && d.ac.photos) d.ac.photos = await processPhotoMap(d.ac.photos);
+  // SAV photos
+  if (d.savPhotos) d.savPhotos = await processPhotoMap(d.savPhotos);
+  // Maintenance visits photos
+  if (d.maintenanceVisites) {
+    for (var vi = 0; vi < d.maintenanceVisites.length; vi++) {
+      var v = d.maintenanceVisites[vi];
+      if (v.photos) d.maintenanceVisites[vi].photos = await processPhotoMap(v.photos);
+      if (v.photosGenerales) d.maintenanceVisites[vi].photosGenerales = await processPhotoArray(v.photosGenerales);
+    }
+  }
+  // Photos générales du chantier
+  if (d.photosGenerales) d.photosGenerales = await processPhotoArray(d.photosGenerales);
+  // Admin docs (can be PDFs etc.)
+  if (d.admin && d.admin.sections) {
+    for (var sk of Object.keys(d.admin.sections)) {
+      var sec = d.admin.sections[sk];
+      if (sec && sec.docs) {
+        d.admin.sections[sk].docs = await Promise.all(sec.docs.map(async function(doc) {
+          if (!doc || !doc.url || !doc.url.startsWith("data:")) return doc;
+          var u = await uploadFileToStorage(ref, "admin_" + sk, doc.url, doc.name, doc.type);
+          if (u !== doc.url) { changed = true; return Object.assign({}, doc, { url: u }); }
+          return doc;
+        }));
+      }
+    }
+  }
+
+  return { data: d, changed: changed };
+}
 
 // ── Supabase multi-feuilles ──────────────────────────────
 async function supaLoadList(ref) {
@@ -424,11 +527,17 @@ async function supaCtrlLogAudit(ref, sheetId, user, action, detail) {
 
 async function supaCtrlLoadAudit(ref, sheetId) {
   try {
-    var res = await fetch(SUPA_URL + "/rest/v1/audit_log?ref=eq." + encodeURIComponent(ref + "_ctrl") +
-      "&select=id,user_email,user_name,action,detail,created_at&order=created_at.desc&limit=60",
+    // If sheetId provided, filter by sheetId-specific ref; otherwise load all entries for this ref
+    var auditRef = sheetId ? (ref + "_ctrl") : ref;
+    var filterPart = sheetId
+      ? "ref=eq." + encodeURIComponent(ref + "_ctrl")
+      : "ref=like." + encodeURIComponent(ref + "%");
+    var res = await fetch(SUPA_URL + "/rest/v1/audit_log?" + filterPart +
+      "&select=id,user_email,user_name,action,detail,created_at&order=created_at.desc&limit=100",
       { headers: { "apikey": SUPA_KEY, "Authorization": "Bearer " + SUPA_KEY } });
+    if (!res.ok) { console.warn("[Audit] load failed:", res.status, await res.text()); return []; }
     var rows = await res.json(); return Array.isArray(rows) ? rows : [];
-  } catch(e) { return []; }
+  } catch(e) { console.warn("[Audit] load error:", e); return []; }
 }
 
 function makeSlimCtrlData(data) {
@@ -722,9 +831,21 @@ function makeDefaultData() {
           acConfig: { configSysteme: false, creationCentrale: false, connexionInternet: false, inviterClient: false, expliquerClient: false },
           acSchemas: { schemaUnifiliaire: false, schemaPosition: false, tgbtClient: false, tableauWegreen: false, onduleurBorne: false, compteur: false, terre: false, nommages: false },
           items: makeDefaultACItems(), photos: makeDefaultACPhotos(), observations: "", signatureName: "", heureFin: "", journeesCloturees: [] },
+    admin: {
+      rgieConformite: "",
+      notes: "",
+      customSections: [],
+      sections: {
+        rgie:      { docs: [], note: "" },
+        asbuilt:   { docs: [], note: "" },
+        grd:       { docs: [], note: "" },
+        stabilite: { docs: [], note: "" }
+      }
+    },
     sav: [],
     savPhotos: {},
-    maintenanceVisites: []
+    maintenanceVisites: [],
+    photosGenerales: []
   };
 }
 
@@ -1296,7 +1417,7 @@ function PhotoZone({ catKey, label, items, onAdd, onDelete, onUpdate, onReorder,
 
       {/* ── Lightbox ────────────────────────────────────────────────────── */}
       {previewIdx!==null && items[previewIdx] && items[previewIdx].url && (
-        <div onClick={function(e){ if(e.target===e.currentTarget && !previewZoomed) closePreview(); }}
+        <div className="photo-lightbox-overlay" onClick={function(e){ if(e.target===e.currentTarget && !previewZoomed) closePreview(); }}
           style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.93)", zIndex:9998, display:"flex", flexDirection:"column" }}>
 
           {/* Top bar */}
@@ -3443,6 +3564,324 @@ function SAVCard({ sav, idx, onChange, onDelete, photos, setPhotos }) {
   );
 }
 
+// ── AdminTab ───────────────────────────────────────────────────────────────────
+var ADMIN_SECTIONS_DEF = [
+  { key: "rgie",      label: "📋 Rapport de conformité RGIE",  color: "#8e44ad" },
+  { key: "asbuilt",   label: "📐 Dossiers AS-Built",           color: "#2980b9" },
+  { key: "grd",       label: "🔌 Documents GRD",               color: "#16a085" },
+  { key: "stabilite", label: "🏗️ Rapport de stabilité",       color: "#c0392b" },
+];
+
+var CUSTOM_SECTION_COLORS = ["#e67e22","#1abc9c","#3498db","#e91e63","#607d8b","#795548","#ff5722","#9c27b0"];
+var FILE_ICONS = { pdf:"📄", xlsx:"📊", xls:"📊", dwg:"📐", dxf:"📐", docx:"📝", doc:"📝", png:"🖼️", jpg:"🖼️", jpeg:"🖼️", default:"📎" };
+function fileIcon(name) { var ext = (name||"").split(".").pop().toLowerCase(); return FILE_ICONS[ext] || FILE_ICONS.default; }
+function fmtSize(bytes) { if (!bytes) return ""; if (bytes < 1024) return bytes + " o"; if (bytes < 1048576) return (bytes/1024).toFixed(0) + " Ko"; return (bytes/1048576).toFixed(1) + " Mo"; }
+
+// ── Single document section (extracted to avoid hooks-inside-map issue) ──────
+function AdminSection({ secDef, sec, isUp, editNote, noteVal, setNoteVal,
+    onFiles, onRemoveDoc, onSaveNote, onEditNote, onSectionNoteChange, onDeleteSection }) {
+  var [dragOver, setDragOver] = React.useState(false);
+  var fileInputRef = React.useRef();
+  var docs = (sec && sec.docs) || [];
+
+  return (
+    <div style={{ background: WHITE, border: "1px solid " + (dragOver ? secDef.color : BORDER),
+      borderRadius: 10, marginBottom: 10, overflow: "hidden",
+      boxShadow: dragOver ? "0 0 0 3px " + secDef.color + "33" : "none",
+      transition: "border-color 0.15s, box-shadow 0.15s" }}>
+
+      {/* Header */}
+      <div style={{ background: secDef.color + "12", borderBottom: "1px solid " + secDef.color + "33",
+        padding: "10px 14px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div style={{ fontWeight: 700, fontSize: 12, color: secDef.color, display: "flex", alignItems: "center", gap: 6 }}>
+          {secDef.label}
+          {docs.length > 0 && <span style={{ background: secDef.color + "22", borderRadius: 10, padding: "1px 8px", fontSize: 11 }}>{docs.length}</span>}
+        </div>
+        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          {onDeleteSection && (
+            <button onClick={onDeleteSection} title="Supprimer cette section"
+              style={{ background: "none", border: "none", color: "#bbb", cursor: "pointer",
+                fontSize: 15, padding: "2px 6px", lineHeight: 1 }}>✕</button>
+          )}
+          <button onClick={function(){ fileInputRef.current && fileInputRef.current.click(); }}
+            style={{ background: secDef.color, color: WHITE, border: "none", borderRadius: 7,
+              padding: "5px 12px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
+            {isUp ? "⏳" : "➕ Ajouter"}
+          </button>
+        </div>
+      </div>
+
+      <input ref={fileInputRef} type="file" multiple
+        accept=".pdf,.xlsx,.xls,.csv,.dwg,.dxf,.docx,.doc,.png,.jpg,.jpeg,.gif,.svg,.zip,.rar"
+        style={{ display: "none" }}
+        onChange={function(e){ if(e.target.files&&e.target.files.length) onFiles(Array.from(e.target.files)); e.target.value=""; }} />
+
+      {/* Drop zone */}
+      <div
+        onDragOver={function(e){ e.preventDefault(); setDragOver(true); }}
+        onDragEnter={function(e){ e.preventDefault(); setDragOver(true); }}
+        onDragLeave={function(e){ if (!e.currentTarget.contains(e.relatedTarget)) setDragOver(false); }}
+        onDrop={function(e){ e.preventDefault(); setDragOver(false); var ff=Array.from(e.dataTransfer.files||[]); if(ff.length) onFiles(ff); }}
+        style={{ padding: "10px 14px", background: dragOver ? secDef.color + "08" : "transparent", transition: "background 0.15s", minHeight: docs.length === 0 ? 72 : "auto" }}>
+
+        {docs.length === 0 && (
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+            padding: "10px 0", color: dragOver ? secDef.color : "#ccc", fontSize: 12,
+            fontWeight: dragOver ? 700 : 400, gap: 4, pointerEvents: "none", userSelect: "none" }}>
+            <span style={{ fontSize: 26 }}>{dragOver ? "⬇️" : "📂"}</span>
+            {dragOver ? "Déposez vos fichiers ici" : "Glissez-déposez ou cliquez « Ajouter »"}
+          </div>
+        )}
+
+        {docs.map(function(doc, di) {
+          var isEditingNote = editNote && editNote.sKey === secDef.key && editNote.docIdx === di;
+          return (
+            <div key={doc.id || di} style={{ display: "flex", alignItems: "flex-start", gap: 10,
+              padding: "8px 0", borderBottom: di < docs.length-1 ? "1px solid #f0f0ec" : "none" }}>
+              <div style={{ fontSize: 22, flexShrink: 0, lineHeight: 1.3 }}>{fileIcon(doc.name)}</div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, wordBreak: "break-word" }}>{doc.name}</div>
+                <div style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>
+                  {fmtSize(doc.size)}{doc.uploadedBy && " · 👤 " + doc.uploadedBy}
+                  {doc.addedAt && " · " + new Date(doc.addedAt).toLocaleDateString("fr-BE", { day:"2-digit", month:"2-digit", year:"numeric" })}
+                </div>
+                {isEditingNote ? (
+                  <div style={{ marginTop: 6 }}>
+                    <input type="text" value={noteVal} onChange={function(e){ setNoteVal(e.target.value); }}
+                      placeholder="Note sur ce document…" style={{ width: "100%", fontSize: 12 }}
+                      onKeyDown={function(e){ if(e.key==="Enter") onSaveNote(secDef.key, di); if(e.key==="Escape") onEditNote(null); }}
+                      autoFocus />
+                    <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
+                      <button onClick={function(){ onSaveNote(secDef.key, di); }}
+                        style={{ background: GREEN, color: WHITE, border: "none", borderRadius: 5, padding: "3px 10px", fontSize: 12, cursor: "pointer" }}>✓</button>
+                      <button onClick={function(){ onEditNote(null); }}
+                        style={{ background: BORDER, color: MUTED, border: "none", borderRadius: 5, padding: "3px 10px", fontSize: 12, cursor: "pointer" }}>✕</button>
+                    </div>
+                  </div>
+                ) : doc.note ? (
+                  <div onClick={function(){ onEditNote({sKey:secDef.key,docIdx:di}); setNoteVal(doc.note); }}
+                    style={{ marginTop: 4, fontSize: 12, color: "#555", background: "#f8f8f6", borderRadius: 5,
+                      padding: "4px 8px", cursor: "pointer", borderLeft: "2px solid " + secDef.color }}>
+                    📝 {doc.note}
+                  </div>
+                ) : (
+                  <button onClick={function(){ onEditNote({sKey:secDef.key,docIdx:di}); setNoteVal(""); }}
+                    style={{ marginTop: 4, background: "none", border: "none", color: MUTED, fontSize: 11,
+                      cursor: "pointer", padding: 0, textDecoration: "underline" }}>+ Ajouter une note</button>
+                )}
+              </div>
+              <div style={{ display: "flex", gap: 5, flexShrink: 0, alignItems: "center" }}>
+                {doc.url && (
+                  <a href={doc.url} download={doc.name} target="_blank"
+                    style={{ background: "#e8f4fd", border: "1px solid #aed6f1", color: "#2980b9",
+                      borderRadius: 5, padding: "4px 9px", fontSize: 12, textDecoration: "none", fontWeight: 600 }}>⬇</a>
+                )}
+                <button onClick={function(){ onRemoveDoc(secDef.key, doc.id||String(di)); }}
+                  style={{ background: "#fdecea", border: "1px solid #f1948a", color: "#c0392b",
+                    borderRadius: 5, padding: "4px 8px", fontSize: 12, cursor: "pointer", minHeight: 0 }}>🗑</button>
+              </div>
+            </div>
+          );
+        })}
+        {docs.length > 0 && dragOver && (
+          <div style={{ textAlign: "center", padding: "8px 0", color: secDef.color, fontWeight: 700, fontSize: 12 }}>⬇️ Déposez pour ajouter</div>
+        )}
+      </div>
+
+      {/* Section note */}
+      <div style={{ padding: "0 14px 10px" }}>
+        <textarea value={(sec && sec.note) || ""}
+          onChange={function(e){ onSectionNoteChange(secDef.key, e.target.value); }}
+          placeholder={"Note sur " + secDef.label.replace(/^[^\s]+\s/,"")} rows={2}
+          style={{ width: "100%", resize: "vertical", fontSize: 12, color: "#444" }} />
+      </div>
+    </div>
+  );
+}
+
+function AdminTab({ data, setData }) {
+  var admin = data.admin || { rgieConformite: "", notes: "", sections: {}, customSections: [] };
+  var [uploading, setUploading] = useState({});
+  var [editNote, setEditNote] = useState(null);
+  var [noteVal, setNoteVal] = useState("");
+  var [newSectionName, setNewSectionName] = useState("");
+  var [newSectionColor, setNewSectionColor] = useState(CUSTOM_SECTION_COLORS[0]);
+  var [addingSection, setAddingSection] = useState(false);
+
+  function setAdmin(updater) {
+    setData(function(prev) {
+      var a = typeof updater === "function" ? updater(prev.admin || {}) : updater;
+      return Object.assign({}, prev, { admin: a });
+    });
+  }
+  function setSection(sKey, updater) {
+    setAdmin(function(a) {
+      var sections = Object.assign({}, a.sections || {});
+      sections[sKey] = typeof updater === "function" ? updater(sections[sKey] || { docs: [], note: "" }) : updater;
+      return Object.assign({}, a, { sections: sections });
+    });
+  }
+  function getSection(sKey) { return ((admin.sections||{})[sKey]) || { docs: [], note: "" }; }
+
+  var customSections = admin.customSections || [];
+  var conformite = admin.rgieConformite || "";
+
+  async function handleFiles(sKey, files) {
+    setUploading(function(u){ return Object.assign({}, u, { [sKey]: true }); });
+    var uploaderName = (window._wgeCurrentUser && window._wgeCurrentUser.name) || "";
+    var added = [];
+    for (var i = 0; i < files.length; i++) {
+      var f = files[i];
+      var dataUrl = await new Promise(function(res) {
+        var r = new FileReader(); r.onload = function(e){ res(e.target.result); }; r.readAsDataURL(f);
+      });
+      added.push({ id: Date.now().toString(36) + Math.random().toString(36).slice(2,5),
+        name: f.name, type: f.type, size: f.size, url: dataUrl,
+        note: "", addedAt: new Date().toISOString(), uploadedBy: uploaderName });
+    }
+    setSection(sKey, function(s){ return Object.assign({}, s, { docs: (s.docs||[]).concat(added) }); });
+    setUploading(function(u){ var n=Object.assign({},u); delete n[sKey]; return n; });
+  }
+  function removeDoc(sKey, docId) {
+    if (!window.confirm("Supprimer ce document ?")) return;
+    setSection(sKey, function(s){ return Object.assign({}, s, { docs: (s.docs||[]).filter(function(d){ return d.id !== docId; }) }); });
+  }
+  function saveDocNote(sKey, docIdx) {
+    setSection(sKey, function(s){
+      var docs = (s.docs||[]).slice(); docs[docIdx] = Object.assign({}, docs[docIdx], { note: noteVal });
+      return Object.assign({}, s, { docs: docs });
+    });
+    setEditNote(null);
+  }
+  function setSectionNote(sKey, val) {
+    setSection(sKey, function(s){ return Object.assign({}, s, { note: val }); });
+  }
+  function addCustomSection() {
+    var name = newSectionName.trim(); if (!name) return;
+    var key = "custom_" + Date.now().toString(36);
+    setAdmin(function(a){ return Object.assign({}, a, {
+      customSections: (a.customSections||[]).concat([{ key: key, label: name, color: newSectionColor }])
+    }); });
+    setNewSectionName(""); setAddingSection(false);
+  }
+  function deleteCustomSection(key) {
+    if (!window.confirm("Supprimer cette section et tous ses documents ?")) return;
+    setAdmin(function(a){
+      var cs = (a.customSections||[]).filter(function(s){ return s.key !== key; });
+      var sections = Object.assign({}, a.sections||{}); delete sections[key];
+      return Object.assign({}, a, { customSections: cs, sections: sections });
+    });
+  }
+
+  var allSections = ADMIN_SECTIONS_DEF.concat(customSections);
+
+  return (
+    <div style={{ paddingBottom: 40 }}>
+
+      {/* ── RGIE Conformité ── */}
+      <div style={{ background: WHITE, border: "1px solid " + BORDER, borderRadius: 10, padding: "14px 16px", marginBottom: 14 }}>
+        <div style={{ fontWeight: 700, fontSize: 13, color: "#8e44ad", marginBottom: 10, display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ fontSize: 18 }}>⚡</span> Statut RGIE
+        </div>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          {[["conforme","✅ Conforme","#27ae60","#eafaf1"],["non_conforme","❌ Non conforme","#e74c3c","#fdecea"],["en_attente","⏳ En attente","#f39c12","#fff8e8"]].map(function(opt) {
+            var isActive = conformite === opt[0];
+            return (
+              <button key={opt[0]} onClick={function(){ setAdmin(function(a){ return Object.assign({},a,{rgieConformite: isActive?"":opt[0]}); }); }}
+                style={{ padding: "9px 18px", borderRadius: 8, border: "2px solid " + (isActive ? opt[2] : BORDER),
+                  background: isActive ? opt[3] : WHITE, color: isActive ? opt[2] : MUTED,
+                  fontWeight: isActive ? 700 : 400, fontSize: 13, cursor: "pointer" }}>
+                {opt[1]}
+              </button>
+            );
+          })}
+        </div>
+        {conformite === "non_conforme" && (
+          <div style={{ marginTop: 10, padding: "8px 11px", background: "#fdecea", borderRadius: 7, fontSize: 12, color: "#c0392b", border: "1px solid #f1948a" }}>
+            ⚠️ Non-conformité RGIE — assurez-vous de joindre le rapport et les documents GRD correspondants.
+          </div>
+        )}
+      </div>
+
+      {/* ── Toutes les sections (fixes + custom) ── */}
+      {allSections.map(function(secDef) {
+        var isCustom = !!secDef.key.startsWith("custom_");
+        return (
+          <AdminSection key={secDef.key}
+            secDef={secDef}
+            sec={getSection(secDef.key)}
+            isUp={!!uploading[secDef.key]}
+            editNote={editNote}
+            noteVal={noteVal}
+            setNoteVal={setNoteVal}
+            onFiles={function(files){ handleFiles(secDef.key, files); }}
+            onRemoveDoc={removeDoc}
+            onSaveNote={saveDocNote}
+            onEditNote={setEditNote}
+            onSectionNoteChange={setSectionNote}
+            onDeleteSection={isCustom ? function(){ deleteCustomSection(secDef.key); } : null}
+          />
+        );
+      })}
+
+      {/* ── Ajouter une section personnalisée ── */}
+      <div style={{ background: WHITE, border: "2px dashed " + BORDER, borderRadius: 10, marginBottom: 14 }}>
+        {!addingSection ? (
+          <button onClick={function(){ setAddingSection(true); }}
+            style={{ width: "100%", padding: "13px", background: "none", border: "none",
+              color: MUTED, fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center",
+              justifyContent: "center", gap: 8, fontFamily: "inherit" }}>
+            <span style={{ fontSize: 18 }}>➕</span>
+            Ajouter un type de document libre
+          </button>
+        ) : (
+          <div style={{ padding: "14px 16px" }}>
+            <div style={{ fontWeight: 700, fontSize: 12, color: MUTED, marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+              Nouvelle section
+            </div>
+            <input type="text" value={newSectionName} onChange={function(e){ setNewSectionName(e.target.value); }}
+              placeholder="Ex: Permis d'urbanisme, Contrat EDF, Attestation TVA…"
+              style={{ width: "100%", marginBottom: 10, fontSize: 13 }}
+              onKeyDown={function(e){ if(e.key==="Enter") addCustomSection(); if(e.key==="Escape") setAddingSection(false); }}
+              autoFocus />
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: 11, color: MUTED, marginBottom: 6 }}>Couleur</div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {CUSTOM_SECTION_COLORS.map(function(c) {
+                  return (
+                    <button key={c} onClick={function(){ setNewSectionColor(c); }}
+                      style={{ width: 28, height: 28, borderRadius: "50%", background: c,
+                        border: newSectionColor === c ? "3px solid #333" : "2px solid #e8e8e4",
+                        cursor: "pointer", padding: 0, minHeight: 0, flexShrink: 0 }} />
+                  );
+                })}
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={addCustomSection}
+                style={{ background: newSectionColor, color: WHITE, border: "none", borderRadius: 8,
+                  padding: "9px 20px", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
+                ✓ Créer
+              </button>
+              <button onClick={function(){ setAddingSection(false); setNewSectionName(""); }}
+                style={{ background: "none", border: "1px solid " + BORDER, borderRadius: 8,
+                  padding: "9px 14px", fontSize: 13, color: MUTED, cursor: "pointer" }}>Annuler</button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ── Notes générales ── */}
+      <div style={{ background: WHITE, border: "1px solid " + BORDER, borderRadius: 10, padding: "12px 14px" }}>
+        <div style={{ fontWeight: 700, fontSize: 12, color: MUTED, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 8 }}>📝 Notes administratives générales</div>
+        <textarea value={admin.notes || ""} onChange={function(e){ setAdmin(function(a){ return Object.assign({},a,{notes:e.target.value}); }); }}
+          placeholder="Remarques générales, points administratifs en suspens, contacts GRD, dossier UREC…"
+          rows={5} style={{ width: "100%", resize: "vertical", fontSize: 13 }} />
+      </div>
+    </div>
+  );
+}
+
 function SAVTab({ data, setData }) {
   var savList = data.sav || [];
   var savPhotos = data.savPhotos || {};
@@ -3821,6 +4260,12 @@ function ProgressPanel({ data, onClose }) {
   (data.maintenanceVisites||[]).forEach(function(v, vi){
     collectFromMap(v.photos||{});
   });
+  // Photos générales du chantier (simple array, not a map)
+  (data.photosGenerales||[]).forEach(function(p) {
+    if (!p || !p.url) return;
+    allPhotos.push({ url:p.url, name:p.name||"", addedAt:p.addedAt||null,
+      catKey:"photos_generales", tab:"Général", tabColor:"#6c3483", section:"Photos générales", cat:"Photo" });
+  });
 
   // Collect journées clôturées
   var allJourneesMap = {}; // day -> []
@@ -3894,11 +4339,13 @@ function ProgressPanel({ data, onClose }) {
 
       <div style={{ flex:1, overflow:"auto", padding:"10px 12px" }}>
 
-        {totalPhotos === 0 && (
+        {totalPhotos === 0 && Object.keys(allJourneesMap).length === 0 && (
           <div style={{ textAlign:"center", padding:"48px 20px", color:MUTED }}>
-            <div style={{ fontSize:40, marginBottom:12 }}>📷</div>
-            <div style={{ fontWeight:600, fontSize:14 }}>Aucune photo uploadée</div>
-            <div style={{ fontSize:12, marginTop:4 }}>Les photos apparaîtront ici une fois uploadées dans les sections DC et AC</div>
+            <div style={{ fontSize:40, marginBottom:12 }}>📅</div>
+            <div style={{ fontWeight:600, fontSize:14 }}>Aucune activité enregistrée</div>
+            <div style={{ fontSize:12, marginTop:4 }}>
+              L'avancement est mis à jour automatiquement à chaque upload de photo ou clôture de journée
+            </div>
           </div>
         )}
 
@@ -4067,21 +4514,25 @@ function ProgressPanel({ data, onClose }) {
 
 // ── HistoryPanel (contrôle) ─────────────────────────────────────────────────
 function HistoryPanel({ ref: refChantier, sheetId, sheetLabel, onRestore, onClose }) {
-  var [tab, setTab] = useState("versions");
+  var [tab, setTab] = useState("audit");
   var [versions, setVersions] = useState([]);
   var [auditLog, setAuditLog] = useState([]);
   var [loading, setLoading] = useState(true);
   var [restoring, setRestoring] = useState(null);
 
   useEffect(function() {
-    if (!refChantier || !sheetId) return;
+    if (!refChantier) return;
     setLoading(true);
-    Promise.all([supaCtrlLoadVersions(refChantier, sheetId), supaCtrlLoadAudit(refChantier, sheetId)])
-      .then(function(res) {
-        setVersions(Array.isArray(res[0]) ? res[0] : []);
-        setAuditLog(Array.isArray(res[1]) ? res[1] : []);
-        setLoading(false);
-      });
+    var p1 = sheetId ? supaCtrlLoadVersions(refChantier, sheetId) : Promise.resolve([]);
+    var p2 = supaCtrlLoadAudit(refChantier, sheetId);
+    Promise.all([p1, p2]).then(function(res) {
+      setVersions(Array.isArray(res[0]) ? res[0] : []);
+      setAuditLog(Array.isArray(res[1]) ? res[1] : []);
+      setLoading(false);
+    }).catch(function(e) {
+      console.error("[HistoryPanel] load error:", e);
+      setLoading(false);
+    });
   }, [refChantier, sheetId]);
 
   function fmtDate(iso) {
@@ -4090,10 +4541,14 @@ function HistoryPanel({ ref: refChantier, sheetId, sheetLabel, onRestore, onClos
     return d.toLocaleDateString("fr-BE", { day:"2-digit", month:"2-digit", year:"numeric" }) + " " +
            d.toLocaleTimeString("fr-BE", { hour:"2-digit", minute:"2-digit" });
   }
-  var ACT = { save:"💾 Sauvegarde", photo_delete:"🗑️ Photo supprimée", restore:"↩️ Restauration", load:"👁️ Consultation" };
+  var ACT = {
+    save: "💾 Sauvegarde", photo_add: "📷 Photo ajoutée", photo_delete: "🗑️ Photo supprimée",
+    restore: "↩️ Restauration", load: "👁️ Consultation",
+    lock_dc: "🔒 DC verrouillé", lock_ac: "🔒 AC verrouillé"
+  };
 
   return (
-    <div style={{ position:"fixed", top:0, right:0, bottom:0, width:"min(460px,100vw)",
+    <div style={{ position:"fixed", top:0, right:0, bottom:0, width:"min(480px,100vw)",
       background:WHITE, boxShadow:"-4px 0 28px rgba(0,0,0,0.15)", zIndex:9990,
       display:"flex", flexDirection:"column", fontFamily:"inherit" }}>
       <div style={{ padding:"13px 16px", borderBottom:"1px solid #e8e8e4",
@@ -4102,19 +4557,20 @@ function HistoryPanel({ ref: refChantier, sheetId, sheetLabel, onRestore, onClos
         <div>
           <div style={{ fontWeight:700, fontSize:13 }}>📋 Historique — {refChantier}</div>
           {sheetLabel && <div style={{ fontSize:11, opacity:0.75, marginTop:2 }}>{sheetLabel}</div>}
+          {!sheetId && <div style={{ fontSize:11, opacity:0.6, marginTop:2 }}>Aucune feuille ouverte — journal global seulement</div>}
         </div>
         <button onClick={onClose} style={{ background:"rgba(255,255,255,0.18)", border:"none",
           color:WHITE, borderRadius:6, padding:"3px 9px", cursor:"pointer", fontSize:15 }}>✕</button>
       </div>
       <div style={{ display:"flex", borderBottom:"1px solid #e8e8e4", flexShrink:0 }}>
-        {[["versions","🔄 Versions ("+versions.length+")"],["audit","📝 Journal ("+auditLog.length+")"]].map(function(t) {
+        {(sheetId ? [["audit","📝 Journal"],["versions","🔄 Versions"]] : [["audit","📝 Journal"]]).map(function(t) {
           return <button key={t[0]} onClick={function(){ setTab(t[0]); }}
             style={{ flex:1, padding:"9px 4px", border:"none",
               background:tab===t[0]?"#f0f7f2":WHITE, color:tab===t[0]?GREEN:MUTED,
               fontWeight:tab===t[0]?700:400, cursor:"pointer", fontSize:12,
               borderBottom:tab===t[0]?"2.5px solid "+GREEN:"2.5px solid transparent",
               fontFamily:"inherit" }}>
-            {loading ? t[1].split(" ")[0] : t[1]}
+            {loading ? t[1] : t[1] + (t[0]==="audit" ? " ("+auditLog.length+")" : " ("+versions.length+")")}
           </button>;
         })}
       </div>
@@ -4145,7 +4601,7 @@ function HistoryPanel({ ref: refChantier, sheetId, sheetLabel, onRestore, onClos
                     </div>
                     {i > 0 && (
                       <button disabled={restoring===v.id} onClick={function(){
-                        if (!window.confirm("Restaurer la version du " + fmtDate(v.created_at) + " ? Note : les photos actuelles seront conservées.")) return;
+                        if (!window.confirm("Restaurer la version du " + fmtDate(v.created_at) + " ?")) return;
                         setRestoring(v.id);
                         onRestore(v.data, function(){ setRestoring(null); });
                       }} style={{ background:restoring===v.id?"#ccc":GREEN, color:WHITE, border:"none",
@@ -4162,15 +4618,22 @@ function HistoryPanel({ ref: refChantier, sheetId, sheetLabel, onRestore, onClos
         )}
         {!loading && tab === "audit" && (
           <div>
-            {auditLog.length === 0 && <div style={{ textAlign:"center", padding:40, color:"#bbb", fontSize:13 }}>Aucune entrée dans le journal</div>}
+            {auditLog.length === 0 && (
+              <div style={{ textAlign:"center", padding:40, color:"#bbb", fontSize:13 }}>
+                <div style={{ fontSize:36, marginBottom:8 }}>📋</div>
+                <div>Aucune entrée dans le journal</div>
+                <div style={{ fontSize:11, marginTop:6 }}>Les actions (sauvegardes, ajouts de photos…) apparaîtront ici</div>
+              </div>
+            )}
             {auditLog.map(function(entry) {
               var isDel = entry.action === "photo_delete";
+              var isLock = entry.action && entry.action.startsWith("lock_");
               return (
-                <div key={entry.id} style={{ background:isDel?"#fff8f7":"#fafaf8",
-                  border:"1px solid "+(isDel?"#fcd9d4":"#e8e8e4"), borderRadius:8,
+                <div key={entry.id} style={{ background:isDel?"#fff8f7":isLock?"#f0f7f2":"#fafaf8",
+                  border:"1px solid "+(isDel?"#fcd9d4":isLock?"#d4ead9":"#e8e8e4"), borderRadius:8,
                   padding:"8px 11px", marginBottom:6 }}>
                   <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:3 }}>
-                    <span style={{ fontSize:12, fontWeight:600, color:isDel?"#c0392b":"#1a1a1a" }}>
+                    <span style={{ fontSize:12, fontWeight:600, color:isDel?"#c0392b":isLock?GREEN:"#1a1a1a" }}>
                       {ACT[entry.action] || entry.action}
                     </span>
                     <span style={{ fontSize:10, color:"#aaa", marginLeft:"auto", whiteSpace:"nowrap" }}>
@@ -4179,6 +4642,12 @@ function HistoryPanel({ ref: refChantier, sheetId, sheetLabel, onRestore, onClos
                   </div>
                   <div style={{ fontSize:11, color:MUTED }}>👤 {entry.user_name}
                     <span style={{ color:"#bbb" }}> ({entry.user_email})</span></div>
+                  {entry.detail && entry.detail.label && (
+                    <div style={{ fontSize:11, color:"#555", background:"#f0f0ec",
+                      borderRadius:4, padding:"3px 7px", marginTop:4, fontStyle:"italic" }}>
+                      {entry.detail.label}
+                    </div>
+                  )}
                   {entry.detail && entry.detail.changes && entry.detail.changes.length > 0 && (
                     <div style={{ fontSize:11, color:"#555", background:"#f0f0ec",
                       borderRadius:4, padding:"4px 8px", marginTop:4 }}>
@@ -4194,6 +4663,7 @@ function HistoryPanel({ ref: refChantier, sheetId, sheetLabel, onRestore, onClos
     </div>
   );
 }
+
 
 // ── ChantierPanel (lecture seule — fiche complète) ─────────────────────────
 function ChantierPanel({ refChantier, onClose }) {
@@ -4562,7 +5032,9 @@ function SheetSelector({ refChantier, currentId, onSelect, onNew, onDelete }) {
                 {!isCurrent && (
                   <button onClick={function(e){
                     e.stopPropagation();
-                    if (!window.confirm("Supprimer \"" + (sheet.label||"Sans titre") + "\" ?\nCette action est irréversible.")) return;
+                    var sheetName = sheet.label || "Sans titre";
+                    if (!window.confirm("Supprimer \"" + sheetName + "\" ?\nCette action est irréversible.")) return;
+                    if (!window.confirm("⚠️ CONFIRMATION FINALE\n\nVous êtes sur le point de supprimer définitivement :\n\"" + sheetName + "\"\n\nToutes les données seront perdues. Continuer ?")) return;
                     supaDeleteSheet(sheet.id).then(function(ok) {
                       if (ok) {
                         setList(function(l){ return l.filter(function(s){ return s.id !== sheet.id; }); });
@@ -5022,11 +5494,16 @@ function App() {
   var [showHistory, setShowHistory] = useState(false);
   var [showChantier, setShowChantier] = useState(false);
   var [showProgress, setShowProgress] = useState(false);
-  var debounceRef = useRef(null);
+  var textSaveTimer = useRef(null);
+  var photoSaveTimer = useRef(null);
   var lastSavedRef = useRef(null);
   var isLoadingData = useRef(false); // guard : empêche la sauvegarde pendant le chargement
   var userRef = useRef(null);
   var prevDataRef = useRef(null);
+  var latestDataRef = useRef(data); // toujours à jour, lu dans les timeouts pour éviter les closures périmées
+
+  // Keep latestDataRef in sync with every render
+  useEffect(function() { latestDataRef.current = data; });
 
   // Load user from localStorage
   useEffect(function() {
@@ -5067,50 +5544,79 @@ function App() {
     } catch(e) { isLoadingData.current = false; }
   }, []);
 
-  // Auto-save on data change (debounce 2s)
+  // ── Auto-save : données texte (debounce 1.5s) ─────────────────────────────
   useEffect(function() {
-    // Ne pas sauvegarder pendant un chargement (guard vérifié dès le départ)
     if (isLoadingData.current) return;
     var ref = data.meta.ref;
     if (!ref || ref.trim().length < 2) { setSaveStatus("idle"); return; }
-    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (textSaveTimer.current) clearTimeout(textSaveTimer.current);
     setSaveStatus("saving");
-    debounceRef.current = setTimeout(async function() {
-      // Double vérification au moment du déclenchement réel
+    textSaveTimer.current = setTimeout(async function() {
       if (isLoadingData.current) { setSaveStatus("idle"); return; }
+      var currentData = latestDataRef.current;
       var ok = false;
       if (currentSheetId) {
-        ok = await supaUpdate(currentSheetId, data);
+        ok = await supaUpdate(currentSheetId, currentData);
       } else {
-        // Pas encore de feuille ouverte : créer automatiquement
         var label = "Rapport " + new Date().toLocaleDateString("fr-BE", { day:"2-digit", month:"2-digit", year:"numeric" });
-        var created = await supaCreate(ref, label, data);
+        var created = await supaCreate(ref, label, currentData);
         if (created) { setCurrentSheetId(created.id); ok = true; }
       }
       if (ok && userRef.current && currentSheetId) {
-        var slim = makeSlimCtrlData(data);
+        var slim = makeSlimCtrlData(currentData);
         var prevSlim = prevDataRef.current;
-        var label = "";
-        if (prevSlim) {
-          // Build a short change label
+        if (!prevSlim || JSON.stringify(prevSlim.meta||{}) !== JSON.stringify((currentData.meta||{})) ||
+            JSON.stringify(prevSlim.dc||{}) !== JSON.stringify(currentData.dc||{}) ||
+            JSON.stringify(prevSlim.ac||{}) !== JSON.stringify(currentData.ac||{})) {
           var changes = [];
-          if (JSON.stringify((prevSlim.meta||{})) !== JSON.stringify((data.meta||{}))) changes.push("Infos chantier");
-          if (JSON.stringify((prevSlim.dc||{}).items||{}) !== JSON.stringify((data.dc||{}).items||{})) changes.push("DC");
-          if (JSON.stringify((prevSlim.ac||{}).items||{}) !== JSON.stringify((data.ac||{}).items||{})) changes.push("AC");
-          label = changes.join(" | ");
+          if (prevSlim && JSON.stringify(prevSlim.meta||{}) !== JSON.stringify(currentData.meta||{})) changes.push("Infos chantier");
+          if (prevSlim && JSON.stringify((prevSlim.dc||{}).items||{}) !== JSON.stringify((currentData.dc||{}).items||{})) changes.push("DC");
+          if (prevSlim && JSON.stringify((prevSlim.ac||{}).items||{}) !== JSON.stringify((currentData.ac||{}).items||{})) changes.push("AC");
+          if (prevSlim && JSON.stringify(prevSlim.admin||{}) !== JSON.stringify(currentData.admin||{})) changes.push("Admin");
+          var chgLabel = changes.join(" | ");
+          if (!prevSlim || chgLabel) {
+            supaCtrlSaveVersion(ref, currentSheetId, slim, userRef.current, chgLabel || "Sauvegarde");
+            supaCtrlLogAudit(ref, currentSheetId, userRef.current, "save", { label: chgLabel || "Sauvegarde" });
+          }
+          prevDataRef.current = slim;
         }
-        if (!prevSlim || label) {
-          supaCtrlSaveVersion(ref, currentSheetId, slim, userRef.current, label);
-          supaCtrlLogAudit(ref, currentSheetId, userRef.current, "save", { label: label || "Sauvegarde" });
-        }
-        prevDataRef.current = slim;
       }
       setSaveStatus(ok ? "saved" : "error");
-      if (!ok) console.error("[Rapport] Save failed — check console for details");
       setTimeout(function(){ setSaveStatus("idle"); }, 4000);
-    }, 2000);
-    return function() { if (debounceRef.current) clearTimeout(debounceRef.current); };
-  }, [data, currentSheetId]);
+    }, 1500);
+    return function() { if (textSaveTimer.current) clearTimeout(textSaveTimer.current); };
+  }, [data.meta, data.dc?.items, data.dc?.observations, data.dc?.journeesCloturees,
+      data.ac?.onduleurs, data.ac?.items, data.ac?.observations, data.ac?.journeesCloturees,
+      data.sav, data.admin?.rgieConformite, data.admin?.notes, data.admin?.sections,
+      data.maintenanceVisites, currentSheetId]);
+
+  // ── Auto-save : photos (debounce 2.5s — upload Storage d'abord) ───────────
+  useEffect(function() {
+    if (isLoadingData.current) return;
+    var ref = latestDataRef.current.meta.ref;
+    if (!ref || ref.trim().length < 2) return;
+    if (photoSaveTimer.current) clearTimeout(photoSaveTimer.current);
+    setSaveStatus("saving");
+    photoSaveTimer.current = setTimeout(async function() {
+      if (isLoadingData.current) { setSaveStatus("idle"); return; }
+      var currentData = latestDataRef.current;
+      // Upload base64 vers Storage (no-op si déjà des URLs storage)
+      var result = await uploadAllBase64ToStorage(currentData.meta.ref, currentData);
+      if (result.changed) {
+        // Mettre à jour le state avec les URLs (évite re-upload au prochain save)
+        setData(function(prev) { return deepMerge(prev, result.data); });
+        currentData = result.data;
+      }
+      var ok = false;
+      if (currentSheetId) {
+        ok = await supaUpdate(currentSheetId, currentData);
+      }
+      setSaveStatus(ok ? "saved" : (currentSheetId ? "error" : "idle"));
+      if (ok) setTimeout(function(){ setSaveStatus("idle"); }, 4000);
+    }, 2500);
+    return function() { if (photoSaveTimer.current) clearTimeout(photoSaveTimer.current); };
+  }, [data.dc?.photos, data.ac?.photos, data.savPhotos, data.maintenanceVisites,
+      data.photosGenerales, data.admin?.sections, currentSheetId]);
 
   // Load from Supabase — charge la feuille la plus récente pour ce ref
   async function loadData(ref, urlTask) {
@@ -5351,12 +5857,23 @@ function App() {
         var bothLocked = data.meta.dcLocked && data.meta.acLocked;
         var hasSAVOrMaint = (data.sav||[]).length > 0 || (data.maintenanceVisites||[]).length > 0;
         var showExtraTabs = bothLocked || hasSAVOrMaint;
+        var isUserWGE = user && (user.type === "wge" || isWGEEmail(user.email));
+        var showAdmin = isUserWGE || bothLocked; // WGE : toujours visible — sous-traitants : seulement si verrouillé
+        var adminDocCount = (function(){
+          var a = data.admin||{}; var secs = a.sections||{};
+          var n = Object.values(secs).reduce(function(acc,s){ return acc + (s&&s.docs?s.docs.length:0); }, 0);
+          return n;
+        })();
         var tabs = [
           { id: "dc", emoji: "🟦", label: "DC", locked: data.meta.dcLocked, color: DC_COLOR, bg: DC_LIGHT,
             badge: dcComp.total > 0 ? dcComp.pct + "%" : null, nok: dcComp.nokCount },
           { id: "ac", emoji: "🟥", label: "AC", locked: data.meta.acLocked, color: AC_COLOR, bg: AC_LIGHT,
             badge: acComp.total > 0 ? acComp.pct + "%" : null, nok: acComp.nokCount },
         ];
+        if (showAdmin) {
+          tabs.push({ id: "admin", emoji: "📂", label: "Admin", color: "#8e44ad", bg: "#f5eef8",
+            badge: adminDocCount > 0 ? adminDocCount + " doc" + (adminDocCount>1?"s":"") : null, nok: 0 });
+        }
         if (showExtraTabs) {
           tabs.push({ id: "sav", emoji: "🔧", label: "SAV", color: "#f39c12", bg: "#fffdf0",
             badge: (data.sav||[]).length > 0 ? (data.sav||[]).length + " inter." : null, nok: 0 });
@@ -5397,6 +5914,9 @@ function App() {
         <div style={{ display: activeTab==="sav" ? "block" : "none" }}>
           <SAVTab data={data} setData={setData} />
         </div>
+        <div style={{ display: activeTab==="admin" ? "block" : "none" }}>
+          <AdminTab data={data} setData={setData} />
+        </div>
         <div style={{ display: activeTab==="maintenance" ? "block" : "none" }}>
           <MaintenanceTab data={data} setData={setData} />
         </div>
@@ -5418,6 +5938,33 @@ function App() {
         </div>
       </div>
 
+      {/* ── Photos générales du chantier ── */}
+      <div style={{ maxWidth: 800, margin: "0 auto", padding: "0 14px 24px" }}>
+        <div style={{ background: WHITE, border: "1px solid " + BORDER, borderRadius: 10, overflow: "hidden" }}>
+          <div style={{ background: "#f8f4ff", borderBottom: "1px solid #e0d5f5", padding: "10px 14px",
+            display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: 18 }}>🏗️</span>
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 13, color: "#6c3483" }}>Photos générales du chantier</div>
+              <div style={{ fontSize: 11, color: MUTED, marginTop: 1 }}>
+                Livraisons de matériel, état général, photos diverses non rattachées à une section DC ou AC
+              </div>
+            </div>
+          </div>
+          <div style={{ padding: "12px 14px" }}>
+            <PhotoZone catKey="photos_generales" label="📷 Photos générales"
+              items={data.photosGenerales||[]} hiRes={true} allSections={[]}
+              onAdd={function(arr){ setData(function(prev){ return Object.assign({},prev,{photosGenerales:(prev.photosGenerales||[]).concat(arr)}); }); }}
+              onDelete={function(i){ if(!window.confirm("Supprimer cette photo ?")) return;
+                setData(function(prev){ return Object.assign({},prev,{photosGenerales:(prev.photosGenerales||[]).filter(function(_,j){ return j!==i; })}); }); }}
+              onUpdate={function(i,u){ setData(function(prev){ var a=(prev.photosGenerales||[]).slice(); a[i]=u; return Object.assign({},prev,{photosGenerales:a}); }); }}
+              onReorder={function(f,t){ setData(function(prev){ var a=(prev.photosGenerales||[]).slice(); var it=a.splice(f,1)[0]; a.splice(t,0,it); return Object.assign({},prev,{photosGenerales:a}); }); }}
+              onReceiveCross={function(){}} onMoveTo={function(){}}
+            />
+          </div>
+        </div>
+      </div>
+
       {/* Debug info */}
       {!data.meta.ref && (
         <div id="no-print" style={{ textAlign: "center", padding: "20px 14px", color: MUTED, fontSize: 13 }}>
@@ -5426,7 +5973,7 @@ function App() {
       )}
 
       {/* History panel */}
-      {showHistory && data.meta.ref && currentSheetId && (
+      {showHistory && data.meta.ref && (
         <>
           <div onClick={function(){ setShowHistory(false); }}
             style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.25)", zIndex:9989 }} />
