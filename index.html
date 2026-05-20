@@ -113,6 +113,10 @@ button { font-family: inherit; cursor: pointer; }
           <option value="Ronaldo (Instasol)">Ronaldo — Instasol</option>
           <option value="Manu (DM Électricité)">Manu — DM Électricité</option>
           <option value="Fast-Elec (Christophe)">Fast-Elec — Christophe &amp; team</option>
+          <option value="Oscar Campos">Oscar Campos</option>
+          <option value="Leimir">Leimir</option>
+          <option value="Konrad">Konrad</option>
+          <option value="Lohan">Lohan</option>
           <option value="__autre__">Autre — saisir le nom</option>
         </select>
         <input id="st-name-input" type="text" placeholder="Votre nom ou société…" style="width:100%; padding:9px 12px; border:1px solid #d0d0c8; border-radius:8px; font-size:14px; font-family:inherit; margin-top:8px; display:none; box-sizing:border-box;" />
@@ -147,7 +151,7 @@ document.addEventListener('click', function(e) {
   var ALLOWED_DOMAIN_PLAIN = "we-green.be";
   var ALLOWED_DOMAINS_PLAIN = ["we-green.be", "we-green.fr"];
   // Codes d'accès sous-traitants — identification uniquement, pas de protection de données sensibles
-  var ST_CODES = ["0479627511", "Wegreen001!"];
+  var ST_CODES = ["0479627511", "Wegreen001!", "Megreen001"];
 
   function parseJwtPlain(token) {
     try { return JSON.parse(window.atob(token.split(".")[1].replace(/-/g,"+").replace(/_/g,"/"))); } catch(e) { return {}; }
