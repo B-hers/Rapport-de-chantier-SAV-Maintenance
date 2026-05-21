@@ -843,7 +843,8 @@ function makeDefaultData() {
         rgie:      { docs: [], note: "" },
         asbuilt:   { docs: [], note: "" },
         grd:       { docs: [], note: "" },
-        stabilite: { docs: [], note: "" }
+        stabilite: { docs: [], note: "" },
+        fiches:    { docs: [], note: "" }
       }
     },
     sav: [],
@@ -2603,6 +2604,58 @@ function BorneCard({ index, item, onChange, onRemove, canRemove, photos, setPhot
 
 
 // ── ACTab ─────────────────────────────────────────────
+// ── ACTab helpers (defined at TOP LEVEL — critical: defining inside ACTab
+//    creates a new function reference on every render → React unmounts/remounts
+//    children including <input> fields → focus lost after every keystroke) ───
+function ACGrandTitre({ title, emoji, children }) {
+  return (
+    <div style={{ marginBottom: 18 }}>
+      <div style={{ background: AC_COLOR, color: WHITE, fontWeight: 700, fontSize: 14,
+        padding: "9px 14px", borderRadius: "10px 10px 0 0",
+        display: "flex", alignItems: "center", gap: 8 }}>
+        {emoji && <span>{emoji}</span>}<span>{title}</span>
+      </div>
+      <div style={{ border: "1px solid "+AC_BORDER, borderTop: "none",
+        borderRadius: "0 0 10px 10px", padding: "14px", background: WHITE }}>
+        {children}
+      </div>
+    </div>
+  );
+}
+function ACSousTitre({ children }) {
+  return <div style={{ fontWeight: 700, fontSize: 13, color: AC_COLOR,
+    borderBottom: "1.5px solid "+AC_LIGHT, paddingBottom: 7,
+    marginBottom: 12, marginTop: 4 }}>{children}</div>;
+}
+function ACCheckRow({ checked, onToggle, label }) {
+  return (
+    <div onClick={onToggle} style={{ display:"flex", alignItems:"center", gap:10,
+      padding:"8px 10px", borderRadius:7, marginBottom:5, cursor:"pointer",
+      background: checked ? "#f0fff4" : "#fafafa",
+      border: "1px solid "+(checked ? "#a8e6c0" : "#e8e8e4") }}>
+      <span style={{ fontSize:18 }}>{checked ? "☑" : "☐"}</span>
+      <span style={{ fontSize:14, fontWeight: checked ? 600 : 400 }}>{label}</span>
+    </div>
+  );
+}
+function ACPZ({ catKey, label, hiRes, acPhotos, setPhotos }) {
+  return <PhotoZone catKey={catKey} label={label} items={(acPhotos||{})[catKey]||[]}
+    hiRes={!!hiRes} allSections={[]}
+    onAdd={function(arr){ setPhotos(catKey, function(p){ return (p||[]).concat(arr); }); }}
+    onDelete={function(idx){ if(!window.confirm("Supprimer ?")) return;
+      setPhotos(catKey, function(p){ return (p||[]).filter(function(_,j){ return j!==idx; }); }); }}
+    onUpdate={function(idx,u){ setPhotos(catKey, function(p){ var a=[].concat(p||[]); a[idx]=u; return a; }); }}
+    onReorder={function(f,t){ setPhotos(catKey, function(p){
+      var a=[].concat(p||[]); var it=a.splice(f,1)[0]; a.splice(t,0,it); return a; }); }}
+    onReceiveCross={function(fk,fi){ var src=((acPhotos||{})[fk]||[])[fi]; if(!src) return;
+      setPhotos(catKey,function(p){ return (p||[]).concat([src]); });
+      setPhotos(fk,function(p){ return (p||[]).filter(function(_,j){ return j!==fi; }); }); }}
+    onMoveTo={function(fi,tk){ var src=((acPhotos||{})[catKey]||[])[fi]; if(!src) return;
+      setPhotos(tk,function(p){ return (p||[]).concat([src]); });
+      setPhotos(catKey,function(p){ return (p||[]).filter(function(_,j){ return j!==fi; }); }); }}
+  />;
+}
+
 function ACTab({ data, setData, locked, isWGE, onUnlock }) {
   var comp = calcACCompletion(data);
   var nokItems = collectNOK(data);
@@ -2672,58 +2725,6 @@ function ACTab({ data, setData, locked, isWGE, onUnlock }) {
   if (appareils.length === 0) appareils = [{type:"Onduleur", nom:""}];
 
   // ── helpers ─────────────────────────────────────────
-  function GrandTitre({ title, emoji, children }) {
-    return (
-      <div style={{ marginBottom: 18 }}>
-        <div style={{ background: AC_COLOR, color: WHITE, fontWeight: 700, fontSize: 14,
-          padding: "9px 14px", borderRadius: "10px 10px 0 0",
-          display: "flex", alignItems: "center", gap: 8 }}>
-          {emoji && <span>{emoji}</span>}<span>{title}</span>
-        </div>
-        <div style={{ border: "1px solid "+AC_BORDER, borderTop: "none",
-          borderRadius: "0 0 10px 10px", padding: "14px", background: WHITE }}>
-          {children}
-        </div>
-      </div>
-    );
-  }
-
-  function SousTitre({ children }) {
-    return <div style={{ fontWeight: 700, fontSize: 13, color: AC_COLOR,
-      borderBottom: "1.5px solid "+AC_LIGHT, paddingBottom: 7,
-      marginBottom: 12, marginTop: 4 }}>{children}</div>;
-  }
-
-  function PZ({ catKey, label, hiRes }) {
-    return <PhotoZone catKey={catKey} label={label} items={acPhotos[catKey]||[]}
-      hiRes={!!hiRes} allSections={[]}
-      onAdd={function(arr){ setPhotos(catKey, function(p){ return (p||[]).concat(arr); }); }}
-      onDelete={function(idx){ if(!window.confirm("Supprimer ?")) return;
-        setPhotos(catKey, function(p){ return (p||[]).filter(function(_,j){ return j!==idx; }); }); }}
-      onUpdate={function(idx,u){ setPhotos(catKey, function(p){ var a=[].concat(p||[]); a[idx]=u; return a; }); }}
-      onReorder={function(f,t){ setPhotos(catKey, function(p){
-        var a=[].concat(p||[]); var it=a.splice(f,1)[0]; a.splice(t,0,it); return a; }); }}
-      onReceiveCross={function(fk,fi){ var src=(acPhotos[fk]||[])[fi]; if(!src) return;
-        setPhotos(catKey,function(p){ return (p||[]).concat([src]); });
-        setPhotos(fk,function(p){ return (p||[]).filter(function(_,j){ return j!==fi; }); }); }}
-      onMoveTo={function(fi,tk){ var src=(acPhotos[catKey]||[])[fi]; if(!src) return;
-        setPhotos(tk,function(p){ return (p||[]).concat([src]); });
-        setPhotos(catKey,function(p){ return (p||[]).filter(function(_,j){ return j!==fi; }); }); }}
-    />;
-  }
-
-  function CheckRow({ checked, onToggle, label }) {
-    return (
-      <div onClick={onToggle} style={{ display:"flex", alignItems:"center", gap:10,
-        padding:"8px 10px", borderRadius:7, marginBottom:5, cursor:"pointer",
-        background: checked ? "#f0fff4" : "#fafafa",
-        border: "1px solid "+(checked ? "#a8e6c0" : "#e8e8e4") }}>
-        <span style={{ fontSize:18 }}>{checked ? "☑" : "☐"}</span>
-        <span style={{ fontSize:14, fontWeight: checked ? 600 : 400 }}>{label}</span>
-      </div>
-    );
-  }
-
   return (
     <div>
       {locked && <LockBanner tab="ac" onUnlock={onUnlock} isWGE={isWGE} />}
@@ -2732,7 +2733,7 @@ function ACTab({ data, setData, locked, isWGE, onUnlock }) {
       <NOKSummary nokItems={nokItems} tab="AC" />
 
       {/* 1 · Pré-chantier */}
-      <GrandTitre emoji="🔍" title="Pré-chantier">
+      <ACGrandTitre emoji="🔍" title="Pré-chantier">
         <div style={{ background: AC_LIGHT, borderRadius: 8, padding: "10px 14px", marginBottom: 12,
           border: "1px solid "+AC_BORDER, fontSize: 13 }}>
           <div style={{ fontWeight: 600, marginBottom: 6, color: "#444" }}>📋 Photos à inclure :</div>
@@ -2742,13 +2743,13 @@ function ACTab({ data, setData, locked, isWGE, onUnlock }) {
             <li>Numéro de série du compteur réseau</li>
           </ul>
         </div>
-        <PZ catKey="ac_pre_general" label="📷 Photos pré-chantier" hiRes={true} />
-      </GrandTitre>
+        <ACPZ acPhotos={acPhotos} setPhotos={setPhotos} catKey="ac_pre_general" label="📷 Photos pré-chantier" hiRes={true} />
+      </ACGrandTitre>
 
       {/* 2 · Installation électrique */}
-      <GrandTitre emoji="⚡" title="Installation électrique">
+      <ACGrandTitre emoji="⚡" title="Installation électrique">
 
-        <SousTitre>🔆 Onduleur / Batterie / Borne de recharge</SousTitre>
+        <ACSousTitre>🔆 Onduleur / Batterie / Borne de recharge</ACSousTitre>
         <div style={{ fontSize: 12, color: MUTED, marginBottom: 10 }}>
           📋 Pour chaque appareil : sélectionner le type, saisir le modèle et ajouter la fiche signalétique
         </div>
@@ -2777,7 +2778,7 @@ function ACTab({ data, setData, locked, isWGE, onUnlock }) {
                       fontSize:20, cursor:"pointer", padding:"0 4px", minHeight:0 }}>×</button>
                 )}
               </div>
-              <PZ catKey={photoKey}
+              <ACPZ acPhotos={acPhotos} setPhotos={setPhotos} catKey={photoKey}
                 label={"📷 Fiche signalétique — "+(app.type||"Onduleur")+(app.nom?" ("+app.nom+")":"")}
                 hiRes={true} />
             </div>
@@ -2789,7 +2790,7 @@ function ACTab({ data, setData, locked, isWGE, onUnlock }) {
           + Ajouter un onduleur / batterie / borne
         </button>
 
-        <SousTitre>🔋 Tableau(x) électriques</SousTitre>
+        <ACSousTitre>🔋 Tableau(x) électriques</ACSousTitre>
         <div style={{ fontSize: 12, color: MUTED, marginBottom: 10 }}>
           📋 Pour chaque tableau : inclure une photo <strong>sans couvercle</strong> + n° série compteur vert
         </div>
@@ -2821,7 +2822,7 @@ function ACTab({ data, setData, locked, isWGE, onUnlock }) {
                     fontSize:20, cursor:"pointer", padding:"0 4px", minHeight:0 }}>×</button>
                 )}
               </div>
-              <PZ catKey={photoKey}
+              <ACPZ acPhotos={acPhotos} setPhotos={setPhotos} catKey={photoKey}
                 label={"📷 "+(tab.type)+(tab.nom?" — "+tab.nom:"")}
                 hiRes={true} />
             </div>
@@ -2836,10 +2837,10 @@ function ACTab({ data, setData, locked, isWGE, onUnlock }) {
           color:AC_COLOR, borderRadius:8, fontSize:13, fontWeight:600, cursor:"pointer" }}>
           + Ajouter un TGBT / TD
         </button>
-      </GrandTitre>
+      </ACGrandTitre>
 
       {/* 3 · Mise à la terre */}
-      <GrandTitre emoji="🌍" title="Mise à la terre">
+      <ACGrandTitre emoji="🌍" title="Mise à la terre">
         {(function(){
           var sData = (data.ac.items||{}).mesureTerre || {};
           return (
@@ -2863,20 +2864,20 @@ function ACTab({ data, setData, locked, isWGE, onUnlock }) {
                     borderRadius:6, border:"1.5px solid "+AC_COLOR,
                     padding:"6px 10px", fontFamily:"inherit" }} />
               )}
-              <PZ catKey="mesure_terre_ph" label="📷 Photo de la mesure de terre" hiRes={true} />
+              <ACPZ acPhotos={acPhotos} setPhotos={setPhotos} catKey="mesure_terre_ph" label="📷 Photo de la mesure de terre" hiRes={true} />
             </div>
           );
         })()}
-      </GrandTitre>
+      </ACGrandTitre>
 
       {/* 4 · Après-chantier */}
-      <GrandTitre emoji="🏁" title="Après-chantier">
-        <PZ catKey="ac_post_tubages" label="📷 Tubages & câblage (état final)" hiRes={true} />
-        <PZ catKey="ac_post_tgbt"   label="📷 TGBT après modifications" hiRes={true} />
-      </GrandTitre>
+      <ACGrandTitre emoji="🏁" title="Après-chantier">
+        <ACPZ acPhotos={acPhotos} setPhotos={setPhotos} catKey="ac_post_tubages" label="📷 Tubages & câblage (état final)" hiRes={true} />
+        <ACPZ acPhotos={acPhotos} setPhotos={setPhotos} catKey="ac_post_tgbt"   label="📷 TGBT après modifications" hiRes={true} />
+      </ACGrandTitre>
 
       {/* 5 · Configuration */}
-      <GrandTitre emoji="⚙️" title="Configuration">
+      <ACGrandTitre emoji="⚙️" title="Configuration">
         {[
           ["configSysteme",    "Configuration du système"],
           ["creationCentrale", "Création de la centrale"],
@@ -2884,20 +2885,20 @@ function ACTab({ data, setData, locked, isWGE, onUnlock }) {
           ["inviterClient",    "Inviter le client sur la plateforme"],
           ["expliquerClient",  "Expliquer au client l'usage de la plateforme"],
         ].map(function(item){
-          return <CheckRow key={item[0]} checked={!!acConfig[item[0]]}
+          return <ACCheckRow key={item[0]} checked={!!acConfig[item[0]]}
             onToggle={function(){ setAcConfig(item[0]); }} label={item[1]} />;
         })}
         <div style={{ marginTop:12 }}>
-          <PZ catKey="ac_config_ph" label="📷 Photos configuration" hiRes={true} />
+          <ACPZ acPhotos={acPhotos} setPhotos={setPhotos} catKey="ac_config_ph" label="📷 Photos configuration" hiRes={true} />
         </div>
-      </GrandTitre>
+      </ACGrandTitre>
 
       {/* 6 · Schéma Unifilaire */}
-      <GrandTitre emoji="📐" title="Schéma Unifilaire">
-        <CheckRow checked={!!acSchemas.schemaUnifiliaire}
+      <ACGrandTitre emoji="📐" title="Schéma Unifilaire">
+        <ACCheckRow checked={!!acSchemas.schemaUnifiliaire}
           onToggle={function(){ setAcSchemas("schemaUnifiliaire"); }}
           label="Schéma unifilaire" />
-        <CheckRow checked={!!acSchemas.schemaPosition}
+        <ACCheckRow checked={!!acSchemas.schemaPosition}
           onToggle={function(){ setAcSchemas("schemaPosition"); }}
           label="Schéma de position" />
 
@@ -2917,11 +2918,11 @@ function ACTab({ data, setData, locked, isWGE, onUnlock }) {
           </ul>
         </div>
 
-        <PZ catKey="ac_schema_ph" label="📷 Photos schéma unifilaire" hiRes={true} />
-      </GrandTitre>
+        <ACPZ acPhotos={acPhotos} setPhotos={setPhotos} catKey="ac_schema_ph" label="📷 Photos schéma unifilaire" hiRes={true} />
+      </ACGrandTitre>
 
       {/* 7 · Clôture de chantier */}
-      <GrandTitre emoji="🔒" title="Clôture de chantier">
+      <ACGrandTitre emoji="🔒" title="Clôture de chantier">
         {(function(){
           var sData = (data.ac.items||{}).clotureAC || {};
           return AC_SECTIONS.find(function(s){ return s.key==="clotureAC"; }).items.map(function(it){
@@ -2931,7 +2932,7 @@ function ACTab({ data, setData, locked, isWGE, onUnlock }) {
               onRemarkChange={function(v){ setItem("clotureAC",it.key+"Remarque",v); }} />;
           });
         })()}
-      </GrandTitre>
+      </ACGrandTitre>
 
       {/* Clôture de journée AC */}
       <CloturJourneeBlock
@@ -3574,6 +3575,7 @@ var ADMIN_SECTIONS_DEF = [
   { key: "asbuilt",   label: "📐 Dossiers AS-Built",           color: "#2980b9" },
   { key: "grd",       label: "🔌 Documents GRD",               color: "#16a085" },
   { key: "stabilite", label: "🏗️ Rapport de stabilité",       color: "#c0392b" },
+  { key: "fiches",    label: "📄 Fiches techniques",           color: "#e67e22" },
 ];
 
 var CUSTOM_SECTION_COLORS = ["#e67e22","#1abc9c","#3498db","#e91e63","#607d8b","#795548","#ff5722","#9c27b0"];
@@ -4188,6 +4190,9 @@ function ProgressPanel({ data, onClose }) {
 
   var [expandedDay, setExpandedDay] = useState(null);
   var [expandedSection, setExpandedSection] = useState(null);
+  var [zoomPhoto, setZoomPhoto]   = useState(null);  // { url, name, uploadedBy, section, tab }
+  var [zoomScale, setZoomScale]   = useState(1);
+  var [viewMode, setViewMode]     = useState("byDay"); // "byDay" | "byPerson"
 
   // Build label map for all photo categories
   var sectionLabels = {};
@@ -4318,7 +4323,52 @@ function ProgressPanel({ data, onClose }) {
       background:WHITE, boxShadow:"-4px 0 28px rgba(0,0,0,0.15)", zIndex:9990,
       display:"flex", flexDirection:"column", fontFamily:"inherit" }}>
 
-      {/* Header */}
+      {/* ── Zoom lightbox ── */}
+      {zoomPhoto && (
+        <div className="photo-lightbox-overlay"
+          onClick={function(e){ if(e.target===e.currentTarget) { setZoomPhoto(null); setZoomScale(1); } }}
+          style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.94)", zIndex:9999,
+            display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center" }}>
+          <div style={{ position:"absolute", top:12, right:12, display:"flex", gap:8, zIndex:1 }}>
+            <button onClick={function(){ setZoomScale(function(s){ return Math.min(s+0.5,4); }); }}
+              style={{ background:"rgba(255,255,255,0.15)", border:"1px solid rgba(255,255,255,0.3)",
+                color:WHITE, borderRadius:8, padding:"6px 14px", cursor:"pointer", fontSize:18, fontWeight:700, minHeight:0 }}>＋</button>
+            <button onClick={function(){ setZoomScale(function(s){ return Math.max(s-0.5,0.5); }); }}
+              style={{ background:"rgba(255,255,255,0.15)", border:"1px solid rgba(255,255,255,0.3)",
+                color:WHITE, borderRadius:8, padding:"6px 14px", cursor:"pointer", fontSize:18, fontWeight:700, minHeight:0 }}>－</button>
+            <button onClick={function(){ setZoomScale(1); }}
+              style={{ background:"rgba(255,255,255,0.15)", border:"1px solid rgba(255,255,255,0.3)",
+                color:WHITE, borderRadius:8, padding:"6px 12px", cursor:"pointer", fontSize:12, minHeight:0 }}>1:1</button>
+            <button onClick={function(){ setZoomPhoto(null); setZoomScale(1); }}
+              style={{ background:"rgba(255,255,255,0.18)", border:"none", color:WHITE,
+                borderRadius:8, padding:"6px 14px", cursor:"pointer", fontSize:20, fontWeight:700, minHeight:0 }}>✕</button>
+          </div>
+          <div style={{ overflow:"auto", maxWidth:"90vw", maxHeight:"80vh", display:"flex", alignItems:"flex-start", justifyContent:"flex-start" }}>
+            <img src={zoomPhoto.url} alt={zoomPhoto.name||""}
+              style={{ transform:"scale("+zoomScale+")", transformOrigin:"top left",
+                display:"block", maxWidth:zoomScale===1?"88vw":"none",
+                maxHeight:zoomScale===1?"78vh":"none", transition:"transform 0.2s" }} />
+          </div>
+          <div style={{ position:"absolute", bottom:16, left:0, right:0, textAlign:"center" }}>
+            {zoomPhoto.uploadedBy && (
+              <span style={{ background:"rgba(108,52,131,0.85)", color:WHITE, borderRadius:20,
+                padding:"4px 14px", fontSize:12, fontWeight:700, marginRight:8 }}>
+                👤 {zoomPhoto.uploadedBy}
+              </span>
+            )}
+            {(zoomPhoto.tab||zoomPhoto.section) && (
+              <span style={{ background:"rgba(0,0,0,0.6)", color:"#ccc", borderRadius:20, padding:"4px 14px", fontSize:11 }}>
+                {[zoomPhoto.tab, zoomPhoto.section].filter(Boolean).join(" — ")}
+              </span>
+            )}
+            <div style={{ marginTop:6, fontSize:11, color:"rgba(255,255,255,0.45)" }}>
+              Zoom : {Math.round(zoomScale*100)}% · cliquez en dehors pour fermer
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Panel header */}
       <div style={{ padding:"13px 16px", borderBottom:"1px solid #e8e8e4",
         display:"flex", alignItems:"center", justifyContent:"space-between",
         background:GREEN, color:WHITE, flexShrink:0 }}>
@@ -4331,6 +4381,23 @@ function ProgressPanel({ data, onClose }) {
         </div>
         <button onClick={onClose} style={{ background:"rgba(255,255,255,0.2)", border:"none",
           color:WHITE, borderRadius:6, padding:"4px 10px", cursor:"pointer", fontSize:16 }}>✕</button>
+      </div>
+
+      {/* View toggle */}
+      <div style={{ display:"flex", gap:0, flexShrink:0, borderBottom:"1px solid #e8e8e4" }}>
+        {[["byDay","📅 Par jour"],["byPerson","👤 Par intervenant"]].map(function(opt){
+          var active = viewMode===opt[0];
+          return (
+            <button key={opt[0]} onClick={function(){ setViewMode(opt[0]); }}
+              style={{ flex:1, padding:"8px 4px", border:"none", borderRadius:0, fontSize:11,
+                fontWeight:active?700:400, cursor:"pointer", fontFamily:"inherit",
+                background:active ? (opt[0]==="byPerson"?"#f5eef8":GREEN_LIGHT) : WHITE,
+                color:active ? (opt[0]==="byPerson"?"#6c3483":GREEN) : MUTED,
+                borderBottom:active?"2.5px solid "+(opt[0]==="byPerson"?"#6c3483":GREEN):"2.5px solid transparent" }}>
+              {opt[1]}
+            </button>
+          );
+        })}
       </div>
 
       {/* Info bar */}
@@ -4353,8 +4420,106 @@ function ProgressPanel({ data, onClose }) {
           </div>
         )}
 
-        {/* Days */}
-        {days.map(function(day) {
+        {/* ── VUE PAR INTERVENANT ── */}
+        {viewMode === "byPerson" && (function(){
+          // Collect all actors: uploaders + journée authors
+          var actorMap = {}; // name -> { photos: [], journees: [] }
+          allPhotos.forEach(function(p) {
+            var who = p.uploadedBy || "Inconnu";
+            if (!actorMap[who]) actorMap[who] = { photos:[], journees:[] };
+            actorMap[who].photos.push(p);
+          });
+          var allJourneesList = (data.dc.journeesCloturees||[]).concat(data.ac.journeesCloturees||[]);
+          allJourneesList.forEach(function(j) {
+            var who = j.auteur || "Inconnu";
+            if (!actorMap[who]) actorMap[who] = { photos:[], journees:[] };
+            actorMap[who].journees.push(j);
+          });
+          var actors = Object.keys(actorMap).sort();
+          if (actors.length === 0) return (
+            <div style={{ textAlign:"center", padding:"40px 20px", color:MUTED, fontSize:12 }}>Aucun intervenant identifié</div>
+          );
+          return actors.map(function(who) {
+            var actor = actorMap[who];
+            var isOpen = expandedDay === "actor_"+who;
+            // Group this person's photos by section
+            var secMap = {}; var secOrder = [];
+            actor.photos.forEach(function(p) {
+              var k = (p.tab||"?")+" — "+(p.section||"?");
+              if (!secMap[k]) { secMap[k] = { tab:p.tab, tabColor:p.tabColor, section:p.section, photos:[] }; secOrder.push(k); }
+              secMap[k].photos.push(p);
+            });
+            return (
+              <div key={who} style={{ marginBottom:10, borderRadius:9, border:"1px solid #e0d5f5", overflow:"hidden" }}>
+                <div onClick={function(){ setExpandedDay(isOpen ? null : "actor_"+who); }}
+                  style={{ padding:"10px 14px", background:isOpen?"#f5eef8":"#fafafa",
+                    cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+                  <div>
+                    <div style={{ fontWeight:800, fontSize:13, color:"#6c3483" }}>👤 {who}</div>
+                    <div style={{ fontSize:11, color:MUTED, marginTop:2, display:"flex", gap:10 }}>
+                      {actor.photos.length > 0 && <span>📷 {actor.photos.length} photo{actor.photos.length>1?"s":""}</span>}
+                      {actor.journees.length > 0 && <span>✅ {actor.journees.length} clôture{actor.journees.length>1?"s":""}</span>}
+                    </div>
+                  </div>
+                  <span style={{ color:MUTED, fontSize:12, transform:isOpen?"rotate(180deg)":"none", transition:"transform 0.2s" }}>▼</span>
+                </div>
+                {isOpen && (
+                  <div style={{ padding:"12px 14px", background:WHITE }}>
+                    {/* Journées de cette personne */}
+                    {actor.journees.map(function(j, ji) {
+                      var d = new Date(j.date+"T12:00:00");
+                      var dateStr = d.toLocaleDateString("fr-BE", { weekday:"long", day:"2-digit", month:"long" });
+                      return (
+                        <div key={ji} style={{ marginBottom:8, background:"#fff8e8",
+                          border:"1px solid #f39c1244", borderRadius:7, padding:"8px 10px", fontSize:11, color:"#856404" }}>
+                          ✅ Journée clôturée ({j.tab}) — {dateStr} {j.heure?"à "+j.heure:""}
+                          {j.note && <div style={{ marginTop:3, color:"#555", fontStyle:"italic" }}>{j.note}</div>}
+                        </div>
+                      );
+                    })}
+                    {/* Photos par section */}
+                    {secOrder.map(function(secKey, si) {
+                      var sec = secMap[secKey];
+                      var secOpen2 = expandedSection === "person_"+who+"_"+secKey;
+                      return (
+                        <div key={si} style={{ marginBottom:8 }}>
+                          <div onClick={function(){ setExpandedSection(secOpen2 ? null : "person_"+who+"_"+secKey); }}
+                            style={{ display:"flex", alignItems:"center", gap:8, padding:"7px 10px", borderRadius:7,
+                              cursor:"pointer", background:secOpen2?(sec.tabColor||"#888")+"12":"#f8f8f6",
+                              border:"1px solid "+((secOpen2 ? sec.tabColor||"#888" : "#e8e8e4")+"44") }}>
+                            <span style={{ width:8, height:8, borderRadius:"50%", background:sec.tabColor||"#888", flexShrink:0 }} />
+                            <span style={{ flex:1, fontWeight:600, fontSize:12 }}>{sec.tab} — {sec.section}</span>
+                            <span style={{ fontSize:11, color:sec.tabColor||"#888", fontWeight:700 }}>{sec.photos.length} photo{sec.photos.length>1?"s":""}</span>
+                            <span style={{ fontSize:10, color:MUTED, transform:secOpen2?"rotate(180deg)":"none" }}>▼</span>
+                          </div>
+                          {secOpen2 && (
+                            <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:6, padding:"8px 4px" }}>
+                              {sec.photos.map(function(p, pi) {
+                                var time = p.addedAt ? new Date(p.addedAt).toLocaleTimeString("fr-BE",{hour:"2-digit",minute:"2-digit"}) : "";
+                                return (
+                                  <div key={pi} style={{ borderRadius:7, overflow:"hidden", border:"1px solid "+BORDER, background:"#fafaf8" }}>
+                                    <img src={p.url} style={{ width:"100%", aspectRatio:"4/3", objectFit:"cover", display:"block", cursor:"zoom-in" }}
+                                      onClick={function(){ setZoomPhoto(Object.assign({},p,{section:sec.section,tab:sec.tab})); setZoomScale(1); }} />
+                                    <div style={{ padding:"4px 6px", background:"#f0f0ec", lineHeight:1.4 }}>
+                                      {time && <div style={{ fontSize:9, color:GREEN, fontWeight:700 }}>{time}</div>}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          });
+        })()}
+
+        {/* ── VUE PAR JOUR ── */}
+        {viewMode === "byDay" && days.map(function(day) {
           var dayPhotos = byDay[day];
           var isOpen = expandedDay === day;
           var sections = groupBySection(dayPhotos);
@@ -4464,21 +4629,21 @@ function ProgressPanel({ data, onClose }) {
                                   border:"1px solid "+BORDER, background:"#fafaf8" }}>
                                   <img src={p.url} alt={p.name}
                                     style={{ width:"100%", aspectRatio:"4/3",
-                                      objectFit:"cover", display:"block", cursor:"pointer" }}
-                                    onClick={function(){ window.open(p.url, "_blank"); }}
+                                      objectFit:"cover", display:"block", cursor:"zoom-in" }}
+                                    onClick={function(){ setZoomPhoto(Object.assign({},p,{section:s.section,tab:s.tab,tabColor:s.tabColor})); setZoomScale(1); }}
                                   />
-                                  <div style={{ fontSize:9, padding:"3px 5px",
-                                    background:"#f4f4f0", lineHeight:1.5 }}>
-                                    {time && <span style={{ color:GREEN, fontWeight:700, marginRight:3 }}>{time}</span>}
+                                  <div style={{ padding:"4px 6px", background:"#f0f0ec", lineHeight:1.4 }}>
                                     {p.uploadedBy && (
-                                      <span style={{ color:"#8e44ad", fontWeight:700 }}>
-                                        👤 {p.uploadedBy.split(" ")[0]}
-                                      </span>
+                                      <div style={{ fontSize:10, fontWeight:800, color:"#6c3483",
+                                        overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                                        👤 {p.uploadedBy}
+                                      </div>
                                     )}
+                                    {time && <div style={{ fontSize:9, color:GREEN, fontWeight:700 }}>{time}</div>}
                                     {!p.uploadedBy && p.name && (
-                                      <span style={{ color:MUTED, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", display:"block" }}>
+                                      <div style={{ fontSize:9, color:MUTED, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
                                         {p.name}
-                                      </span>
+                                      </div>
                                     )}
                                   </div>
                                 </div>
@@ -4496,7 +4661,7 @@ function ProgressPanel({ data, onClose }) {
         })}
 
         {/* Photos sans date */}
-        {noDate.length > 0 && (
+        {viewMode === "byDay" && noDate.length > 0 && (
           <div style={{ marginBottom:10, borderRadius:9, border:"1px dashed #e8e0b0", overflow:"hidden" }}>
             <div onClick={function(){ setExpandedDay(expandedDay==="nodate" ? null : "nodate"); }}
               style={{ padding:"10px 14px", background:"#fffdf0", cursor:"pointer",
@@ -4510,11 +4675,16 @@ function ProgressPanel({ data, onClose }) {
               <div style={{ display:"grid", gridTemplateColumns:"repeat(3, 1fr)", gap:6, padding:"10px" }}>
                 {noDate.map(function(p, pi) {
                   return (
-                    <img key={pi} src={p.url} alt={p.name}
-                      style={{ width:"100%", aspectRatio:"4/3", objectFit:"cover",
-                        borderRadius:6, cursor:"pointer" }}
-                      onClick={function(){ window.open(p.url, "_blank"); }}
-                    />
+                    <div key={pi} style={{ borderRadius:7, overflow:"hidden", border:"1px solid "+BORDER, background:"#fafaf8" }}>
+                      <img src={p.url} alt={p.name}
+                        style={{ width:"100%", aspectRatio:"4/3", objectFit:"cover", display:"block", cursor:"zoom-in" }}
+                        onClick={function(){ setZoomPhoto(p); setZoomScale(1); }}
+                      />
+                      <div style={{ padding:"4px 6px", background:"#f0f0ec", lineHeight:1.4 }}>
+                        {p.uploadedBy && <div style={{ fontSize:10, fontWeight:800, color:"#6c3483", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>👤 {p.uploadedBy}</div>}
+                        {!p.uploadedBy && p.name && <div style={{ fontSize:9, color:MUTED, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{p.name}</div>}
+                      </div>
+                    </div>
                   );
                 })}
               </div>
@@ -5299,6 +5469,184 @@ function CloturJourneeBlock({ tab, tabColor, journees, setJournees, locked }) {
   );
 }
 
+// ── generateAsBuilt : crée un PDF AS-Built dans une nouvelle fenêtre ─────────
+function generateAsBuilt(data, logoSrc) {
+  var ref     = data.meta.ref    || "—";
+  var client  = data.meta.client || "—";
+  var adresse = data.meta.adresse|| "—";
+  var date    = data.meta.dateControle || new Date().toISOString().slice(0,10);
+  var pm      = data.meta.pm     || "—";
+
+  // ── Collect photos per section ──
+  function collectSectionPhotos(photosMap, sectionDefs, tabLabel) {
+    var sections = [];
+    sectionDefs.forEach(function(s) {
+      var cats = s.photoCats || [];
+      cats.forEach(function(c) {
+        var photos = (photosMap[c.key]||[]).filter(function(p){ return p && p.url; });
+        if (photos.length > 0) sections.push({ tab:tabLabel, section:s.label.replace(/^\d+\s*·\s*/,""), cat:c.label, photos:photos });
+      });
+    });
+    return sections;
+  }
+
+  var dcSections = collectSectionPhotos(data.dc.photos||{}, DC_SECTIONS, "DC");
+  var acSections = collectSectionPhotos(data.ac.photos||{}, AC_SECTIONS, "AC");
+
+  // ── String photos ──
+  var stringPhotos = [];
+  for (var i=0; i<20; i++) {
+    var sp = (data.dc.photos||{})["string_ph_"+i];
+    if (sp && sp.length > 0) stringPhotos = stringPhotos.concat(sp.filter(function(p){ return p&&p.url; }).map(function(p){ return Object.assign({},p,{stringIdx:i}); }));
+  }
+  if (stringPhotos.length > 0) dcSections.push({ tab:"DC", section:"Strings", cat:"Strings", photos:stringPhotos });
+
+  // ── Photos générales ──
+  var generalPhotos = (data.photosGenerales||[]).filter(function(p){ return p&&p.url; });
+
+  // ── Admin docs ──
+  var adminSections = [];
+  var adminSecDefs = [
+    { key:"rgie",      label:"Rapport de conformité RGIE" },
+    { key:"asbuilt",   label:"Dossiers AS-Built" },
+    { key:"grd",       label:"Documents GRD" },
+    { key:"stabilite", label:"Rapport de stabilité" },
+    { key:"fiches",    label:"Fiches techniques" },
+  ];
+  var customSecs = (data.admin&&data.admin.customSections)||[];
+  customSecs.forEach(function(cs){ adminSecDefs.push({ key:cs.key, label:cs.label }); });
+  adminSecDefs.forEach(function(def) {
+    var sec = ((data.admin||{}).sections||{})[def.key];
+    if (sec && sec.docs && sec.docs.length > 0) adminSections.push({ label:def.label, docs:sec.docs, note:sec.note||"" });
+  });
+
+  // ── Build TOC ──
+  var tocItems = [];
+  if (dcSections.length > 0) tocItems.push({ title:"Couverture DC — Photos et installations", anchor:"sec-dc" });
+  if (acSections.length > 0) tocItems.push({ title:"Installation AC — Électricité", anchor:"sec-ac" });
+  if (generalPhotos.length > 0) tocItems.push({ title:"Photos générales du chantier", anchor:"sec-general" });
+  if (adminSections.length > 0) tocItems.push({ title:"Documents administratifs", anchor:"sec-admin" });
+
+  // ── Photo grid HTML ──
+  function photoGrid(photos) {
+    return '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin-top:10px">'
+      + photos.map(function(p){
+          var caption = [p.uploadedBy?"👤 "+p.uploadedBy:"", p.addedAt?new Date(p.addedAt).toLocaleDateString("fr-BE"):""].filter(Boolean).join(" · ");
+          return '<div style="break-inside:avoid"><img src="'+p.url+'" style="width:100%;border-radius:6px;border:1px solid #ddd;display:block" />'
+            + (caption ? '<div style="font-size:10px;color:#666;margin-top:4px;text-align:center">'+caption+'</div>' : '')
+            + '</div>';
+        }).join("")
+      + '</div>';
+  }
+
+  function sectionHTML(sections) {
+    return sections.map(function(s){
+      return '<div style="break-inside:avoid;margin-bottom:24px">'
+        + '<h3 style="font-size:13px;font-weight:700;color:#1B6B3A;margin:0 0 8px;padding-bottom:4px;border-bottom:1px solid #d4ead9">'+s.tab+' — '+s.section+'</h3>'
+        + photoGrid(s.photos)
+        + '</div>';
+    }).join("");
+  }
+
+  function adminHTML() {
+    return adminSections.map(function(s){
+      var docsHtml = s.docs.map(function(d){
+        var ext = (d.name||"").split(".").pop().toLowerCase();
+        var isImg = ["jpg","jpeg","png","gif","webp"].indexOf(ext) >= 0;
+        var isPdf = ext === "pdf";
+        return '<div style="break-inside:avoid;margin-bottom:14px;border:1px solid #e8e8e4;border-radius:8px;overflow:hidden">'
+          + (isImg ? '<img src="'+d.url+'" style="width:100%;max-height:300px;object-fit:contain;display:block;background:#f4f4f0" />' : "")
+          + (isPdf ? '<iframe src="'+d.url+'" style="width:100%;height:500px;border:none;display:block"></iframe>' : "")
+          + (!isImg&&!isPdf ? '<div style="padding:16px;text-align:center;color:#888;font-size:13px">📎 '+d.name+'</div>' : "")
+          + '<div style="padding:6px 10px;background:#f8f8f6;font-size:10px;color:#555">'
+            + '<strong>'+d.name+'</strong>'
+            + (d.uploadedBy?" · 👤 "+d.uploadedBy:"")
+            + (d.note?' · <em>'+d.note+'</em>':"")
+          + '</div></div>';
+      }).join("");
+      return '<div style="break-inside:avoid;margin-bottom:24px">'
+        + '<h3 style="font-size:13px;font-weight:700;color:#8e44ad;margin:0 0 8px;padding-bottom:4px;border-bottom:1px solid #e0d5f5">'+s.label+'</h3>'
+        + (s.note?'<p style="font-size:11px;color:#555;font-style:italic;margin-bottom:8px">'+s.note+'</p>':"")
+        + docsHtml
+        + '</div>';
+    }).join("");
+  }
+
+  var html = '<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8">'
+    + '<title>AS-Built — '+ref+'</title>'
+    + '<style>'
+    + 'body{margin:0;padding:0;font-family:Arial,Helvetica,sans-serif;color:#1a1a1a;background:#fff}'
+    + 'h1,h2,h3{margin:0}p{margin:0}'
+    + '.page{width:210mm;min-height:297mm;padding:20mm 20mm 16mm;box-sizing:border-box;page-break-after:always}'
+    + '.cover{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center}'
+    + '@media print{'
+    + '  .page{page-break-after:always;padding:14mm 16mm}'
+    + '  img{max-width:100%}'
+    + '  .no-print{display:none}'
+    + '  iframe{height:400px}'
+    + '}'
+    + '.section-title{font-size:16px;font-weight:700;color:#fff;background:#1B6B3A;padding:10px 16px;border-radius:6px;margin-bottom:16px}'
+    + '</style>'
+    + '</head><body>'
+
+    // ── Cover page ──
+    + '<div class="page cover">'
+    + '<img src="'+logoSrc+'" style="height:80px;object-fit:contain;margin-bottom:32px" />'
+    + '<div style="font-size:28px;font-weight:700;color:#1B6B3A;margin-bottom:8px">Dossier AS-Built</div>'
+    + '<div style="font-size:18px;font-weight:600;color:#333;margin-bottom:32px">'+ref+'</div>'
+    + '<div style="border:1px solid #d4ead9;border-radius:12px;padding:24px 32px;background:#f0f7f2;text-align:left;min-width:320px">'
+    + '<table style="border-collapse:collapse;width:100%">'
+    + '<tr><td style="padding:6px 12px 6px 0;font-size:12px;color:#666;font-weight:600">Client</td><td style="padding:6px 0;font-size:13px;font-weight:700">'+client+'</td></tr>'
+    + '<tr><td style="padding:6px 12px 6px 0;font-size:12px;color:#666;font-weight:600">Adresse</td><td style="padding:6px 0;font-size:12px">'+adresse+'</td></tr>'
+    + '<tr><td style="padding:6px 12px 6px 0;font-size:12px;color:#666;font-weight:600">Date</td><td style="padding:6px 0;font-size:12px">'+date+'</td></tr>'
+    + '<tr><td style="padding:6px 12px 6px 0;font-size:12px;color:#666;font-weight:600">Project Manager</td><td style="padding:6px 0;font-size:12px">'+pm+'</td></tr>'
+    + '</table></div>'
+    + '<div style="margin-top:40px;font-size:11px;color:#999">Généré automatiquement depuis We Green — Rapport de Chantier</div>'
+    + '</div>'
+
+    // ── Table of contents ──
+    + (tocItems.length > 0 ? '<div class="page">'
+      + '<h2 style="font-size:20px;font-weight:700;color:#1B6B3A;margin-bottom:24px;padding-bottom:8px;border-bottom:2px solid #d4ead9">Table des matières</h2>'
+      + '<ol style="padding-left:20px;line-height:2.2">'
+      + tocItems.map(function(t,i){ return '<li style="font-size:14px"><a href="#'+t.anchor+'" style="color:#1B6B3A;text-decoration:none">'+t.title+'</a></li>'; }).join("")
+      + '</ol></div>' : "")
+
+    // ── DC sections ──
+    + (dcSections.length > 0 ? '<div class="page" id="sec-dc">'
+      + '<div class="section-title">🟦 DC — Couverture &amp; Câblage</div>'
+      + sectionHTML(dcSections)
+      + '</div>' : "")
+
+    // ── AC sections ──
+    + (acSections.length > 0 ? '<div class="page" id="sec-ac">'
+      + '<div class="section-title">🟥 AC — Installation électrique</div>'
+      + sectionHTML(acSections)
+      + '</div>' : "")
+
+    // ── Photos générales ──
+    + (generalPhotos.length > 0 ? '<div class="page" id="sec-general">'
+      + '<div class="section-title">🏗️ Photos générales du chantier</div>'
+      + photoGrid(generalPhotos)
+      + '</div>' : "")
+
+    // ── Admin documents ──
+    + (adminSections.length > 0 ? '<div class="page" id="sec-admin">'
+      + '<div class="section-title">📂 Documents administratifs</div>'
+      + adminHTML()
+      + '</div>' : "")
+
+    + '<div class="no-print" style="position:fixed;bottom:20px;right:20px;display:flex;gap:10px">'
+    + '<button onclick="window.print()" style="background:#1B6B3A;color:#fff;border:none;border-radius:8px;padding:12px 24px;font-size:14px;font-weight:700;cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,0.2)">🖨️ Enregistrer / Imprimer PDF</button>'
+    + '<button onclick="window.close()" style="background:#888;color:#fff;border:none;border-radius:8px;padding:12px 16px;font-size:14px;cursor:pointer">✕ Fermer</button>'
+    + '</div>'
+    + '</body></html>';
+
+  var win = window.open("", "_blank");
+  if (!win) { alert("Veuillez autoriser les popups pour générer le PDF AS-Built."); return; }
+  win.document.write(html);
+  win.document.close();
+}
+
 // ── WhatsAppNotify ────────────────────────────────────────────────────────────
 function WhatsAppNotify({ data, tab, dcComp, acComp }) {
   var [copied, setCopied] = useState(false);
@@ -5512,6 +5860,7 @@ function App() {
   var isSavingRef        = useRef(false);   // mutex : empêche deux sauvegardes simultanées
   var pendingSaveRef     = useRef(false);   // une modification est arrivée pendant une sauvegarde
   var lastSavedRef       = useRef(null);
+  var lastDbUpdatedAt    = useRef(null); // updated_at de la dernière version lue/écrite en DB
   var isLoadingData      = useRef(false);
   var userRef            = useRef(null);
   var prevDataRef        = useRef(null);
@@ -5619,6 +5968,86 @@ function App() {
     return result;
   }
 
+  // ── Fusion multi-utilisateurs ─────────────────────────────────────────────
+  // Stratégie :
+  //   • Texte/checklist   → version locale gagne (dernier à sauvegarder)
+  //   • Photos            → UNION par URL  (aucune photo n'est jamais perdue)
+  //   • Tableaux avec id  → UNION par id  (SAV, journées, maintenance…)
+  function mergePhotosFromDB(localData, dbData) {
+    if (!dbData) return localData;
+    var merged = JSON.parse(JSON.stringify(localData));
+
+    function unionPhotoMap(localMap, dbMap) {
+      var result = Object.assign({}, localMap);
+      Object.keys(dbMap||{}).forEach(function(catKey) {
+        var lp = (localMap||{})[catKey] || [];
+        var dp = (dbMap||{})[catKey]    || [];
+        var localUrls = new Set(lp.map(function(p){ return p&&p.url; }).filter(Boolean));
+        var toAdd = dp.filter(function(p){ return p&&p.url && !localUrls.has(p.url); });
+        if (toAdd.length > 0) result[catKey] = lp.concat(toAdd);
+      });
+      return result;
+    }
+    function unionPhotoArr(localArr, dbArr) {
+      var localUrls = new Set((localArr||[]).map(function(p){ return p&&p.url; }).filter(Boolean));
+      var toAdd = (dbArr||[]).filter(function(p){ return p&&p.url && !localUrls.has(p.url); });
+      return toAdd.length > 0 ? (localArr||[]).concat(toAdd) : (localArr||[]);
+    }
+    function unionById(localArr, dbArr) {
+      if (!dbArr||!dbArr.length) return localArr||[];
+      var localIds = new Set((localArr||[]).map(function(x){ return x&&x.id; }).filter(Boolean));
+      var toAdd = dbArr.filter(function(x){ return x&&x.id && !localIds.has(x.id); });
+      return toAdd.length > 0 ? (localArr||[]).concat(toAdd) : (localArr||[]);
+    }
+    function unionDocs(localDocs, dbDocs) {
+      var seen = new Set((localDocs||[]).map(function(d){ return d&&(d.id||d.url); }).filter(Boolean));
+      var toAdd = (dbDocs||[]).filter(function(d){ return d&&(d.id||d.url) && !seen.has(d.id||d.url); });
+      return toAdd.length > 0 ? (localDocs||[]).concat(toAdd) : (localDocs||[]);
+    }
+
+    // DC
+    if (dbData.dc) {
+      if (dbData.dc.photos) merged.dc.photos = unionPhotoMap(merged.dc.photos||{}, dbData.dc.photos);
+      if (dbData.dc.journeesCloturees) merged.dc.journeesCloturees = unionById(merged.dc.journeesCloturees, dbData.dc.journeesCloturees);
+    }
+    // AC
+    if (dbData.ac) {
+      if (dbData.ac.photos) merged.ac.photos = unionPhotoMap(merged.ac.photos||{}, dbData.ac.photos);
+      if (dbData.ac.journeesCloturees) merged.ac.journeesCloturees = unionById(merged.ac.journeesCloturees, dbData.ac.journeesCloturees);
+    }
+    // SAV
+    if (dbData.savPhotos) merged.savPhotos = unionPhotoMap(merged.savPhotos||{}, dbData.savPhotos);
+    if (dbData.sav) merged.sav = unionById(merged.sav, dbData.sav);
+    // Maintenance
+    if (dbData.maintenanceVisites) {
+      var lv = (merged.maintenanceVisites||[]).slice();
+      var localVisiteIds = new Set(lv.map(function(v){ return v&&v.id; }).filter(Boolean));
+      (dbData.maintenanceVisites||[]).forEach(function(dbV) {
+        if (!dbV) return;
+        if (dbV.id && !localVisiteIds.has(dbV.id)) {
+          lv.push(dbV); // nouvelle visite d'un autre utilisateur
+        } else if (dbV.id) {
+          var vi = lv.findIndex(function(v){ return v&&v.id===dbV.id; });
+          if (vi >= 0) {
+            if (dbV.photos) lv[vi] = Object.assign({}, lv[vi], { photos: unionPhotoMap(lv[vi].photos||{}, dbV.photos) });
+            if (dbV.photosGenerales) lv[vi] = Object.assign({}, lv[vi], { photosGenerales: unionPhotoArr(lv[vi].photosGenerales, dbV.photosGenerales) });
+          }
+        }
+      });
+      merged.maintenanceVisites = lv;
+    }
+    // Photos générales
+    if (dbData.photosGenerales) merged.photosGenerales = unionPhotoArr(merged.photosGenerales||[], dbData.photosGenerales);
+    // Admin docs
+    if (dbData.admin && dbData.admin.sections && merged.admin && merged.admin.sections) {
+      Object.keys(dbData.admin.sections||{}).forEach(function(sk) {
+        if (!merged.admin.sections[sk]) return;
+        merged.admin.sections[sk].docs = unionDocs(merged.admin.sections[sk].docs, (dbData.admin.sections[sk]||{}).docs);
+      });
+    }
+    return merged;
+  }
+
   // ── Fonction de sauvegarde unifiée ────────────────────────────────────────
   async function doSave() {
     // Mutex : si une sauvegarde est déjà en cours, marquer et sortir
@@ -5647,11 +6076,47 @@ function App() {
         dataToSave = latestDataRef.current; // toujours le plus récent
       }
 
-      // ③ Sauvegarder dans Supabase
+      // ③ Lire la version DB uniquement si quelqu'un d'autre a sauvegardé
+      //    depuis notre dernier save (évite le double appel réseau inutile)
       var sheetId = currentSheetIdRef.current;
       var ok = false;
       if (sheetId) {
+        var needMerge = false;
+        try {
+          // Lecture légère : juste updated_at (pas le data complet)
+          var headRes = await fetch(
+            SUPA_URL + "/rest/v1/feuilles_controle?id=eq." + sheetId + "&select=updated_at",
+            { headers: { "apikey": SUPA_KEY, "Authorization": "Bearer " + SUPA_KEY } }
+          );
+          if (headRes.ok) {
+            var headRows = await headRes.json();
+            var dbUpdatedAt = headRows && headRows[0] && headRows[0].updated_at;
+            // Si DB plus récent que notre dernier save → quelqu'un d'autre a modifié
+            if (dbUpdatedAt && lastDbUpdatedAt.current && dbUpdatedAt > lastDbUpdatedAt.current) {
+              needMerge = true;
+            }
+            // Premier save : toujours merger (pour récupérer les données existantes)
+            if (!lastDbUpdatedAt.current) needMerge = true;
+          }
+        } catch(e) { /* Si la lecture échoue on sauvegarde quand même */ }
+
+        if (needMerge) {
+          var dbRow = await supaLoadById(sheetId);
+          if (dbRow && dbRow.data) {
+            var mergedData = mergePhotosFromDB(dataToSave, dbRow.data);
+            if (JSON.stringify(mergedData) !== JSON.stringify(dataToSave)) {
+              dataToSave = mergedData;
+              setData(function(prev) { return mergePhotosFromDB(prev, dbRow.data); });
+              latestDataRef.current = mergedData;
+            }
+          }
+        }
+
         ok = await supaUpdate(sheetId, dataToSave);
+        if (ok) {
+          // Mémoriser le timestamp de notre écriture pour détecter les futures modifs externes
+          lastDbUpdatedAt.current = new Date().toISOString();
+        }
       } else {
         var label = "Rapport " + new Date().toLocaleDateString("fr-BE", { day:"2-digit", month:"2-digit", year:"numeric" });
         var created = await supaCreate(ref, label, dataToSave);
@@ -5873,6 +6338,10 @@ function App() {
           <button onClick={function(){ window.print(); }}
             style={{ background: "rgba(255,255,255,0.2)", border: "none", color: WHITE, borderRadius: 6, padding: "5px 10px", fontSize: 12, cursor: "pointer" }}>
             🖨️ Imprimer
+          </button>
+          <button onClick={function(){ generateAsBuilt(data, LOGO_SRC); }}
+            style={{ background: "rgba(255,255,255,0.2)", border: "none", color: WHITE, borderRadius: 6, padding: "5px 10px", fontSize: 12, cursor: "pointer" }}>
+            📋 AS-Built
           </button>
           {user && (
             <div style={{ position:"relative" }} className="user-menu-wrap">
