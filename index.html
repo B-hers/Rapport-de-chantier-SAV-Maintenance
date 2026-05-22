@@ -4267,14 +4267,35 @@ function ProgressPanel({ data, onClose }) {
   collectFromMap(data.ac.photos||{});
   collectFromMap(data.savPhotos||{});
   (data.maintenanceVisites||[]).forEach(function(v, vi){
-    collectFromMap(v.photos||{});
+    collectFromMap(v.photos||{}, "maint_v"+vi+"_"); // préfixe pour matcher sectionLabels
   });
-  // Photos générales du chantier (simple array, not a map)
+  // Photos générales
   (data.photosGenerales||[]).forEach(function(p) {
     if (!p || !p.url) return;
     allPhotos.push({ url:p.url, name:p.name||"", addedAt:p.addedAt||null,
       catKey:"photos_generales", tab:"Général", tabColor:"#6c3483", section:"Photos générales", cat:"Photo" });
   });
+
+  // ── Helpers groupement ───────────────────────────────────────────────────
+  function groupBySection(photos) {
+    var secMap = {}; var order = [];
+    photos.forEach(function(p) {
+      var key = p.tab+"|"+p.section;
+      if (!secMap[key]) { secMap[key] = { tab:p.tab, tabColor:p.tabColor, section:p.section, photos:[] }; order.push(key); }
+      secMap[key].photos.push(p);
+    });
+    return order.map(function(k){ return secMap[k]; });
+  }
+  // Par intervenant → par section (vue "Par jour" étendue)
+  function groupByPersonThenSection(photos) {
+    var pMap = {}; var pOrder = [];
+    photos.forEach(function(p) {
+      var who = p.uploadedBy || "Intervenant inconnu";
+      if (!pMap[who]) { pMap[who] = []; pOrder.push(who); }
+      pMap[who].push(p);
+    });
+    return pOrder.map(function(who){ return { who:who, sections:groupBySection(pMap[who]) }; });
+  }
 
   // Collect journées clôturées
   var allJourneesMap = {}; // day -> []
@@ -4305,15 +4326,6 @@ function ProgressPanel({ data, onClose }) {
     return d.toLocaleDateString("fr-BE", { weekday:"long", day:"2-digit", month:"long", year:"numeric" });
   }
 
-  function groupBySection(photos) {
-    var sections = {};
-    photos.forEach(function(p) {
-      var key = p.tab + "|" + p.section;
-      if (!sections[key]) sections[key] = { tab: p.tab, tabColor: p.tabColor, section: p.section, photos: [] };
-      sections[key].photos.push(p);
-    });
-    return Object.values(sections);
-  }
 
   var totalPhotos = allPhotos.length;
   var datedPhotos = allPhotos.filter(function(p){ return !!p.addedAt; }).length;
@@ -4518,43 +4530,54 @@ function ProgressPanel({ data, onClose }) {
           });
         })()}
 
-        {/* ── VUE PAR JOUR ── */}
+        {/* ── VUE PAR JOUR (avec intervenants) ── */}
         {viewMode === "byDay" && days.map(function(day) {
-          var dayPhotos = byDay[day];
-          var isOpen = expandedDay === day;
-          var sections = groupBySection(dayPhotos);
+          var dayPhotos   = byDay[day];
+          var isOpen      = expandedDay === day;
           var dayJournees = allJourneesMap[day] || [];
+          // Sections pour les badges du header
+          var daySections = groupBySection(dayPhotos);
+          // Intervenants pour le contenu étendu
+          var dayPersons  = groupByPersonThenSection(dayPhotos);
+
+          // Récupérer les intervenants uniques (photos + journées)
+          var allIntervenants = [];
+          dayPersons.forEach(function(p){ if(!allIntervenants.includes(p.who)) allIntervenants.push(p.who); });
+          dayJournees.forEach(function(j){ if(j.auteur && !allIntervenants.includes(j.auteur)) allIntervenants.push(j.auteur); });
 
           return (
-            <div key={day} style={{ marginBottom: 10, borderRadius:9,
+            <div key={day} style={{ marginBottom:10, borderRadius:9,
               border:"1px solid #e8e8e4", overflow:"hidden" }}>
 
               {/* Day header */}
               <div onClick={function(){ setExpandedDay(isOpen ? null : day); setExpandedSection(null); }}
-                style={{ padding:"11px 14px", background: isOpen ? GREEN_LIGHT : "#fafaf8",
+                style={{ padding:"11px 14px", background:isOpen?GREEN_LIGHT:"#fafaf8",
                   cursor:"pointer", userSelect:"none",
                   display:"flex", alignItems:"center", justifyContent:"space-between" }}>
-                <div>
-                  <div style={{ fontWeight:700, fontSize:13, color: isOpen ? GREEN : "#1a1a1a",
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ fontWeight:700, fontSize:13, color:isOpen?GREEN:"#1a1a1a",
                     textTransform:"capitalize" }}>
                     📅 {fmtDay(day)}
                   </div>
-                  <div style={{ display:"flex", gap:8, marginTop:4, flexWrap:"wrap" }}>
+                  {/* Intervenants en sous-titre */}
+                  {allIntervenants.length > 0 && (
+                    <div style={{ fontSize:11, color:"#6c3483", marginTop:2, fontWeight:600 }}>
+                      👥 {allIntervenants.join(", ")}
+                    </div>
+                  )}
+                  {/* Badges sections */}
+                  <div style={{ display:"flex", gap:6, marginTop:5, flexWrap:"wrap" }}>
                     {dayJournees.length > 0 && (
-                      <span style={{ fontSize:11, background:"#f39c1222", color:"#856404",
+                      <span style={{ fontSize:10, background:"#f39c1222", color:"#856404",
                         borderRadius:4, padding:"1px 7px", fontWeight:700, border:"1px solid #f39c1244" }}>
-                        ✅ Journée clôturée · {dayJournees.map(function(j){ return j.tab+(j.auteur?" par "+j.auteur:""); }).join(", ")}
+                        ✅ Journée clôturée
                       </span>
                     )}
-                    {sections.map(function(s, si) {
-                      // Collect unique uploaders for this section/day
-                      var uploaders = [];
-                      s.photos.forEach(function(p){ if(p.uploadedBy && !uploaders.includes(p.uploadedBy.split(" ")[0])) uploaders.push(p.uploadedBy.split(" ")[0]); });
+                    {daySections.map(function(s, si) {
                       return (
-                        <span key={si} style={{ fontSize:11, background: s.tabColor+"22",
-                          color: s.tabColor, borderRadius:4, padding:"1px 7px", fontWeight:600 }}>
+                        <span key={si} style={{ fontSize:10, background:s.tabColor+"22",
+                          color:s.tabColor, borderRadius:4, padding:"1px 7px", fontWeight:600 }}>
                           {s.tab} — {s.section} ({s.photos.length})
-                          {uploaders.length > 0 && <span style={{ fontWeight:400, opacity:0.8 }}> · {uploaders.join(", ")}</span>}
                         </span>
                       );
                     })}
@@ -4566,86 +4589,103 @@ function ProgressPanel({ data, onClose }) {
                 </div>
               </div>
 
-              {/* Day content */}
+              {/* Day content — par intervenant */}
               {isOpen && (
-                <div style={{ padding:"12px 14px", background:WHITE }}>
+                <div style={{ padding:"10px 14px 14px", background:WHITE }}>
 
-                  {/* Journées clôturées du jour */}
+                  {/* Journées clôturées */}
                   {dayJournees.map(function(j, ji) {
                     return (
                       <div key={j.id||ji} style={{ marginBottom:10, background:"#fffbf0",
-                        border:"1.5px solid #f39c12", borderRadius:8, padding:"10px 12px" }}>
-                        <div style={{ fontWeight:700, fontSize:12, color:"#856404", marginBottom:4,
-                          display:"flex", alignItems:"center", gap:8 }}>
-                          <span>📅 Clôture journée — {j.tab}</span>
+                        border:"1.5px solid #f39c12", borderRadius:8, padding:"9px 12px" }}>
+                        <div style={{ fontWeight:700, fontSize:11, color:"#856404",
+                          display:"flex", alignItems:"center", gap:8, marginBottom:j.note?4:0 }}>
+                          ✅ Journée clôturée — {j.tab}
                           {j.heure && <span style={{ fontWeight:400, color:MUTED }}>à {j.heure}</span>}
-                        </div>
-                        <div style={{ fontSize:12, color:MUTED, marginBottom: j.note ? 8 : 0 }}>
-                          👤 {j.auteur}
+                          <span style={{ color:"#6c3483" }}>· 👤 {j.auteur}</span>
                         </div>
                         {j.note && (
-                          <div style={{ fontSize:12, color:"#1a1a1a", lineHeight:1.5,
-                            background:"#fff", borderRadius:5, padding:"6px 9px",
-                            borderLeft:"3px solid #f39c12", whiteSpace:"pre-wrap" }}>
-                            {j.note}
-                          </div>
+                          <div style={{ fontSize:11, color:"#1a1a1a", lineHeight:1.5,
+                            background:"#fff", borderRadius:5, padding:"5px 8px",
+                            borderLeft:"3px solid #f39c12", whiteSpace:"pre-wrap" }}>{j.note}</div>
                         )}
                       </div>
                     );
                   })}
 
-                  {sections.map(function(s, si) {
-                    var secKey = day + "|" + s.tab + "|" + s.section;
-                    var secOpen = expandedSection === secKey;
+                  {/* Intervenants */}
+                  {dayPersons.map(function(person) {
+                    var personKey = "day_"+day+"_person_"+person.who;
+                    var personOpen = expandedSection === personKey;
                     return (
-                      <div key={si} style={{ marginBottom:8 }}>
-                        {/* Section row */}
-                        <div onClick={function(){ setExpandedSection(secOpen ? null : secKey); }}
-                          style={{ display:"flex", alignItems:"center", gap:8,
-                            padding:"7px 10px", borderRadius:7, cursor:"pointer",
-                            background: secOpen ? s.tabColor+"12" : "#f8f8f6",
-                            border:"1px solid "+(secOpen ? s.tabColor+"44" : "#e8e8e4") }}>
-                          <span style={{ width:8, height:8, borderRadius:"50%",
-                            background:s.tabColor, flexShrink:0 }} />
-                          <span style={{ flex:1, fontWeight:600, fontSize:12 }}>
-                            {s.tab} — {s.section}
-                          </span>
-                          <span style={{ fontSize:11, color:s.tabColor, fontWeight:700 }}>
-                            {s.photos.length} photo{s.photos.length>1?"s":""}
-                          </span>
-                          <span style={{ fontSize:10, color:MUTED, transform:secOpen?"rotate(180deg)":"none" }}>▼</span>
+                      <div key={person.who} style={{ marginBottom:8, borderRadius:8,
+                        border:"1px solid #e0d5f5", overflow:"hidden" }}>
+
+                        {/* Intervenant header */}
+                        <div onClick={function(){ setExpandedSection(personOpen ? null : personKey); }}
+                          style={{ padding:"8px 12px", background:personOpen?"#f5eef8":"#faf8ff",
+                            cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"space-between",
+                            userSelect:"none" }}>
+                          <div>
+                            <div style={{ fontWeight:700, fontSize:12, color:"#6c3483" }}>
+                              👤 {person.who}
+                            </div>
+                            <div style={{ display:"flex", gap:5, marginTop:3, flexWrap:"wrap" }}>
+                              {person.sections.map(function(s, si) {
+                                return (
+                                  <span key={si} style={{ fontSize:10, background:s.tabColor+"22",
+                                    color:s.tabColor, borderRadius:3, padding:"1px 6px", fontWeight:600 }}>
+                                    {s.tab} — {s.section} ({s.photos.length})
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          </div>
+                          <div style={{ display:"flex", alignItems:"center", gap:6, flexShrink:0 }}>
+                            <span style={{ fontSize:11, color:MUTED }}>
+                              {person.sections.reduce(function(n,s){ return n+s.photos.length; },0)} photo{person.sections.reduce(function(n,s){ return n+s.photos.length; },0)>1?"s":""}
+                            </span>
+                            <span style={{ fontSize:10, color:MUTED, transform:personOpen?"rotate(180deg)":"none", transition:"transform 0.2s" }}>▼</span>
+                          </div>
                         </div>
 
-                        {/* Photos grid */}
-                        {secOpen && (
-                          <div style={{ display:"grid", gridTemplateColumns:"repeat(3, 1fr)",
-                            gap:6, padding:"8px 4px" }}>
-                            {s.photos.map(function(p, pi) {
-                              var time = p.addedAt
-                                ? new Date(p.addedAt).toLocaleTimeString("fr-BE", { hour:"2-digit", minute:"2-digit" })
-                                : "";
+                        {/* Sections de cet intervenant */}
+                        {personOpen && (
+                          <div style={{ padding:"8px 10px", background:WHITE }}>
+                            {person.sections.map(function(s, si) {
+                              var secKey = personKey+"|"+s.tab+"|"+s.section;
+                              var secOpen = expandedSection === secKey;
                               return (
-                                <div key={pi} style={{ borderRadius:7, overflow:"hidden",
-                                  border:"1px solid "+BORDER, background:"#fafaf8" }}>
-                                  <img src={p.url} alt={p.name}
-                                    style={{ width:"100%", aspectRatio:"4/3",
-                                      objectFit:"cover", display:"block", cursor:"zoom-in" }}
-                                    onClick={function(){ setZoomPhoto(Object.assign({},p,{section:s.section,tab:s.tab,tabColor:s.tabColor})); setZoomScale(1); }}
-                                  />
-                                  <div style={{ padding:"4px 6px", background:"#f0f0ec", lineHeight:1.4 }}>
-                                    {p.uploadedBy && (
-                                      <div style={{ fontSize:10, fontWeight:800, color:"#6c3483",
-                                        overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
-                                        👤 {p.uploadedBy}
-                                      </div>
-                                    )}
-                                    {time && <div style={{ fontSize:9, color:GREEN, fontWeight:700 }}>{time}</div>}
-                                    {!p.uploadedBy && p.name && (
-                                      <div style={{ fontSize:9, color:MUTED, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
-                                        {p.name}
-                                      </div>
-                                    )}
+                                <div key={si} style={{ marginBottom:6 }}>
+                                  <div onClick={function(e){ e.stopPropagation(); setExpandedSection(secOpen ? personKey : secKey); }}
+                                    style={{ display:"flex", alignItems:"center", gap:7, padding:"6px 9px",
+                                      borderRadius:6, cursor:"pointer",
+                                      background:secOpen?s.tabColor+"12":"#f8f8f6",
+                                      border:"1px solid "+(secOpen?s.tabColor+"44":"#e8e8e4") }}>
+                                    <span style={{ width:7, height:7, borderRadius:"50%", background:s.tabColor, flexShrink:0 }} />
+                                    <span style={{ flex:1, fontWeight:600, fontSize:11 }}>{s.tab} — {s.section}</span>
+                                    <span style={{ fontSize:10, color:s.tabColor, fontWeight:700 }}>{s.photos.length} photo{s.photos.length>1?"s":""}</span>
+                                    <span style={{ fontSize:9, color:MUTED, transform:secOpen?"rotate(180deg)":"none" }}>▼</span>
                                   </div>
+                                  {secOpen && (
+                                    <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:5, padding:"6px 3px" }}>
+                                      {s.photos.map(function(p, pi) {
+                                        var time = p.addedAt ? new Date(p.addedAt).toLocaleTimeString("fr-BE",{hour:"2-digit",minute:"2-digit"}) : "";
+                                        return (
+                                          <div key={pi} style={{ borderRadius:6, overflow:"hidden", border:"1px solid "+BORDER, background:"#fafaf8" }}>
+                                            <img src={p.url} alt={p.name}
+                                              style={{ width:"100%", aspectRatio:"4/3", objectFit:"cover", display:"block", cursor:"zoom-in" }}
+                                              onClick={function(){ setZoomPhoto(Object.assign({},p,{section:s.section,tab:s.tab,tabColor:s.tabColor})); setZoomScale(1); }}
+                                            />
+                                            <div style={{ padding:"3px 5px", background:"#f0f0ec", lineHeight:1.4 }}>
+                                              {time && <div style={{ fontSize:9, color:GREEN, fontWeight:700 }}>{time}</div>}
+                                              {p.name && <div style={{ fontSize:9, color:MUTED, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{p.name}</div>}
+                                            </div>
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  )}
                                 </div>
                               );
                             })}
