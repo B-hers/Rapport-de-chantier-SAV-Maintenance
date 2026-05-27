@@ -449,23 +449,42 @@ async function supaCreate(ref, label, payload) {
   } catch(e) { console.error("[Rapport] supaCreate exception:", e); return null; }
 }
 
-async function supaUpdate(id, payload) {
+async function supaUpdate(id, payload, expectedUpdatedAt) {
   try {
-    var res = await fetch(SUPA_URL + "/rest/v1/feuilles_controle?id=eq." + id, {
+    var url = SUPA_URL + "/rest/v1/feuilles_controle?id=eq." + id;
+    if (expectedUpdatedAt) url += "&updated_at=eq." + encodeURIComponent(expectedUpdatedAt);
+
+    var body = JSON.stringify({ data: payload, updated_at: new Date().toISOString() });
+
+    // keepalive:true permet au navigateur de finaliser la requête même si la page
+    // est en train de se fermer (beforeunload/pagehide).
+    // Limite : 64 Ko. Si le payload dépasse, on tente sans keepalive.
+    var useKeepalive = (new TextEncoder().encode(body).length < 60000);
+
+    var res = await fetch(url, {
       method: "PATCH",
+      keepalive: useKeepalive,
       headers: {
         "apikey": SUPA_KEY, "Authorization": "Bearer " + SUPA_KEY,
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        "Prefer": "return=representation"
       },
-      body: JSON.stringify({ data: payload, updated_at: new Date().toISOString() })
+      body: body
     });
     if (!res.ok) {
       var errTxt = await res.text();
       console.error("[Rapport] supaUpdate FAILED — HTTP " + res.status + " — " + errTxt);
-      return false;
+      return { ok: false, conflict: false, row: null };
     }
-    return true;
-  } catch(e) { console.error("[Rapport] supaUpdate exception:", e); return false; }
+    var rows = await res.json();
+    if (expectedUpdatedAt && (!rows || rows.length === 0)) {
+      return { ok: false, conflict: true, row: null };
+    }
+    return { ok: true, conflict: false, row: rows && rows[0] ? rows[0] : null };
+  } catch(e) {
+    console.error("[Rapport] supaUpdate exception:", e);
+    return { ok: false, conflict: false, row: null };
+  }
 }
 
 async function supaDeleteSheet(id) {
@@ -6117,11 +6136,13 @@ function App() {
       }
 
       // ③ Lire la version DB uniquement si quelqu'un d'autre a sauvegardé
-      //    depuis notre dernier save (évite le double appel réseau inutile)
+      //    depuis notre dernier save. La sauvegarde finale est conditionnelle
+      //    sur updated_at pour éviter l'écrasement silencieux multi-utilisateurs.
       var sheetId = currentSheetIdRef.current;
       var ok = false;
       if (sheetId) {
         var needMerge = false;
+        var expectedUpdatedAt = lastDbUpdatedAt.current;
         try {
           // Lecture légère : juste updated_at (pas le data complet)
           var headRes = await fetch(
@@ -6137,12 +6158,14 @@ function App() {
             }
             // Premier save : toujours merger (pour récupérer les données existantes)
             if (!lastDbUpdatedAt.current) needMerge = true;
+            if (dbUpdatedAt) expectedUpdatedAt = dbUpdatedAt;
           }
         } catch(e) { /* Si la lecture échoue on sauvegarde quand même */ }
 
         if (needMerge) {
           var dbRow = await supaLoadById(sheetId);
           if (dbRow && dbRow.data) {
+            expectedUpdatedAt = dbRow.updated_at || expectedUpdatedAt;
             var mergedData = mergePhotosFromDB(dataToSave, dbRow.data);
             if (JSON.stringify(mergedData) !== JSON.stringify(dataToSave)) {
               dataToSave = mergedData;
@@ -6152,15 +6175,31 @@ function App() {
           }
         }
 
-        ok = await supaUpdate(sheetId, dataToSave);
-        if (ok) {
-          // Mémoriser le timestamp de notre écriture pour détecter les futures modifs externes
-          lastDbUpdatedAt.current = new Date().toISOString();
+        var updateResult = await supaUpdate(sheetId, dataToSave, expectedUpdatedAt);
+        if (updateResult.conflict) {
+          var latestRow = await supaLoadById(sheetId);
+          if (latestRow && latestRow.data) {
+            dataToSave = mergePhotosFromDB(dataToSave, latestRow.data);
+            setData(function(prev) { return mergePhotosFromDB(prev, latestRow.data); });
+            latestDataRef.current = dataToSave;
+            updateResult = await supaUpdate(sheetId, dataToSave, latestRow.updated_at);
+          }
+        }
+        ok = !!(updateResult && updateResult.ok);
+        if (ok && updateResult.row && updateResult.row.updated_at) {
+          // Timestamp serveur réel, pas l'horloge du navigateur.
+          lastDbUpdatedAt.current = updateResult.row.updated_at;
         }
       } else {
         var label = "Rapport " + new Date().toLocaleDateString("fr-BE", { day:"2-digit", month:"2-digit", year:"numeric" });
         var created = await supaCreate(ref, label, dataToSave);
-        if (created) { setCurrentSheetId(created.id); currentSheetIdRef.current = created.id; ok = true; sheetId = created.id; }
+        if (created) {
+          setCurrentSheetId(created.id);
+          currentSheetIdRef.current = created.id;
+          if (created.updated_at) lastDbUpdatedAt.current = created.updated_at;
+          ok = true;
+          sheetId = created.id;
+        }
       }
 
       // ④ Journal d'audit
@@ -6208,6 +6247,32 @@ function App() {
     return function() { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
   }, [data]); // surveille TOUT — texte ET photos
 
+  // Sauvegarde immédiate quand l'utilisateur ferme, change d'onglet ou verrouille le mobile.
+  useEffect(function() {
+    function flushPendingSave() {
+      if (isLoadingData.current) return;
+      var d = latestDataRef.current || {};
+      var ref = d.meta && d.meta.ref;
+      if (!ref || ref.trim().length < 2) return;
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = null;
+      }
+      doSave();
+    }
+    function onVisibilityChange() {
+      if (document.visibilityState === "hidden") flushPendingSave();
+    }
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    window.addEventListener("pagehide", flushPendingSave);
+    window.addEventListener("beforeunload", flushPendingSave);
+    return function() {
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      window.removeEventListener("pagehide", flushPendingSave);
+      window.removeEventListener("beforeunload", flushPendingSave);
+    };
+  }, []);
+
   // Load from Supabase — charge la feuille la plus récente pour ce ref
   async function loadData(ref, urlTask) {
     if (!ref) return;
@@ -6230,6 +6295,7 @@ function App() {
         });
         setCurrentSheetId(list[0].id);
         setCurrentSheetLabel(row.label || "");
+        lastDbUpdatedAt.current = row.updated_at || list[0].updated_at || null;
         prevDataRef.current = null;
         if (userRef.current && row.ref) supaCtrlLogAudit(row.ref, list[0].id, userRef.current, "load", {});
       }
@@ -6268,6 +6334,7 @@ function App() {
       setData(deepMerge(makeDefaultData(), row.data));
       setCurrentSheetId(id);
       setCurrentSheetLabel(label || row.label || "");
+      lastDbUpdatedAt.current = row.updated_at || null;
       prevDataRef.current = null; // reset diff tracking
       if (userRef.current && row.ref) supaCtrlLogAudit(row.ref, id, userRef.current, "load", {});
     }
@@ -6327,8 +6394,28 @@ function App() {
           </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-          {saveStatus === "saving" && <span style={{ fontSize: 11, opacity: 0.8 }}>⏳ Sauvegarde…</span>}
-          {saveStatus === "saved" && <span style={{ fontSize: 11, opacity: 0.8, color: "#a8e6c0" }}>✅ Sauvegardé</span>}
+          {/* ── Indicateur + bouton de sauvegarde manuelle ── */}
+          {saveStatus === "saving" && (
+            <span style={{ fontSize:11, opacity:0.8, display:"flex", alignItems:"center", gap:4 }}>
+              <span>⏳</span> Sauvegarde…
+            </span>
+          )}
+          {saveStatus === "saved" && (
+            <span style={{ fontSize:11, color:"#a8e6c0", display:"flex", alignItems:"center", gap:4 }}>
+              ✅ Sauvegardé
+            </span>
+          )}
+          {saveStatus === "idle" && data.meta.ref && currentSheetId && (
+            <button onClick={function(){
+              if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null; }
+              doSave();
+            }}
+              title="Forcer une sauvegarde immédiate"
+              style={{ fontSize:11, background:"rgba(255,255,255,0.15)", border:"1px solid rgba(255,255,255,0.3)",
+                color:WHITE, borderRadius:5, padding:"3px 9px", cursor:"pointer", opacity:0.8 }}>
+              💾 Sauvegarder
+            </button>
+          )}
           {saveStatus === "error" && (
             <button onClick={async function(){
               try {
