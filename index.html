@@ -5919,7 +5919,8 @@ function App() {
   var isSavingRef        = useRef(false);   // mutex : empêche deux sauvegardes simultanées
   var pendingSaveRef     = useRef(false);   // une modification est arrivée pendant une sauvegarde
   var lastSavedRef       = useRef(null);
-  var lastDbUpdatedAt    = useRef(null); // updated_at de la dernière version lue/écrite en DB
+  var lastDbUpdatedAt    = useRef(null);
+  var [pendingChanges, setPendingChanges] = useState(false); // modifications non sauvegardées
   var isLoadingData      = useRef(false);
   var userRef            = useRef(null);
   var prevDataRef        = useRef(null);
@@ -5940,11 +5941,29 @@ function App() {
 
   useEffect(function() { userRef.current = user; window._wgeCurrentUser = user; }, [user]);
 
+  var [storageWarning, setStorageWarning] = useState(null); // message d'avertissement Storage
+
   useEffect(function() {
+    // Vérifier la table principale
     fetch(SUPA_URL + "/rest/v1/feuilles_controle?limit=0",
       { headers: { "apikey": SUPA_KEY, "Authorization": "Bearer " + SUPA_KEY } })
     .then(function(res) {
       if (res.status === 404) console.warn("[Rapport] ⚠️ Table feuilles_controle introuvable.");
+    }).catch(function(){});
+
+    // Vérifier le bucket via l'API list (fonctionne avec la clé publishable)
+    fetch(SUPA_URL + "/storage/v1/object/list/" + SUPA_STORAGE_BUCKET,
+      { method: "POST",
+        headers: { "apikey": SUPA_KEY, "Authorization": "Bearer " + SUPA_KEY,
+          "Content-Type": "application/json" },
+        body: JSON.stringify({ limit: 1, offset: 0, prefix: "" }) })
+    .then(function(res) {
+      if (!res.ok) {
+        setStorageWarning("⚠️ Le bucket Supabase Storage \"" + SUPA_STORAGE_BUCKET + "\" est introuvable. " +
+          "Les photos resteront en base64 et les sauvegardes pourraient échouer pour les gros chantiers. " +
+          "Créez ce bucket dans votre projet Supabase (Storage → New bucket → \"" + SUPA_STORAGE_BUCKET + "\" → Public).");
+        console.error("[Rapport] STORAGE BUCKET MANQUANT :", SUPA_STORAGE_BUCKET);
+      }
     }).catch(function(){});
   }, []);
 
@@ -6221,7 +6240,18 @@ function App() {
       }
 
       setSaveStatus(ok ? "saved" : "error");
-      setTimeout(function(){ setSaveStatus("idle"); }, 4000);
+      if (ok) {
+        setPendingChanges(false);
+        setTimeout(function(){ setSaveStatus("idle"); }, 4000);
+      } else {
+        // Retry automatique après 5s si erreur
+        setTimeout(function(){
+          setSaveStatus("idle");
+          if (latestDataRef.current && latestDataRef.current.meta && latestDataRef.current.meta.ref) {
+            saveTimerRef.current = setTimeout(doSave, 5000);
+          }
+        }, 4000);
+      }
 
     } catch(err) {
       console.error("[doSave] erreur:", err);
@@ -6241,13 +6271,14 @@ function App() {
     if (isLoadingData.current) return;
     var ref = data.meta.ref;
     if (!ref || ref.trim().length < 2) { setSaveStatus("idle"); return; }
+    setPendingChanges(true); // dès qu'une modification arrive, marquer comme non sauvegardé
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     setSaveStatus("saving");
     saveTimerRef.current = setTimeout(doSave, 800);
     return function() { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
   }, [data]); // surveille TOUT — texte ET photos
 
-  // Sauvegarde immédiate quand l'utilisateur ferme, change d'onglet ou verrouille le mobile.
+  // Avertissement navigateur si modifications non sauvegardées + sauvegarde en quittant
   useEffect(function() {
     function flushPendingSave() {
       if (isLoadingData.current) return;
@@ -6263,15 +6294,24 @@ function App() {
     function onVisibilityChange() {
       if (document.visibilityState === "hidden") flushPendingSave();
     }
+    function onBeforeUnload(e) {
+      flushPendingSave();
+      // Si des modifications ne sont pas encore sauvegardées, demander confirmation
+      if (pendingChanges || saveTimerRef.current || isSavingRef.current) {
+        e.preventDefault();
+        e.returnValue = "Des modifications sont en cours de sauvegarde. Voulez-vous vraiment quitter ?";
+        return e.returnValue;
+      }
+    }
     document.addEventListener("visibilitychange", onVisibilityChange);
     window.addEventListener("pagehide", flushPendingSave);
-    window.addEventListener("beforeunload", flushPendingSave);
+    window.addEventListener("beforeunload", onBeforeUnload);
     return function() {
       document.removeEventListener("visibilitychange", onVisibilityChange);
       window.removeEventListener("pagehide", flushPendingSave);
-      window.removeEventListener("beforeunload", flushPendingSave);
+      window.removeEventListener("beforeunload", onBeforeUnload);
     };
-  }, []);
+  }, [pendingChanges]);
 
   // Load from Supabase — charge la feuille la plus récente pour ce ref
   async function loadData(ref, urlTask) {
@@ -6394,45 +6434,70 @@ function App() {
           </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-          {/* ── Indicateur + bouton de sauvegarde manuelle ── */}
+          {/* ── Avertissement Storage manquant ── */}
+          {storageWarning && (
+            <div style={{ position:"fixed", top:0, left:0, right:0, zIndex:99999,
+              background:"#c0392b", color:WHITE, padding:"10px 14px",
+              fontSize:12, lineHeight:1.5, display:"flex", gap:10, alignItems:"flex-start" }}>
+              <span style={{ fontSize:16, flexShrink:0 }}>⚠️</span>
+              <span style={{ flex:1 }}>{storageWarning}</span>
+              <button onClick={function(){ setStorageWarning(null); }}
+                style={{ background:"rgba(255,255,255,0.2)", border:"none", color:WHITE,
+                  borderRadius:4, padding:"2px 8px", cursor:"pointer", flexShrink:0 }}>✕</button>
+            </div>
+          )}
+
+          {/* ── Statut sauvegarde ── */}
           {saveStatus === "saving" && (
             <span style={{ fontSize:11, opacity:0.8, display:"flex", alignItems:"center", gap:4 }}>
               <span>⏳</span> Sauvegarde…
             </span>
           )}
-          {saveStatus === "saved" && (
+          {saveStatus === "saved" && !pendingChanges && (
             <span style={{ fontSize:11, color:"#a8e6c0", display:"flex", alignItems:"center", gap:4 }}>
               ✅ Sauvegardé
             </span>
           )}
-          {saveStatus === "idle" && data.meta.ref && currentSheetId && (
+          {pendingChanges && saveStatus !== "saving" && saveStatus !== "saved" && (
+            <span style={{ fontSize:11, color:"#f39c12", fontWeight:700,
+              background:"rgba(243,156,18,0.15)", borderRadius:5, padding:"3px 8px",
+              display:"flex", alignItems:"center", gap:4 }}>
+              ⏳ Non sauvegardé
+            </span>
+          )}
+          {(saveStatus === "idle" || pendingChanges) && data.meta.ref && currentSheetId && (
             <button onClick={function(){
               if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null; }
               doSave();
             }}
               title="Forcer une sauvegarde immédiate"
               style={{ fontSize:11, background:"rgba(255,255,255,0.15)", border:"1px solid rgba(255,255,255,0.3)",
-                color:WHITE, borderRadius:5, padding:"3px 9px", cursor:"pointer", opacity:0.8 }}>
+                color:WHITE, borderRadius:5, padding:"3px 9px", cursor:"pointer", opacity:0.85 }}>
               💾 Sauvegarder
             </button>
           )}
           {saveStatus === "error" && (
-            <button onClick={async function(){
-              try {
-                var res = await fetch(SUPA_URL + "/rest/v1/feuilles_controle?limit=1",
-                  { headers: { "apikey": SUPA_KEY, "Authorization": "Bearer " + SUPA_KEY } });
-                if (res.ok) {
-                  alert("✅ Connexion Supabase OK (lecture)\n\nMais l\'écriture échoue.\nOuvrez F12 → Console pour voir l\'erreur exacte.\n\nVérifiez la RLS policy de feuilles_controle dans Supabase.");
-                } else {
-                  alert("❌ Connexion Supabase ÉCHOUÉE\nHTTP " + res.status + "\n\nVérifiez:\n1. SUPA_URL dans le fichier HTML\n2. SUPA_KEY dans le fichier HTML\n3. Que vous êtes dans le bon projet Supabase");
-                }
-              } catch(e) {
-                alert("❌ Impossible de joindre Supabase\n" + e.message + "\n\nProblème réseau ou CORS.");
-              }
-            }} style={{ fontSize:11, color:"#f1a0a0", background:"transparent",
-              border:"1px solid #f1a0a0", borderRadius:5, padding:"3px 8px", cursor:"pointer" }}>
-              ❌ Erreur — Tester
-            </button>
+            <div style={{ display:"flex", gap:5, alignItems:"center" }}>
+              <span style={{ fontSize:11, color:"#f1a0a0", fontWeight:700 }}>❌ Erreur</span>
+              <button onClick={function(){
+                setSaveStatus("idle");
+                if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+                doSave();
+              }} style={{ fontSize:11, color:WHITE, background:"rgba(255,255,255,0.25)",
+                border:"1px solid rgba(255,255,255,0.4)", borderRadius:5, padding:"3px 8px", cursor:"pointer" }}>
+                🔄 Réessayer
+              </button>
+              <button onClick={async function(){
+                try {
+                  var res = await fetch(SUPA_URL + "/rest/v1/feuilles_controle?limit=1",
+                    { headers: { "apikey": SUPA_KEY, "Authorization": "Bearer " + SUPA_KEY } });
+                  alert(res.ok ? "✅ Connexion Supabase OK. Vérifiez la RLS policy." : "❌ Supabase inaccessible. HTTP " + res.status);
+                } catch(e) { alert("❌ Réseau : " + e.message); }
+              }} style={{ fontSize:10, color:"#f1a0a0", background:"transparent",
+                border:"1px solid rgba(241,160,160,0.4)", borderRadius:5, padding:"2px 6px", cursor:"pointer" }}>
+                Tester
+              </button>
+            </div>
           )}
           {user && (
             <div style={{ display: "flex", alignItems: "center", gap: 5, padding: "3px 9px", background: user.type === "contractor" ? "#fff8f0" : "rgba(255,255,255,0.15)", border: "1px solid "+(user.type === "contractor" ? "#e8c080" : "rgba(255,255,255,0.3)"), borderRadius: 20 }}>
