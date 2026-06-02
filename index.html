@@ -5846,6 +5846,39 @@ function generateAsBuilt(data, logoSrc, sheetLabel) {
   var pm      = data.meta.pm     || "—";
   var sheetName = sheetLabel || "";
 
+// ── Helper partagé : collecte toutes les photos (clés statiques + dynamiques)
+function buildPhotoLabel(catKey) {
+  if (/^ac_app_(\d+)$/.test(catKey))    return "Appareil / Onduleur / Borne " + (parseInt(catKey.replace("ac_app_",""))+1);
+  if (/^ac_tab_(\d+)$/.test(catKey))    return "Tableau électrique " + (parseInt(catKey.replace("ac_tab_",""))+1);
+  if (/^string_ph_(\d+)$/.test(catKey)) return "String " + (parseInt(catKey.replace("string_ph_",""))+1);
+  var m = { ac_pre_general:"Pré-chantier — Vue générale", ac_pre_tgbt:"Pré-chantier — TGBT",
+    ac_pre_compteur:"Pré-chantier — Compteur", ac_post_tubages:"Post-chantier — Tubages",
+    ac_post_tgbt:"Post-chantier — TGBT", ac_config_ph:"Configuration onduleur",
+    ac_schema_ph:"Schéma électrique", mesure_terre_ph:"Mesure de terre" };
+  if (m[catKey]) return m[catKey];
+  return catKey.replace(/^(ac|dc)_/,"").replace(/_ph$/,"").replace(/_/g," ");
+}
+function collectAllSectionPhotos(photosMap, sectionDefs, tabLabel) {
+  var sections = []; var coveredKeys = new Set();
+  (sectionDefs||[]).forEach(function(s) {
+    (s.photoCats||[]).forEach(function(c) {
+      coveredKeys.add(c.key);
+      var photos = ((photosMap||{})[c.key]||[]).filter(function(p){ return p&&p.url; });
+      if (photos.length > 0)
+        sections.push({ tab:tabLabel, section:s.label.replace(/^\d+\s*·\s*/,""), cat:c.label, photos:photos });
+    });
+  });
+  // Ramasser TOUTES les clés restantes non couvertes (appareils, tableaux, pré/post-chantier…)
+  Object.keys(photosMap||{}).forEach(function(catKey) {
+    if (coveredKeys.has(catKey)) return;
+    var photos = ((photosMap||{})[catKey]||[]).filter(function(p){ return p&&p.url; });
+    if (!photos.length) return;
+    var label = buildPhotoLabel(catKey);
+    sections.push({ tab:tabLabel, section:label, cat:label, photos:photos });
+  });
+  return sections;
+}
+
   function collectSectionPhotos(photosMap, sectionDefs, tabLabel) {
     var sections = [];
     sectionDefs.forEach(function(s) {
@@ -5858,8 +5891,8 @@ function generateAsBuilt(data, logoSrc, sheetLabel) {
     return sections;
   }
 
-  var dcSections = collectSectionPhotos(data.dc.photos||{}, DC_SECTIONS, "DC");
-  var acSections = collectSectionPhotos(data.ac.photos||{}, AC_SECTIONS, "AC");
+  var dcSections = collectAllSectionPhotos(data.dc.photos||{}, DC_SECTIONS, "DC");
+  var acSections = collectAllSectionPhotos(data.ac.photos||{}, AC_SECTIONS, "AC");
 
   // String photos — skip empty
   var stringPhotos = [];
@@ -6065,15 +6098,10 @@ function AsBuiltViewer({ wgeUser }) {
 
   // ── Helpers ──
   function collectPhotos(photosMap, sectionDefs, tabLabel, tabColor) {
-    var sections = [];
-    (sectionDefs||[]).forEach(function(s) {
-      (s.photoCats||[]).forEach(function(c) {
-        var photos = ((photosMap||{})[c.key]||[]).filter(function(p){ return p&&p.url; });
-        if (photos.length > 0)
-          sections.push({ tab:tabLabel, tabColor:tabColor, section:s.label.replace(/^\d+\s*·\s*/,""), cat:c.label, photos:photos });
-      });
+    // Utilise collectAllSectionPhotos (global) + ajoute tabColor pour l'UI
+    return collectAllSectionPhotos(photosMap, sectionDefs, tabLabel).map(function(s) {
+      return Object.assign({ tabColor: tabColor }, s);
     });
-    return sections;
   }
 
   function PhotoGrid({ photos }) {
