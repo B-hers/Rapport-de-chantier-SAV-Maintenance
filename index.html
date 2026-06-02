@@ -5490,9 +5490,20 @@ function SheetSelector({ refChantier, currentId, onSelect, onNew, onDelete, isWG
 
             // ── Section divider ──
             if (item.type === "section") {
+              var isSectionDragOver = dragOver === idx;
               return (
-                <div key={item.id} style={{ width:"100%", display:"flex", alignItems:"center",
-                  gap:6, margin:"6px 0 2px" }}>
+                <div key={item.id}
+                  onDragOver={function(e){ e.preventDefault(); setDragOver(idx); }}
+                  onDragLeave={function(){ setDragOver(null); }}
+                  onDrop={function(e){ e.preventDefault(); setDragOver(null);
+                    if (dragSrc.current !== null && dragSrc.current !== idx) reorder(dragSrc.current, idx);
+                    dragSrc.current = null; }}
+                  style={{ width:"100%", display:"flex", alignItems:"center",
+                    gap:6, margin:"6px 0 2px",
+                    background: isSectionDragOver ? "#f5eef8" : "transparent",
+                    borderRadius: isSectionDragOver ? 6 : 0,
+                    outline: isSectionDragOver ? "2px dashed #8e44ad" : "none",
+                    transition:"background 0.1s" }}>
                   {editingId === item.id ? (
                     <input type="text" value={editVal}
                       onChange={function(e){ setEditVal(e.target.value); }}
@@ -5594,8 +5605,7 @@ function SheetSelector({ refChantier, currentId, onSelect, onNew, onDelete, isWG
                           onMouseOut={function(e){ e.currentTarget.style.background="none"; }}>
                           ✏️ Renommer
                         </button>
-                        {!isCurrent && (
-                          <button onClick={function(){
+                        <button onClick={function(){
                             setMenuOpenId(null);
                             var n = sheet.label || "Sans titre";
                             if (!window.confirm("Supprimer \"" + n + "\" ?\nCette action est irréversible.")) return;
@@ -5615,7 +5625,6 @@ function SheetSelector({ refChantier, currentId, onSelect, onNew, onDelete, isWG
                             onMouseOut={function(e){ e.currentTarget.style.background="none"; }}>
                             🗑 Supprimer
                           </button>
-                        )}
                       </div>
                     )}
                   </div>
