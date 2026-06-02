@@ -5586,7 +5586,7 @@ function SheetSelector({ refChantier, currentId, onSelect, onNew, onDelete, isWG
                     {menuOpenId === sheet.id && (
                       <div style={{ position:"absolute", right:0, top:"100%", zIndex:1000,
                         background:WHITE, border:"1px solid #e0e0d8", borderRadius:8,
-                        boxShadow:"0 4px 16px rgba(0,0,0,0.12)", minWidth:150, overflow:"hidden" }}>
+                        boxShadow:"0 4px 16px rgba(0,0,0,0.12)", minWidth:160, overflow:"hidden" }}>
                         <button onClick={function(){ startEdit(sheet); setMenuOpenId(null); }}
                           style={{ display:"block", width:"100%", textAlign:"left", padding:"10px 14px",
                             border:"none", background:"none", cursor:"pointer", fontSize:13, color:"#1a1a1a" }}
@@ -5594,6 +5594,28 @@ function SheetSelector({ refChantier, currentId, onSelect, onNew, onDelete, isWG
                           onMouseOut={function(e){ e.currentTarget.style.background="none"; }}>
                           ✏️ Renommer
                         </button>
+                        {!isCurrent && (
+                          <button onClick={function(){
+                            setMenuOpenId(null);
+                            var n = sheet.label || "Sans titre";
+                            if (!window.confirm("Supprimer \"" + n + "\" ?\nCette action est irréversible.")) return;
+                            if (!window.confirm("⚠️ CONFIRMATION FINALE\n\nSupprimer définitivement :\n\"" + n + "\"\n\nToutes les données seront perdues. Continuer ?")) return;
+                            supaDeleteSheet(sheet.id).then(function(ok) {
+                              if (ok) {
+                                setSheets(function(l){ return l.filter(function(s){ return s.id !== sheet.id; }); });
+                                setOrdered(function(l){ return l.filter(function(o){ return !(o.type==="sheet" && o.data && o.data.id===sheet.id); }); });
+                                if (sheet.id === currentId) onDelete();
+                              }
+                            });
+                          }}
+                            style={{ display:"block", width:"100%", textAlign:"left", padding:"10px 14px",
+                              border:"none", background:"none", cursor:"pointer", fontSize:13, color:"#e74c3c",
+                              borderTop:"1px solid #f0f0ec" }}
+                            onMouseOver={function(e){ e.currentTarget.style.background="#fdf0ee"; }}
+                            onMouseOut={function(e){ e.currentTarget.style.background="none"; }}>
+                            🗑 Supprimer
+                          </button>
+                        )}
                       </div>
                     )}
                   </div>
@@ -5838,15 +5860,7 @@ function CloturJourneeBlock({ tab, tabColor, journees, setJournees, locked }) {
 }
 
 // ── generateAsBuilt ──────────────────────────────────────────────────────────
-function generateAsBuilt(data, logoSrc, sheetLabel) {
-  var ref     = data.meta.ref    || "—";
-  var client  = data.meta.client || "—";
-  var adresse = data.meta.adresse|| "—";
-  var date    = data.meta.dateControle || new Date().toISOString().slice(0,10);
-  var pm      = data.meta.pm     || "—";
-  var sheetName = sheetLabel || "";
-
-// ── Helper partagé : collecte toutes les photos (clés statiques + dynamiques)
+// ── Helpers AS-Built partagés (global scope) ────────────────────────────────
 function buildPhotoLabel(catKey) {
   if (/^ac_app_(\d+)$/.test(catKey))    return "Appareil / Onduleur / Borne " + (parseInt(catKey.replace("ac_app_",""))+1);
   if (/^ac_tab_(\d+)$/.test(catKey))    return "Tableau électrique " + (parseInt(catKey.replace("ac_tab_",""))+1);
@@ -5868,17 +5882,24 @@ function collectAllSectionPhotos(photosMap, sectionDefs, tabLabel) {
         sections.push({ tab:tabLabel, section:s.label.replace(/^\d+\s*·\s*/,""), cat:c.label, photos:photos });
     });
   });
-  // Ramasser TOUTES les clés restantes non couvertes (appareils, tableaux, pré/post-chantier…)
   Object.keys(photosMap||{}).forEach(function(catKey) {
     if (coveredKeys.has(catKey)) return;
     var photos = ((photosMap||{})[catKey]||[]).filter(function(p){ return p&&p.url; });
     if (!photos.length) return;
-    var label = buildPhotoLabel(catKey);
-    sections.push({ tab:tabLabel, section:label, cat:label, photos:photos });
+    sections.push({ tab:tabLabel, section:buildPhotoLabel(catKey), cat:buildPhotoLabel(catKey), photos:photos });
   });
   return sections;
 }
 
+function generateAsBuilt(data, logoSrc, sheetLabel) {
+  var ref     = data.meta.ref    || "—";
+  var client  = data.meta.client || "—";
+  var adresse = data.meta.adresse|| "—";
+  var date    = data.meta.dateControle || new Date().toISOString().slice(0,10);
+  var pm      = data.meta.pm     || "—";
+  var sheetName = sheetLabel || "";
+
+// ── Helper partagé : collecte toutes les photos (clés statiques + dynamiques)
   function collectSectionPhotos(photosMap, sectionDefs, tabLabel) {
     var sections = [];
     sectionDefs.forEach(function(s) {
