@@ -307,6 +307,14 @@ const ALLOWED_DOMAIN = "we-green.be";
 const ALLOWED_DOMAINS = ["we-green.be", "we-green.fr"];
 function isWGEEmail(email) { return !!email && ALLOWED_DOMAINS.some(function(d){ return email.endsWith("@"+d); }); }
 
+// Mode client : ?client=1&ref=XXX → lecture seule, pas de connexion requise
+var CLIENT_MODE = (function(){
+  try {
+    var p = new URLSearchParams(window.location.search);
+    return p.get("client") === "1" || p.get("view") === "client";
+  } catch(e) { return false; }
+})();
+
 // ── Supabase Storage helpers ──────────────────────────────────────────────────
 // Upload un data: URL (image ou fichier) vers Supabase Storage → retourne l'URL publique ou le data: original si échec
 async function uploadFileToStorage(ref, catKey, dataUrl, fileName, mimeType) {
@@ -495,6 +503,38 @@ async function supaDeleteSheet(id) {
     });
     return true;
   } catch(e) { return false; }
+}
+
+async function supaUpdateSheetLabel(id, label) {
+  try {
+    var res = await fetch(SUPA_URL + "/rest/v1/feuilles_controle?id=eq." + id, {
+      method: "PATCH",
+      headers: { "apikey": SUPA_KEY, "Authorization": "Bearer " + SUPA_KEY,
+        "Content-Type": "application/json" },
+      body: JSON.stringify({ label: label, updated_at: new Date().toISOString() })
+    });
+    return res.ok;
+  } catch(e) { return false; }
+}
+
+// Ordre des feuilles en localStorage — zéro changement DB, rétrocompatible
+function getSheetOrder(ref) {
+  try { return JSON.parse(localStorage.getItem("wge_sheet_order_" + ref) || "[]"); } catch(e) { return []; }
+}
+function saveSheetOrder(ref, ids) {
+  try { localStorage.setItem("wge_sheet_order_" + ref, JSON.stringify(ids)); } catch(e) {}
+}
+function applySortOrder(sheets, ref) {
+  var order = getSheetOrder(ref);
+  if (!order.length) return sheets;
+  var ordered = [];
+  order.forEach(function(id) {
+    var s = sheets.find(function(sh){ return sh.id === id; });
+    if (s) ordered.push(s);
+  });
+  // Nouvelles feuilles pas encore dans l'ordre → ajoutées en fin
+  sheets.forEach(function(s){ if (!order.includes(s.id)) ordered.push(s); });
+  return ordered;
 }
 
 // ── Supabase versions & audit (contrôle) ────────────────────────────────────
@@ -5163,12 +5203,17 @@ function ChantierPanel({ refChantier, onClose }) {
 }
 
 // ── SheetSelector ────────────────────────────────────────────────────────────
-function SheetSelector({ refChantier, currentId, onSelect, onNew, onDelete }) {
-  var [list, setList] = useState([]);
-  var [loadingList, setLoadingList] = useState(false);
-  var [newLabel, setNewLabel] = useState("");
-  var [creating, setCreating] = useState(false);
-  var [showNew, setShowNew] = useState(false);
+function SheetSelector({ refChantier, currentId, onSelect, onNew, onDelete, isWGE }) {
+  var [list, setList]           = useState([]);
+  var [ordered, setOrdered]     = useState([]);
+  var [loadingList, setLoading] = useState(false);
+  var [newLabel, setNewLabel]   = useState("");
+  var [creating, setCreating]   = useState(false);
+  var [showNew, setShowNew]     = useState(false);
+  var [editingId, setEditingId] = useState(null);
+  var [editVal, setEditVal]     = useState("");
+  var [dragOver, setDragOver]   = useState(null);
+  var dragSrc = useRef(null);
 
   function fmtDate(iso) {
     if (!iso) return "—";
@@ -5178,13 +5223,38 @@ function SheetSelector({ refChantier, currentId, onSelect, onNew, onDelete }) {
   }
 
   useEffect(function() {
-    if (!refChantier) { setList([]); return; }
-    setLoadingList(true);
+    if (!refChantier) { setList([]); setOrdered([]); return; }
+    setLoading(true);
     supaLoadList(refChantier).then(function(rows) {
       setList(rows);
-      setLoadingList(false);
+      setOrdered(applySortOrder(rows, refChantier));
+      setLoading(false);
     });
   }, [refChantier]);
+
+  function reorder(from, to) {
+    var arr = ordered.slice();
+    var item = arr.splice(from, 1)[0];
+    arr.splice(to, 0, item);
+    setOrdered(arr);
+    saveSheetOrder(refChantier, arr.map(function(s){ return s.id; }));
+  }
+
+  function startEdit(sheet) {
+    setEditingId(sheet.id);
+    setEditVal(sheet.label || "");
+  }
+  function saveEdit(id) {
+    var val = editVal.trim();
+    if (!val) { setEditingId(null); return; }
+    supaUpdateSheetLabel(id, val).then(function(ok) {
+      if (ok) {
+        var upd = function(arr) { return arr.map(function(s){ return s.id===id ? Object.assign({},s,{label:val}) : s; }); };
+        setList(upd); setOrdered(upd);
+      }
+    });
+    setEditingId(null);
+  }
 
   function handleCreate() {
     if (!newLabel.trim() || creating) return;
@@ -5194,8 +5264,8 @@ function SheetSelector({ refChantier, currentId, onSelect, onNew, onDelete }) {
     supaCreate(refChantier, newLabel.trim(), emptyData).then(function(created) {
       if (created) {
         setList(function(l){ return [created].concat(l); });
-        setShowNew(false);
-        setNewLabel("");
+        setOrdered(function(l){ return [created].concat(l); });
+        setShowNew(false); setNewLabel("");
         onNew(created.id, newLabel.trim());
       }
       setCreating(false);
@@ -5206,73 +5276,113 @@ function SheetSelector({ refChantier, currentId, onSelect, onNew, onDelete }) {
 
   return (
     <div style={{ background: WHITE, borderBottom: "1px solid #e8e8e4", padding: "10px 14px" }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: showNew || list.length > 0 ? 8 : 0 }}>
-        <div style={{ fontWeight: 700, fontSize: 12, color: GREEN, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:8 }}>
+        <div style={{ fontWeight:700, fontSize:12, color:GREEN, textTransform:"uppercase", letterSpacing:"0.06em" }}>
           📋 Rapports de chantier — {refChantier}
-          {loadingList && <span style={{ fontWeight: 400, color: MUTED, marginLeft: 8 }}>⏳</span>}
-          {!loadingList && list.length > 0 && <span style={{ fontWeight: 400, color: MUTED, marginLeft: 6 }}>({list.length})</span>}
+          {loadingList && <span style={{ fontWeight:400, color:MUTED, marginLeft:8 }}>⏳</span>}
+          {!loadingList && list.length > 0 && <span style={{ fontWeight:400, color:MUTED, marginLeft:6 }}>({list.length})</span>}
         </div>
-        <button onClick={function(){ setShowNew(function(v){ return !v; }); setNewLabel(""); }}
-          style={{ background: GREEN, color: WHITE, border: "none", borderRadius: 7, padding: "6px 13px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
-          + Nouvelle feuille
-        </button>
+        {isWGE && (
+          <button onClick={function(){ setShowNew(function(v){ return !v; }); setNewLabel(""); }}
+            style={{ background:GREEN, color:WHITE, border:"none", borderRadius:7, padding:"6px 13px", fontSize:12, fontWeight:700, cursor:"pointer" }}>
+            + Nouvelle feuille
+          </button>
+        )}
       </div>
 
       {/* Formulaire nouvelle feuille */}
       {showNew && (
-        <div style={{ background: "#f0f7f2", borderRadius: 8, padding: "10px 12px", marginBottom: 8, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+        <div style={{ background:"#f0f7f2", borderRadius:8, padding:"10px 12px", marginBottom:8, display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" }}>
           <input type="text" value={newLabel}
             onChange={function(e){ setNewLabel(e.target.value); }}
             onKeyDown={function(e){ if(e.key==="Enter") handleCreate(); }}
             placeholder="Nom de la visite : ex. Rapport initial, SAV 22/04…"
-            style={{ flex: 1, minWidth: 200, fontSize: 13 }} autoFocus />
+            style={{ flex:1, minWidth:200, fontSize:13 }} autoFocus />
           <button onClick={handleCreate} disabled={!newLabel.trim() || creating}
-            style={{ background: creating || !newLabel.trim() ? "#aaa" : GREEN, color: WHITE, border: "none", borderRadius: 7, padding: "7px 16px", fontSize: 13, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
+            style={{ background:creating||!newLabel.trim()?"#aaa":GREEN, color:WHITE, border:"none", borderRadius:7, padding:"7px 16px", fontSize:13, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap" }}>
             {creating ? "⏳" : "✓ Créer"}
           </button>
           <button onClick={function(){ setShowNew(false); }}
-            style={{ background: "#e8e8e4", border: "none", borderRadius: 7, padding: "7px 12px", fontSize: 13, cursor: "pointer" }}>
+            style={{ background:"#e8e8e4", border:"none", borderRadius:7, padding:"7px 12px", fontSize:13, cursor:"pointer" }}>
             Annuler
           </button>
         </div>
       )}
 
-      {/* Liste des feuilles */}
-      {!loadingList && list.length === 0 && !showNew && (
-        <div style={{ fontSize: 12, color: MUTED, fontStyle: "italic" }}>
-          Aucune feuille pour ce chantier — créez-en une avec le bouton ci-dessus.
+      {/* Hint drag */}
+      {isWGE && ordered.length > 1 && (
+        <div style={{ fontSize:10, color:MUTED, marginBottom:6, fontStyle:"italic" }}>
+          ↕ Glissez les feuilles pour les réordonner · ✏️ Cliquez le nom pour le renommer
         </div>
       )}
 
-      {list.length > 0 && (
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-          {list.map(function(sheet) {
+      {!loadingList && list.length === 0 && !showNew && (
+        <div style={{ fontSize:12, color:MUTED, fontStyle:"italic" }}>
+          Aucune feuille — créez-en une avec le bouton ci-dessus.
+        </div>
+      )}
+
+      {ordered.length > 0 && (
+        <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
+          {ordered.map(function(sheet, idx) {
             var isCurrent = sheet.id === currentId;
+            var isEditing = editingId === sheet.id;
+            var isDragOver = dragOver === idx;
             return (
               <div key={sheet.id}
-                onClick={function(){ if (!isCurrent) onSelect(sheet.id, sheet.label); }}
+                draggable={isWGE && !isEditing}
+                onDragStart={function(){ dragSrc.current = idx; }}
+                onDragOver={function(e){ e.preventDefault(); setDragOver(idx); }}
+                onDragLeave={function(){ setDragOver(null); }}
+                onDrop={function(e){ e.preventDefault(); setDragOver(null);
+                  if (dragSrc.current !== null && dragSrc.current !== idx) reorder(dragSrc.current, idx);
+                  dragSrc.current = null; }}
+                onDragEnd={function(){ setDragOver(null); dragSrc.current = null; }}
+                onClick={function(){ if (!isCurrent && !isEditing) onSelect(sheet.id, sheet.label); }}
                 style={{
-                  background: isCurrent ? GREEN : "#f8f8f6",
-                  border: "1.5px solid " + (isCurrent ? GREEN : BORDER),
-                  borderRadius: 8, padding: "7px 11px",
-                  cursor: isCurrent ? "default" : "pointer",
-                  display: "flex", alignItems: "center", gap: 8,
-                  transition: "background 0.12s, border 0.12s"
+                  background: isCurrent ? GREEN : isDragOver ? GREEN_LIGHT : "#f8f8f6",
+                  border: "1.5px solid " + (isCurrent ? GREEN : isDragOver ? GREEN : BORDER),
+                  borderRadius:8, padding:"7px 11px",
+                  cursor: isEditing ? "default" : isCurrent ? "default" : "pointer",
+                  display:"flex", alignItems:"center", gap:8,
+                  opacity: dragSrc.current === idx ? 0.4 : 1,
+                  transition:"background 0.12s, border 0.12s"
                 }}>
-                <div>
-                  <div style={{ fontWeight: 700, fontSize: 13, color: isCurrent ? WHITE : "#1a1a1a", maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {sheet.label || "Sans titre"}
-                  </div>
-                  <div style={{ fontSize: 10, color: isCurrent ? "rgba(255,255,255,0.7)" : MUTED, marginTop: 1 }}>
+                {/* Drag handle */}
+                {isWGE && !isEditing && (
+                  <span style={{ color: isCurrent?"rgba(255,255,255,0.5)":MUTED, fontSize:12, cursor:"grab", flexShrink:0 }}>⠿</span>
+                )}
+                <div style={{ minWidth:0 }}>
+                  {isEditing ? (
+                    <input type="text" value={editVal}
+                      onChange={function(e){ setEditVal(e.target.value); }}
+                      onKeyDown={function(e){ if(e.key==="Enter") saveEdit(sheet.id); if(e.key==="Escape") setEditingId(null); }}
+                      onBlur={function(){ saveEdit(sheet.id); }}
+                      style={{ fontSize:13, fontWeight:700, border:"1px solid "+GREEN, borderRadius:4, padding:"2px 6px", minWidth:140 }}
+                      autoFocus onClick={function(e){ e.stopPropagation(); }} />
+                  ) : (
+                    <div style={{ fontWeight:700, fontSize:13, color: isCurrent?WHITE:"#1a1a1a", maxWidth:180, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                      {sheet.label || "Sans titre"}
+                    </div>
+                  )}
+                  <div style={{ fontSize:10, color: isCurrent?"rgba(255,255,255,0.7)":MUTED, marginTop:1 }}>
                     {fmtDate(sheet.updated_at)}
                   </div>
                 </div>
                 {isCurrent && (
-                  <span style={{ fontSize: 9, fontWeight: 700, background: "rgba(255,255,255,0.22)", borderRadius: 4, padding: "1px 6px", color: WHITE, textTransform: "uppercase", flexShrink: 0 }}>
+                  <span style={{ fontSize:9, fontWeight:700, background:"rgba(255,255,255,0.22)", borderRadius:4, padding:"1px 6px", color:WHITE, textTransform:"uppercase", flexShrink:0 }}>
                     ouverte
                   </span>
                 )}
-                {!isCurrent && (
+                {isWGE && !isEditing && (
+                  <button onClick={function(e){ e.stopPropagation(); startEdit(sheet); }}
+                    title="Renommer"
+                    style={{ background:"none", border:"none", color: isCurrent?"rgba(255,255,255,0.7)":"#aaa",
+                      cursor:"pointer", padding:"0 2px", fontSize:12, lineHeight:1, flexShrink:0, minHeight:0 }}>
+                    ✏️
+                  </button>
+                )}
+                {isWGE && !isCurrent && !isEditing && (
                   <button onClick={function(e){
                     e.stopPropagation();
                     var sheetName = sheet.label || "Sans titre";
@@ -5281,11 +5391,12 @@ function SheetSelector({ refChantier, currentId, onSelect, onNew, onDelete }) {
                     supaDeleteSheet(sheet.id).then(function(ok) {
                       if (ok) {
                         setList(function(l){ return l.filter(function(s){ return s.id !== sheet.id; }); });
+                        setOrdered(function(l){ return l.filter(function(s){ return s.id !== sheet.id; }); });
                         if (sheet.id === currentId) onDelete();
                       }
                     });
                   }} title="Supprimer cette feuille"
-                    style={{ background: "none", border: "none", color: "#bbb", cursor: "pointer", padding: "0 2px", fontSize: 14, lineHeight: 1, flexShrink: 0, minHeight: 0 }}>
+                    style={{ background:"none", border:"none", color:"#bbb", cursor:"pointer", padding:"0 2px", fontSize:14, lineHeight:1, flexShrink:0, minHeight:0 }}>
                     🗑
                   </button>
                 )}
@@ -5528,15 +5639,15 @@ function CloturJourneeBlock({ tab, tabColor, journees, setJournees, locked }) {
   );
 }
 
-// ── generateAsBuilt : crée un PDF AS-Built dans une nouvelle fenêtre ─────────
-function generateAsBuilt(data, logoSrc) {
+// ── generateAsBuilt ──────────────────────────────────────────────────────────
+function generateAsBuilt(data, logoSrc, sheetLabel) {
   var ref     = data.meta.ref    || "—";
   var client  = data.meta.client || "—";
   var adresse = data.meta.adresse|| "—";
   var date    = data.meta.dateControle || new Date().toISOString().slice(0,10);
   var pm      = data.meta.pm     || "—";
+  var sheetName = sheetLabel || "";
 
-  // ── Collect photos per section ──
   function collectSectionPhotos(photosMap, sectionDefs, tabLabel) {
     var sections = [];
     sectionDefs.forEach(function(s) {
@@ -5552,7 +5663,7 @@ function generateAsBuilt(data, logoSrc) {
   var dcSections = collectSectionPhotos(data.dc.photos||{}, DC_SECTIONS, "DC");
   var acSections = collectSectionPhotos(data.ac.photos||{}, AC_SECTIONS, "AC");
 
-  // ── String photos ──
+  // String photos — skip empty
   var stringPhotos = [];
   for (var i=0; i<20; i++) {
     var sp = (data.dc.photos||{})["string_ph_"+i];
@@ -5560,10 +5671,9 @@ function generateAsBuilt(data, logoSrc) {
   }
   if (stringPhotos.length > 0) dcSections.push({ tab:"DC", section:"Strings", cat:"Strings", photos:stringPhotos });
 
-  // ── Photos générales ──
   var generalPhotos = (data.photosGenerales||[]).filter(function(p){ return p&&p.url; });
 
-  // ── Admin docs ──
+  // Admin docs — skip empty sections
   var adminSections = [];
   var adminSecDefs = [
     { key:"rgie",      label:"Rapport de conformité RGIE" },
@@ -5572,26 +5682,27 @@ function generateAsBuilt(data, logoSrc) {
     { key:"stabilite", label:"Rapport de stabilité" },
     { key:"fiches",    label:"Fiches techniques" },
   ];
-  var customSecs = (data.admin&&data.admin.customSections)||[];
-  customSecs.forEach(function(cs){ adminSecDefs.push({ key:cs.key, label:cs.label }); });
+  ((data.admin&&data.admin.customSections)||[]).forEach(function(cs){ adminSecDefs.push({ key:cs.key, label:cs.label }); });
   adminSecDefs.forEach(function(def) {
     var sec = ((data.admin||{}).sections||{})[def.key];
     if (sec && sec.docs && sec.docs.length > 0) adminSections.push({ label:def.label, docs:sec.docs, note:sec.note||"" });
   });
 
-  // ── Build TOC ──
+  // TOC
   var tocItems = [];
-  if (dcSections.length > 0) tocItems.push({ title:"Couverture DC — Photos et installations", anchor:"sec-dc" });
-  if (acSections.length > 0) tocItems.push({ title:"Installation AC — Électricité", anchor:"sec-ac" });
+  if (dcSections.length > 0) tocItems.push({ title:"DC — Couverture & Câblage", anchor:"sec-dc" });
+  if (acSections.length > 0) tocItems.push({ title:"AC — Installation électrique", anchor:"sec-ac" });
   if (generalPhotos.length > 0) tocItems.push({ title:"Photos générales du chantier", anchor:"sec-general" });
   if (adminSections.length > 0) tocItems.push({ title:"Documents administratifs", anchor:"sec-admin" });
 
-  // ── Photo grid HTML ──
-  function photoGrid(photos) {
-    return '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin-top:10px">'
+  // ── Photo grid : 2 colonnes, photos pleine largeur, non coupées ──
+  function photoGrid(photos, cols) {
+    cols = cols || 2;
+    return '<div style="display:grid;grid-template-columns:repeat('+cols+',1fr);gap:16px;margin-top:12px">'
       + photos.map(function(p){
           var caption = [p.uploadedBy?"👤 "+p.uploadedBy:"", p.addedAt?new Date(p.addedAt).toLocaleDateString("fr-BE"):""].filter(Boolean).join(" · ");
-          return '<div style="break-inside:avoid"><img src="'+p.url+'" style="width:100%;border-radius:6px;border:1px solid #ddd;display:block" />'
+          return '<div style="page-break-inside:avoid;break-inside:avoid">'
+            + '<img src="'+p.url+'" style="width:100%;height:auto;max-height:280px;object-fit:contain;background:#f4f4f0;border-radius:6px;border:1px solid #ddd;display:block" />'
             + (caption ? '<div style="font-size:10px;color:#666;margin-top:4px;text-align:center">'+caption+'</div>' : '')
             + '</div>';
         }).join("")
@@ -5599,10 +5710,12 @@ function generateAsBuilt(data, logoSrc) {
   }
 
   function sectionHTML(sections) {
+    if (!sections.length) return '<p style="color:#999;font-style:italic">Aucune photo dans cet onglet.</p>';
     return sections.map(function(s){
-      return '<div style="break-inside:avoid;margin-bottom:24px">'
-        + '<h3 style="font-size:13px;font-weight:700;color:#1B6B3A;margin:0 0 8px;padding-bottom:4px;border-bottom:1px solid #d4ead9">'+s.tab+' — '+s.section+'</h3>'
-        + photoGrid(s.photos)
+      return '<div style="page-break-inside:avoid;break-inside:avoid;margin-bottom:28px">'
+        + '<h3 style="font-size:13px;font-weight:700;color:#1B6B3A;margin:0 0 6px;padding-bottom:4px;border-bottom:1px solid #d4ead9">'
+        + s.tab+' — '+s.section+' <span style="font-weight:400;color:#888;font-size:11px">('+s.photos.length+' photo'+( s.photos.length>1?'s':'')+')</span></h3>'
+        + photoGrid(s.photos, s.photos.length === 1 ? 1 : 2)
         + '</div>';
     }).join("");
   }
@@ -5613,17 +5726,17 @@ function generateAsBuilt(data, logoSrc) {
         var ext = (d.name||"").split(".").pop().toLowerCase();
         var isImg = ["jpg","jpeg","png","gif","webp"].indexOf(ext) >= 0;
         var isPdf = ext === "pdf";
-        return '<div style="break-inside:avoid;margin-bottom:14px;border:1px solid #e8e8e4;border-radius:8px;overflow:hidden">'
-          + (isImg ? '<img src="'+d.url+'" style="width:100%;max-height:300px;object-fit:contain;display:block;background:#f4f4f0" />' : "")
+        return '<div style="page-break-inside:avoid;break-inside:avoid;margin-bottom:12px;border:1px solid #e8e8e4;border-radius:8px;overflow:hidden">'
+          + (isImg ? '<img src="'+d.url+'" style="width:100%;height:auto;max-height:400px;object-fit:contain;background:#f4f4f0;display:block" />' : "")
           + (isPdf ? '<iframe src="'+d.url+'" style="width:100%;height:500px;border:none;display:block"></iframe>' : "")
-          + (!isImg&&!isPdf ? '<div style="padding:16px;text-align:center;color:#888;font-size:13px">📎 '+d.name+'</div>' : "")
+          + (!isImg&&!isPdf ? '<div style="padding:20px;text-align:center;color:#888;font-size:13px">📎 '+d.name+'</div>' : "")
           + '<div style="padding:6px 10px;background:#f8f8f6;font-size:10px;color:#555">'
             + '<strong>'+d.name+'</strong>'
             + (d.uploadedBy?" · 👤 "+d.uploadedBy:"")
             + (d.note?' · <em>'+d.note+'</em>':"")
           + '</div></div>';
       }).join("");
-      return '<div style="break-inside:avoid;margin-bottom:24px">'
+      return '<div style="page-break-inside:avoid;break-inside:avoid;margin-bottom:24px">'
         + '<h3 style="font-size:13px;font-weight:700;color:#8e44ad;margin:0 0 8px;padding-bottom:4px;border-bottom:1px solid #e0d5f5">'+s.label+'</h3>'
         + (s.note?'<p style="font-size:11px;color:#555;font-style:italic;margin-bottom:8px">'+s.note+'</p>':"")
         + docsHtml
@@ -5632,71 +5745,73 @@ function generateAsBuilt(data, logoSrc) {
   }
 
   var html = '<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8">'
-    + '<title>AS-Built — '+ref+'</title>'
+    + '<title>AS-Built — '+ref+(sheetName?' — '+sheetName:'')+'</title>'
     + '<style>'
-    + 'body{margin:0;padding:0;font-family:Arial,Helvetica,sans-serif;color:#1a1a1a;background:#fff}'
-    + 'h1,h2,h3{margin:0}p{margin:0}'
-    + '.page{width:210mm;min-height:297mm;padding:20mm 20mm 16mm;box-sizing:border-box;page-break-after:always}'
-    + '.cover{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center}'
-    + '@media print{'
-    + '  .page{page-break-after:always;padding:14mm 16mm}'
-    + '  img{max-width:100%}'
-    + '  .no-print{display:none}'
-    + '  iframe{height:400px}'
-    + '}'
-    + '.section-title{font-size:16px;font-weight:700;color:#fff;background:#1B6B3A;padding:10px 16px;border-radius:6px;margin-bottom:16px}'
-    + '</style>'
-    + '</head><body>'
+    + 'body{margin:0;padding:0;font-family:Arial,Helvetica,sans-serif;color:#1a1a1a;background:#fff;font-size:13px}'
+    + '.page{width:210mm;min-height:290mm;padding:16mm 18mm;box-sizing:border-box}'
+    + '.cover{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;page-break-after:always}'
+    + '.section-page{page-break-before:always}'
+    + '.section-title{font-size:15px;font-weight:700;color:#fff;background:#1B6B3A;padding:9px 14px;border-radius:6px;margin-bottom:16px}'
+    + '@media print{.no-print{display:none!important}.page{page-break-after:always}@page{size:A4;margin:10mm}}'
+    + '</style></head><body>'
 
-    // ── Cover page ──
+    // Cover page
     + '<div class="page cover">'
-    + '<img src="'+logoSrc+'" style="height:80px;object-fit:contain;margin-bottom:32px" />'
-    + '<div style="font-size:28px;font-weight:700;color:#1B6B3A;margin-bottom:8px">Dossier AS-Built</div>'
-    + '<div style="font-size:18px;font-weight:600;color:#333;margin-bottom:32px">'+ref+'</div>'
-    + '<div style="border:1px solid #d4ead9;border-radius:12px;padding:24px 32px;background:#f0f7f2;text-align:left;min-width:320px">'
+    + (logoSrc ? '<img src="'+logoSrc+'" style="height:70px;object-fit:contain;margin-bottom:28px" />' : '<div style="height:70px;margin-bottom:28px"></div>')
+    + '<div style="font-size:26px;font-weight:700;color:#1B6B3A;margin-bottom:6px">Dossier AS-Built</div>'
+    + '<div style="font-size:20px;font-weight:600;color:#333;margin-bottom:4px">'+ref+'</div>'
+    + (sheetName ? '<div style="font-size:14px;color:#666;margin-bottom:28px">'+sheetName+'</div>'
+                 : '<div style="margin-bottom:28px"></div>')
+    + '<div style="border:1px solid #d4ead9;border-radius:10px;padding:20px 32px;background:#f0f7f2;text-align:left;min-width:300px">'
     + '<table style="border-collapse:collapse;width:100%">'
-    + '<tr><td style="padding:6px 12px 6px 0;font-size:12px;color:#666;font-weight:600">Client</td><td style="padding:6px 0;font-size:13px;font-weight:700">'+client+'</td></tr>'
-    + '<tr><td style="padding:6px 12px 6px 0;font-size:12px;color:#666;font-weight:600">Adresse</td><td style="padding:6px 0;font-size:12px">'+adresse+'</td></tr>'
-    + '<tr><td style="padding:6px 12px 6px 0;font-size:12px;color:#666;font-weight:600">Date</td><td style="padding:6px 0;font-size:12px">'+date+'</td></tr>'
-    + '<tr><td style="padding:6px 12px 6px 0;font-size:12px;color:#666;font-weight:600">Project Manager</td><td style="padding:6px 0;font-size:12px">'+pm+'</td></tr>'
+    + '<tr><td style="padding:5px 12px 5px 0;font-size:11px;color:#666;font-weight:600;white-space:nowrap">Client</td><td style="padding:5px 0;font-size:13px;font-weight:700">'+client+'</td></tr>'
+    + '<tr><td style="padding:5px 12px 5px 0;font-size:11px;color:#666;font-weight:600">Adresse</td><td style="padding:5px 0;font-size:12px">'+adresse+'</td></tr>'
+    + '<tr><td style="padding:5px 12px 5px 0;font-size:11px;color:#666;font-weight:600">Date</td><td style="padding:5px 0;font-size:12px">'+date+'</td></tr>'
+    + '<tr><td style="padding:5px 12px 5px 0;font-size:11px;color:#666;font-weight:600">Project Manager</td><td style="padding:5px 0;font-size:12px">'+pm+'</td></tr>'
     + '</table></div>'
-    + '<div style="margin-top:40px;font-size:11px;color:#999">Généré automatiquement depuis We Green — Rapport de Chantier</div>'
+    + '<div style="margin-top:32px;font-size:10px;color:#bbb">Généré le '+new Date().toLocaleDateString("fr-BE")+'</div>'
     + '</div>'
 
-    // ── Table of contents ──
-    + (tocItems.length > 0 ? '<div class="page">'
-      + '<h2 style="font-size:20px;font-weight:700;color:#1B6B3A;margin-bottom:24px;padding-bottom:8px;border-bottom:2px solid #d4ead9">Table des matières</h2>'
-      + '<ol style="padding-left:20px;line-height:2.2">'
-      + tocItems.map(function(t,i){ return '<li style="font-size:14px"><a href="#'+t.anchor+'" style="color:#1B6B3A;text-decoration:none">'+t.title+'</a></li>'; }).join("")
-      + '</ol></div>' : "")
+    // TOC
+    + (tocItems.length > 0
+      ? '<div class="page" style="page-break-after:always">'
+        + '<h2 style="font-size:18px;font-weight:700;color:#1B6B3A;margin-bottom:20px;padding-bottom:8px;border-bottom:2px solid #d4ead9">Table des matières</h2>'
+        + '<ol style="padding-left:18px;line-height:2.4;font-size:14px">'
+        + tocItems.map(function(t){ return '<li><a href="#'+t.anchor+'" style="color:#1B6B3A;text-decoration:none">'+t.title+'</a></li>'; }).join("")
+        + '</ol></div>'
+      : "")
 
-    // ── DC sections ──
-    + (dcSections.length > 0 ? '<div class="page" id="sec-dc">'
-      + '<div class="section-title">🟦 DC — Couverture &amp; Câblage</div>'
-      + sectionHTML(dcSections)
-      + '</div>' : "")
+    // DC
+    + (dcSections.length > 0
+      ? '<div class="page section-page" id="sec-dc">'
+        + '<div class="section-title">🟦 DC — Couverture &amp; Câblage</div>'
+        + sectionHTML(dcSections)+'</div>'
+      : "")
 
-    // ── AC sections ──
-    + (acSections.length > 0 ? '<div class="page" id="sec-ac">'
-      + '<div class="section-title">🟥 AC — Installation électrique</div>'
-      + sectionHTML(acSections)
-      + '</div>' : "")
+    // AC
+    + (acSections.length > 0
+      ? '<div class="page section-page" id="sec-ac">'
+        + '<div class="section-title">🟥 AC — Installation électrique</div>'
+        + sectionHTML(acSections)+'</div>'
+      : "")
 
-    // ── Photos générales ──
-    + (generalPhotos.length > 0 ? '<div class="page" id="sec-general">'
-      + '<div class="section-title">🏗️ Photos générales du chantier</div>'
-      + photoGrid(generalPhotos)
-      + '</div>' : "")
+    // Photos générales
+    + (generalPhotos.length > 0
+      ? '<div class="page section-page" id="sec-general">'
+        + '<div class="section-title">🏗️ Photos générales</div>'
+        + photoGrid(generalPhotos, 2)+'</div>'
+      : "")
 
-    // ── Admin documents ──
-    + (adminSections.length > 0 ? '<div class="page" id="sec-admin">'
-      + '<div class="section-title">📂 Documents administratifs</div>'
-      + adminHTML()
-      + '</div>' : "")
+    // Admin docs
+    + (adminSections.length > 0
+      ? '<div class="page section-page" id="sec-admin">'
+        + '<div class="section-title">📂 Documents administratifs</div>'
+        + adminHTML()+'</div>'
+      : "")
 
-    + '<div class="no-print" style="position:fixed;bottom:20px;right:20px;display:flex;gap:10px">'
-    + '<button onclick="window.print()" style="background:#1B6B3A;color:#fff;border:none;border-radius:8px;padding:12px 24px;font-size:14px;font-weight:700;cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,0.2)">🖨️ Enregistrer / Imprimer PDF</button>'
-    + '<button onclick="window.close()" style="background:#888;color:#fff;border:none;border-radius:8px;padding:12px 16px;font-size:14px;cursor:pointer">✕ Fermer</button>'
+    + '<div class="no-print" style="position:fixed;bottom:20px;right:20px;display:flex;gap:10px;z-index:9999">'
+    + '<button onclick="window.print()" style="background:#1B6B3A;color:#fff;border:none;border-radius:8px;padding:12px 24px;font-size:14px;font-weight:700;cursor:pointer;box-shadow:0 2px 12px rgba(0,0,0,0.2)">🖨️ Enregistrer / Imprimer PDF</button>'
+    + '<button onclick="window.close()" style="background:#888;color:#fff;border:none;border-radius:8px;padding:12px 16px;font-size:14px;cursor:pointer">✕</button>'
     + '</div>'
     + '</body></html>';
 
@@ -5705,6 +5820,7 @@ function generateAsBuilt(data, logoSrc) {
   win.document.write(html);
   win.document.close();
 }
+
 
 // ── WhatsAppNotify ────────────────────────────────────────────────────────────
 function WhatsAppNotify({ data, tab, dcComp, acComp }) {
@@ -5933,6 +6049,12 @@ function App() {
 
   // Load user from localStorage
   useEffect(function() {
+    // Mode client : connexion automatique comme lecteur sans auth Google
+    if (CLIENT_MODE) {
+      var clientUser = { name: "Client (lecture seule)", email: "", type: "client", picture: "" };
+      setUser(clientUser); userRef.current = clientUser;
+      return;
+    }
     try {
       var stored = localStorage.getItem("wge_user");
       if (stored) { var u = JSON.parse(stored); if (u && u.name) { setUser(u); userRef.current = u; } }
@@ -6531,10 +6653,25 @@ function App() {
             style={{ background: "rgba(255,255,255,0.2)", border: "none", color: WHITE, borderRadius: 6, padding: "5px 10px", fontSize: 12, cursor: "pointer" }}>
             🖨️ Imprimer
           </button>
-          <button onClick={function(){ generateAsBuilt(data, LOGO_SRC); }}
+          <button onClick={function(){ generateAsBuilt(data, LOGO_SRC, currentSheetLabel); }}
             style={{ background: "rgba(255,255,255,0.2)", border: "none", color: WHITE, borderRadius: 6, padding: "5px 10px", fontSize: 12, cursor: "pointer" }}>
             📋 AS-Built
           </button>
+          {user && (user.type === "wge" || isWGEEmail(user.email)) && data.meta.ref && (
+            <button onClick={function(){
+              var url = window.location.origin + window.location.pathname +
+                "?client=1&ref=" + encodeURIComponent(data.meta.ref);
+              navigator.clipboard.writeText(url).then(function(){
+                alert("✅ Lien client copié !\n\n" + url + "\n\nPartagez ce lien avec votre client. Il verra les rapports en lecture seule.");
+              }).catch(function(){
+                prompt("Copiez ce lien client :", url);
+              });
+            }}
+              title="Générer un lien de lecture seule pour le client"
+              style={{ background: "rgba(255,255,255,0.2)", border: "1px solid rgba(255,255,255,0.4)", color: WHITE, borderRadius: 6, padding: "5px 10px", fontSize: 12, cursor: "pointer" }}>
+              🔗 Lien client
+            </button>
+          )}
           {user && (
             <div style={{ position:"relative" }} className="user-menu-wrap">
               <button onClick={function(e){
@@ -6575,6 +6712,7 @@ function App() {
       <SheetSelector
         refChantier={data.meta.ref}
         currentId={currentSheetId}
+        isWGE={user && (user.type === "wge" || isWGEEmail(user.email))}
         onSelect={function(id, label) { loadSheetById(id, label); }}
         onNew={function(id, label) {
           var fresh = makeDefaultData();
