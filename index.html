@@ -90,6 +90,7 @@ button { font-family: inherit; cursor: pointer; }
     <div style="display:flex; width:100%; border-bottom:2px solid #e8e8e4; margin-bottom:22px;">
       <button id="tab-wge" onclick="wgeTab('wge')" style="flex:1; padding:9px 4px; border:none; background:none; font-weight:700; font-size:13px; color:#1B6B3A; border-bottom:2.5px solid #1B6B3A; margin-bottom:-2px; cursor:pointer; font-family:inherit;">🌿 Équipe WGE</button>
       <button id="tab-st" onclick="wgeTab('st')" style="flex:1; padding:9px 4px; border:none; background:none; font-weight:400; font-size:13px; color:#888; border-bottom:2.5px solid transparent; margin-bottom:-2px; cursor:pointer; font-family:inherit;">🔧 Sous-traitant</button>
+      <button id="tab-client" onclick="wgeTab('client')" style="flex:1; padding:9px 4px; border:none; background:none; font-weight:400; font-size:13px; color:#888; border-bottom:2.5px solid transparent; margin-bottom:-2px; cursor:pointer; font-family:inherit;">👤 Client</button>
     </div>
 
     <!-- Panel WGE -->
@@ -132,7 +133,30 @@ button { font-family: inherit; cursor: pointer; }
     </div>
 
     <div id="wge-login-error" style="font-size:12px; color:#c0392b; display:none; margin-top:8px; text-align:center;"></div>
-    <div style="font-size:11px; color:#ddd; text-align:center; margin-top:10px">Réservé à l'équipe et aux partenaires We Green</div>
+    <div style="font-size:11px; color:#ddd; text-align:center; margin-top:10px">Réservé à l'équipe, aux partenaires et aux clients We Green</div>
+
+    <!-- Panel Client -->
+    <div id="panel-client" style="width:100%; display:none; flex-direction:column; gap:12px;">
+      <div style="font-size:13px; color:#888; text-align:center; margin-bottom:4px; line-height:1.5">
+        Accédez à votre dossier <strong style="color:#1B6B3A">AS-Built</strong><br>
+        <span style="font-size:12px">Identifiant = Mot de passe (fournis par We Green)</span>
+      </div>
+      <div>
+        <label style="font-size:12px; color:#666; font-weight:500; display:block; margin-bottom:5px">Identifiant</label>
+        <input id="client-username" type="text" placeholder="ex : dupont ou dupont-jean" autocomplete="username"
+          style="width:100%; padding:9px 12px; border:1px solid #d0d0c8; border-radius:8px; font-size:14px; font-family:inherit; box-sizing:border-box;"
+          onkeydown="if(event.key==='Enter') document.getElementById('client-password').focus()" />
+      </div>
+      <div>
+        <label style="font-size:12px; color:#666; font-weight:500; display:block; margin-bottom:5px">Mot de passe</label>
+        <input id="client-password" type="password" placeholder="Identique à votre identifiant" autocomplete="current-password"
+          style="width:100%; padding:9px 12px; border:1px solid #d0d0c8; border-radius:8px; font-size:14px; font-family:inherit; box-sizing:border-box;"
+          onkeydown="if(event.key==='Enter') wgeClientLogin()" />
+      </div>
+      <button onclick="wgeClientLogin()" style="width:100%; padding:11px; background:#1B6B3A; color:#fff; border:none; border-radius:8px; font-size:14px; font-weight:600; cursor:pointer; font-family:inherit; margin-top:2px;">
+        Accéder à mon dossier →
+      </button>
+    </div>
   </div>
 </div>
 
@@ -194,16 +218,32 @@ document.addEventListener('click', function(e) {
 
   // Tab switching
   window.wgeTab = function(tab) {
-    var isWge = tab === "wge";
-    document.getElementById("panel-wge").style.display = isWge ? "flex" : "none";
-    document.getElementById("panel-st").style.display = isWge ? "none" : "flex";
-    document.getElementById("tab-wge").style.fontWeight = isWge ? "700" : "400";
-    document.getElementById("tab-wge").style.color = isWge ? "#1B6B3A" : "#888";
-    document.getElementById("tab-wge").style.borderBottom = isWge ? "2.5px solid #1B6B3A" : "2.5px solid transparent";
-    document.getElementById("tab-st").style.fontWeight = isWge ? "400" : "700";
-    document.getElementById("tab-st").style.color = isWge ? "#888" : "#1B6B3A";
-    document.getElementById("tab-st").style.borderBottom = isWge ? "2.5px solid transparent" : "2.5px solid #1B6B3A";
+    ["wge","st","client"].forEach(function(t) {
+      var panel = document.getElementById("panel-"+t);
+      var btn   = document.getElementById("tab-"+t);
+      if (!panel || !btn) return;
+      var active = t === tab;
+      panel.style.display = active ? "flex" : "none";
+      btn.style.fontWeight = active ? "700" : "400";
+      btn.style.color = active ? "#1B6B3A" : "#888";
+      btn.style.borderBottom = active ? "2.5px solid #1B6B3A" : "2.5px solid transparent";
+    });
     showErr("");
+  };
+
+  // Client login : identifiant = mot de passe (insensible à la casse)
+  window.wgeClientLogin = function() {
+    var username = (document.getElementById("client-username").value || "").trim();
+    var password = (document.getElementById("client-password").value || "").trim();
+    if (!username) { showErr("Veuillez saisir votre identifiant."); return; }
+    if (!password) { showErr("Veuillez saisir votre mot de passe."); return; }
+    if (username.toLowerCase() !== password.toLowerCase()) {
+      showErr("Identifiant et mot de passe doivent être identiques.");
+      return;
+    }
+    var u = { name: username, email: "", type: "client", picture: "" };
+    try { localStorage.setItem("wge_user", JSON.stringify(u)); } catch(e) {}
+    showApp();
   };
 
   // Sous-traitant : afficher le champ texte si "Autre"
@@ -517,25 +557,6 @@ async function supaUpdateSheetLabel(id, label) {
   } catch(e) { return false; }
 }
 
-// Ordre des feuilles en localStorage — zéro changement DB, rétrocompatible
-function getSheetOrder(ref) {
-  try { return JSON.parse(localStorage.getItem("wge_sheet_order_" + ref) || "[]"); } catch(e) { return []; }
-}
-function saveSheetOrder(ref, ids) {
-  try { localStorage.setItem("wge_sheet_order_" + ref, JSON.stringify(ids)); } catch(e) {}
-}
-function applySortOrder(sheets, ref) {
-  var order = getSheetOrder(ref);
-  if (!order.length) return sheets;
-  var ordered = [];
-  order.forEach(function(id) {
-    var s = sheets.find(function(sh){ return sh.id === id; });
-    if (s) ordered.push(s);
-  });
-  // Nouvelles feuilles pas encore dans l'ordre → ajoutées en fin
-  sheets.forEach(function(s){ if (!order.includes(s.id)) ordered.push(s); });
-  return ordered;
-}
 
 // ── Supabase versions & audit (contrôle) ────────────────────────────────────
 // Clé versions : ref + "_ctrl_" + sheetId (évite les conflits avec feuilles_chantier)
@@ -1039,6 +1060,7 @@ function AnnotationModal({ imageUrl, onSave, onClose }) {
     var canvas = canvasRef.current;
     if (!canvas) return;
     var img = new Image();
+    img.crossOrigin = "anonymous"; // nécessaire pour getImageData sur images Supabase Storage
     img.onload = function() {
       // Canvas at FULL image resolution — CSS handles display scaling
       canvas.width = img.width;
@@ -1056,6 +1078,24 @@ function AnnotationModal({ imageUrl, onSave, onClose }) {
       setZoomLevel(100);
       canvas.style.width = Math.round(img.width * scale) + "px";
       canvas.style.height = "auto";
+    };
+    img.onerror = function() {
+      // Fallback si CORS bloqué : charger via blob (contourne la restriction)
+      fetch(imageUrl).then(function(r){ return r.blob(); }).then(function(blob){
+        var objUrl = URL.createObjectURL(blob);
+        var img2 = new Image();
+        img2.onload = function(){
+          canvas.width = img2.width; canvas.height = img2.height;
+          var ctx = canvas.getContext("2d");
+          ctx.drawImage(img2, 0, 0);
+          try { setHistory([ctx.getImageData(0, 0, canvas.width, canvas.height)]); } catch(e) {}
+          var scale = Math.min(window.innerWidth*0.98/img2.width, window.innerHeight*0.72/img2.height, 1);
+          initScale.current = scale; zoom.current = 1; setCssScale(1); setZoomLevel(100);
+          canvas.style.width = Math.round(img2.width*scale)+"px"; canvas.style.height="auto";
+          URL.revokeObjectURL(objUrl);
+        };
+        img2.src = objUrl;
+      }).catch(function(){ console.warn("[Annotation] Impossible de charger l'image"); });
     };
     img.src = imageUrl;
   }, []);
@@ -5203,75 +5243,119 @@ function ChantierPanel({ refChantier, onClose }) {
 }
 
 // ── SheetSelector ────────────────────────────────────────────────────────────
+// Les "sections" sont des séparateurs visuels stockés en localStorage
+// Format order: [ {type:"sheet",id:82}, {type:"section",id:"sec_...",label:"..."}, ... ]
+
+function getSheetOrder(ref) {
+  try { return JSON.parse(localStorage.getItem("wge_sheet_order_" + ref) || "[]"); } catch(e) { return []; }
+}
+function saveSheetOrder(ref, order) {
+  try { localStorage.setItem("wge_sheet_order_" + ref, JSON.stringify(order)); } catch(e) {}
+}
+function applySortOrder(sheets, ref) {
+  var order = getSheetOrder(ref);
+  if (!order.length) return sheets.map(function(s){ return {type:"sheet", data:s}; });
+  var result = [];
+  order.forEach(function(item) {
+    if (item.type === "section") {
+      result.push(item);
+    } else {
+      var s = sheets.find(function(sh){ return sh.id === item.id; });
+      if (s) result.push({ type:"sheet", data:s });
+    }
+  });
+  // Feuilles pas encore dans l'ordre → en fin
+  sheets.forEach(function(s) {
+    var inOrder = order.some(function(o){ return o.type==="sheet" && o.id===s.id; });
+    if (!inOrder) result.push({ type:"sheet", data:s });
+  });
+  return result;
+}
+
 function SheetSelector({ refChantier, currentId, onSelect, onNew, onDelete, isWGE }) {
-  var [list, setList]           = useState([]);
-  var [ordered, setOrdered]     = useState([]);
+  var [sheets, setSheets]       = useState([]);
+  var [ordered, setOrdered]     = useState([]); // [{type:"sheet"|"section", data?:..., label?:..., id?:...}]
   var [loadingList, setLoading] = useState(false);
   var [newLabel, setNewLabel]   = useState("");
   var [creating, setCreating]   = useState(false);
   var [showNew, setShowNew]     = useState(false);
   var [editingId, setEditingId] = useState(null);
   var [editVal, setEditVal]     = useState("");
+  var [menuOpenId, setMenuOpenId]     = useState(null); // ... sur feuille
+  var [headerMenuOpen, setHeaderMenu] = useState(false); // ... sur header
+  var [addSecLabel, setAddSecLabel]   = useState("");
+  var [showAddSec, setShowAddSec]     = useState(false);
   var [dragOver, setDragOver]   = useState(null);
-  var [menuOpenId, setMenuOpenId] = useState(null); // ... dropdown
   var dragSrc = useRef(null);
 
-  // Fermer le menu si clic ailleurs
   useEffect(function() {
-    function close() { setMenuOpenId(null); }
+    function close(e) {
+      setMenuOpenId(null);
+      setHeaderMenu(false);
+    }
     document.addEventListener("click", close);
     return function() { document.removeEventListener("click", close); };
   }, []);
 
-  function handleDelete(sheet) {
-    var n = sheet.label || "Sans titre";
-    if (!window.confirm("Supprimer \"" + n + "\" ?\nCette action est irréversible.")) return;
-    if (!window.confirm("⚠️ CONFIRMATION FINALE\n\nSupprimer définitivement :\n\"" + n + "\"\n\nToutes les données seront perdues. Continuer ?")) return;
-    supaDeleteSheet(sheet.id).then(function(ok) {
-      if (ok) {
-        setList(function(l){ return l.filter(function(s){ return s.id !== sheet.id; }); });
-        setOrdered(function(l){ return l.filter(function(s){ return s.id !== sheet.id; }); });
-        if (sheet.id === currentId) onDelete();
-      }
-    });
-  }
-
-  function fmtDate(iso) {
-    if (!iso) return "—";
-    var d = new Date(iso);
-    return d.toLocaleDateString("fr-BE", { day:"2-digit", month:"2-digit", year:"numeric" }) +
-           " " + d.toLocaleTimeString("fr-BE", { hour:"2-digit", minute:"2-digit" });
-  }
-
   useEffect(function() {
-    if (!refChantier) { setList([]); setOrdered([]); return; }
+    if (!refChantier) { setSheets([]); setOrdered([]); return; }
     setLoading(true);
     supaLoadList(refChantier).then(function(rows) {
-      setList(rows);
-      setOrdered(applySortOrder(rows, refChantier));
+      setSheets(rows || []);
+      setOrdered(applySortOrder(rows || [], refChantier));
       setLoading(false);
     });
   }, [refChantier]);
+
+  function persistOrder(newOrdered) {
+    setOrdered(newOrdered);
+    var flat = newOrdered.map(function(o){
+      return o.type === "section"
+        ? { type:"section", id:o.id, label:o.label }
+        : { type:"sheet", id:o.data.id };
+    });
+    saveSheetOrder(refChantier, flat);
+  }
+
+  function addSection(label) {
+    if (!label.trim()) return;
+    var item = { type:"section", id:"sec_"+Date.now(), label:label.trim() };
+    var newOrd = ordered.concat([item]);
+    persistOrder(newOrd);
+    setAddSecLabel(""); setShowAddSec(false);
+  }
+
+  function renameSection(secId, newLabel) {
+    var newOrd = ordered.map(function(o){
+      return (o.type==="section" && o.id===secId) ? Object.assign({},o,{label:newLabel}) : o;
+    });
+    persistOrder(newOrd);
+  }
+
+  function deleteSection(secId) {
+    if (!window.confirm("Supprimer cette section ?")) return;
+    persistOrder(ordered.filter(function(o){ return !(o.type==="section" && o.id===secId); }));
+  }
 
   function reorder(from, to) {
     var arr = ordered.slice();
     var item = arr.splice(from, 1)[0];
     arr.splice(to, 0, item);
-    setOrdered(arr);
-    saveSheetOrder(refChantier, arr.map(function(s){ return s.id; }));
+    persistOrder(arr);
   }
 
-  function startEdit(sheet) {
-    setEditingId(sheet.id);
-    setEditVal(sheet.label || "");
-  }
+  function startEdit(sheet) { setEditingId(sheet.id); setEditVal(sheet.label || ""); }
   function saveEdit(id) {
     var val = editVal.trim();
     if (!val) { setEditingId(null); return; }
     supaUpdateSheetLabel(id, val).then(function(ok) {
       if (ok) {
-        var upd = function(arr) { return arr.map(function(s){ return s.id===id ? Object.assign({},s,{label:val}) : s; }); };
-        setList(upd); setOrdered(upd);
+        var upd = function(arr){ return arr.map(function(o){
+          if (o.type==="sheet" && o.data && o.data.id===id) return Object.assign({},o,{data:Object.assign({},o.data,{label:val})});
+          return o;
+        }); };
+        setSheets(function(l){ return l.map(function(s){ return s.id===id?Object.assign({},s,{label:val}):s; }); });
+        setOrdered(upd);
       }
     });
     setEditingId(null);
@@ -5284,8 +5368,10 @@ function SheetSelector({ refChantier, currentId, onSelect, onNew, onDelete, isWG
     emptyData.meta.ref = refChantier;
     supaCreate(refChantier, newLabel.trim(), emptyData).then(function(created) {
       if (created) {
-        setList(function(l){ return [created].concat(l); });
-        setOrdered(function(l){ return [created].concat(l); });
+        var newSheet = created;
+        setSheets(function(l){ return [newSheet].concat(l); });
+        var newOrd = [{ type:"sheet", data:newSheet }].concat(ordered);
+        persistOrder(newOrd);
         setShowNew(false); setNewLabel("");
         onNew(created.id, newLabel.trim());
       }
@@ -5293,35 +5379,68 @@ function SheetSelector({ refChantier, currentId, onSelect, onNew, onDelete, isWG
     });
   }
 
+  function fmtDate(iso) {
+    if (!iso) return "";
+    var d = new Date(iso);
+    return d.toLocaleDateString("fr-BE",{day:"2-digit",month:"2-digit",year:"numeric"})+" "+
+           d.toLocaleTimeString("fr-BE",{hour:"2-digit",minute:"2-digit"});
+  }
+
   if (!refChantier) return null;
 
   return (
-    <div style={{ background: WHITE, borderBottom: "1px solid #e8e8e4", padding: "10px 14px" }}>
+    <div style={{ background:WHITE, borderBottom:"1px solid #e8e8e4", padding:"10px 14px" }}>
+      {/* Header row */}
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:8 }}>
         <div style={{ fontWeight:700, fontSize:12, color:GREEN, textTransform:"uppercase", letterSpacing:"0.06em" }}>
           📋 Rapports de chantier — {refChantier}
           {loadingList && <span style={{ fontWeight:400, color:MUTED, marginLeft:8 }}>⏳</span>}
-          {!loadingList && list.length > 0 && <span style={{ fontWeight:400, color:MUTED, marginLeft:6 }}>({list.length})</span>}
+          {!loadingList && sheets.length>0 && <span style={{ fontWeight:400, color:MUTED, marginLeft:6 }}>({sheets.length})</span>}
         </div>
         {isWGE && (
-          <button onClick={function(){ setShowNew(function(v){ return !v; }); setNewLabel(""); }}
-            style={{ background:GREEN, color:WHITE, border:"none", borderRadius:7, padding:"6px 13px", fontSize:12, fontWeight:700, cursor:"pointer" }}>
-            + Nouvelle feuille
-          </button>
+          <div style={{ display:"flex", gap:6, alignItems:"center" }}>
+            <button onClick={function(){ setShowNew(function(v){return !v;}); setNewLabel(""); }}
+              style={{ background:GREEN, color:WHITE, border:"none", borderRadius:7,
+                padding:"6px 13px", fontSize:12, fontWeight:700, cursor:"pointer" }}>
+              + Nouvelle feuille
+            </button>
+            {/* ⋯ header menu */}
+            <div style={{ position:"relative" }} onClick={function(e){ e.stopPropagation(); }}>
+              <button onClick={function(e){ e.stopPropagation(); setHeaderMenu(function(v){return !v;}); }}
+                style={{ background:"#f0f0ec", border:"1px solid #e0e0d8", borderRadius:7,
+                  padding:"6px 10px", fontSize:15, cursor:"pointer", color:"#555", lineHeight:1 }}>
+                ⋯
+              </button>
+              {headerMenuOpen && (
+                <div style={{ position:"absolute", right:0, top:"100%", zIndex:1000, marginTop:4,
+                  background:WHITE, border:"1px solid #e0e0d8", borderRadius:8,
+                  boxShadow:"0 4px 16px rgba(0,0,0,0.12)", minWidth:190, overflow:"hidden" }}>
+                  <button onClick={function(){ setShowAddSec(true); setHeaderMenu(false); setAddSecLabel(""); }}
+                    style={{ display:"block", width:"100%", textAlign:"left", padding:"10px 14px",
+                      border:"none", background:"none", cursor:"pointer", fontSize:13, color:"#1a1a1a" }}
+                    onMouseOver={function(e){ e.currentTarget.style.background="#f5f5f2"; }}
+                    onMouseOut={function(e){ e.currentTarget.style.background="none"; }}>
+                    📁 Ajouter une section
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
         )}
       </div>
 
-      {/* Formulaire nouvelle feuille */}
+      {/* Nouvelle feuille form */}
       {showNew && (
-        <div style={{ background:"#f0f7f2", borderRadius:8, padding:"10px 12px", marginBottom:8, display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" }}>
+        <div style={{ background:"#f0f7f2", borderRadius:8, padding:"10px 12px", marginBottom:8,
+          display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" }}>
           <input type="text" value={newLabel}
             onChange={function(e){ setNewLabel(e.target.value); }}
             onKeyDown={function(e){ if(e.key==="Enter") handleCreate(); }}
-            placeholder="Nom de la visite : ex. Rapport initial, SAV 22/04…"
-            style={{ flex:1, minWidth:200, fontSize:13 }} autoFocus />
-          <button onClick={handleCreate} disabled={!newLabel.trim() || creating}
-            style={{ background:creating||!newLabel.trim()?"#aaa":GREEN, color:WHITE, border:"none", borderRadius:7, padding:"7px 16px", fontSize:13, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap" }}>
-            {creating ? "⏳" : "✓ Créer"}
+            placeholder="Nom de la feuille…" style={{ flex:1, minWidth:200, fontSize:13 }} autoFocus />
+          <button onClick={handleCreate} disabled={!newLabel.trim()||creating}
+            style={{ background:creating||!newLabel.trim()?"#aaa":GREEN, color:WHITE, border:"none",
+              borderRadius:7, padding:"7px 16px", fontSize:13, fontWeight:700, cursor:"pointer" }}>
+            {creating?"⏳":"✓ Créer"}
           </button>
           <button onClick={function(){ setShowNew(false); }}
             style={{ background:"#e8e8e4", border:"none", borderRadius:7, padding:"7px 12px", fontSize:13, cursor:"pointer" }}>
@@ -5330,25 +5449,83 @@ function SheetSelector({ refChantier, currentId, onSelect, onNew, onDelete, isWG
         </div>
       )}
 
-      {/* Hint drag */}
-      {isWGE && ordered.length > 1 && (
-        <div style={{ fontSize:10, color:MUTED, marginBottom:6, fontStyle:"italic" }}>
-          ↕ Glissez les feuilles pour les réordonner · ✏️ Cliquez le nom pour le renommer
+      {/* Ajouter section form */}
+      {showAddSec && (
+        <div style={{ background:"#f5f0fa", borderRadius:8, padding:"10px 12px", marginBottom:8,
+          display:"flex", gap:8, alignItems:"center", flexWrap:"wrap", border:"1px solid #d7bde2" }}>
+          <span style={{ fontSize:12, color:"#8e44ad", fontWeight:600 }}>📁 Nom de la section :</span>
+          <input type="text" value={addSecLabel}
+            onChange={function(e){ setAddSecLabel(e.target.value); }}
+            onKeyDown={function(e){ if(e.key==="Enter") addSection(addSecLabel); }}
+            placeholder="ex : Travaux DC, Phase 1, SAV…" style={{ flex:1, minWidth:160, fontSize:13 }} autoFocus />
+          <button onClick={function(){ addSection(addSecLabel); }}
+            disabled={!addSecLabel.trim()}
+            style={{ background:"#8e44ad", color:WHITE, border:"none", borderRadius:7,
+              padding:"7px 14px", fontSize:13, fontWeight:700, cursor:"pointer" }}>
+            ✓ Ajouter
+          </button>
+          <button onClick={function(){ setShowAddSec(false); }}
+            style={{ background:"#e8e8e4", border:"none", borderRadius:7, padding:"7px 12px", fontSize:13, cursor:"pointer" }}>
+            Annuler
+          </button>
         </div>
       )}
 
-      {!loadingList && list.length === 0 && !showNew && (
+      {!loadingList && sheets.length===0 && !showNew && (
         <div style={{ fontSize:12, color:MUTED, fontStyle:"italic" }}>
           Aucune feuille — créez-en une avec le bouton ci-dessus.
         </div>
       )}
 
-      {ordered.length > 0 && (
-        <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
-          {ordered.map(function(sheet, idx) {
+      {isWGE && ordered.length>1 && (
+        <div style={{ fontSize:10, color:MUTED, marginBottom:6, fontStyle:"italic" }}>
+          ↕ Glissez pour réordonner · ✏️ Cliquez ⋯ pour renommer
+        </div>
+      )}
+
+      {/* Ordered list of sheets + sections */}
+      {ordered.length>0 && (
+        <div style={{ display:"flex", flexWrap:"wrap", gap:6, alignItems:"center" }}>
+          {ordered.map(function(item, idx) {
+
+            // ── Section divider ──
+            if (item.type === "section") {
+              return (
+                <div key={item.id} style={{ width:"100%", display:"flex", alignItems:"center",
+                  gap:6, margin:"6px 0 2px" }}>
+                  {editingId === item.id ? (
+                    <input type="text" value={editVal}
+                      onChange={function(e){ setEditVal(e.target.value); }}
+                      onKeyDown={function(e){ if(e.key==="Enter"){ renameSection(item.id, editVal); setEditingId(null); } if(e.key==="Escape") setEditingId(null); }}
+                      onBlur={function(){ renameSection(item.id, editVal); setEditingId(null); }}
+                      style={{ flex:1, fontSize:11, fontWeight:700, color:"#8e44ad",
+                        border:"1px solid #8e44ad", borderRadius:4, padding:"2px 7px" }}
+                      autoFocus onClick={function(e){ e.stopPropagation(); }} />
+                  ) : (
+                    <div style={{ flex:1, fontSize:11, fontWeight:700, color:"#8e44ad",
+                      textTransform:"uppercase", letterSpacing:"0.08em", display:"flex", alignItems:"center", gap:6 }}>
+                      <span style={{ flex:1, borderTop:"1.5px solid #d7bde2", paddingLeft:6 }}>{item.label}</span>
+                    </div>
+                  )}
+                  {isWGE && editingId !== item.id && (
+                    <div style={{ display:"flex", gap:3 }}>
+                      <button onClick={function(){ setEditingId(item.id); setEditVal(item.label||""); }}
+                        style={{ background:"none", border:"none", color:"#c39bd3", cursor:"pointer", fontSize:11, padding:"0 4px" }}>✏️</button>
+                      <button onClick={function(){ deleteSection(item.id); }}
+                        style={{ background:"none", border:"none", color:"#f1948a", cursor:"pointer", fontSize:11, padding:"0 4px" }}>🗑</button>
+                    </div>
+                  )}
+                </div>
+              );
+            }
+
+            // ── Sheet chip ──
+            var sheet = item.data;
+            if (!sheet) return null;
             var isCurrent = sheet.id === currentId;
             var isEditing = editingId === sheet.id;
             var isDragOver = dragOver === idx;
+
             return (
               <div key={sheet.id}
                 draggable={isWGE && !isEditing}
@@ -5356,22 +5533,20 @@ function SheetSelector({ refChantier, currentId, onSelect, onNew, onDelete, isWG
                 onDragOver={function(e){ e.preventDefault(); setDragOver(idx); }}
                 onDragLeave={function(){ setDragOver(null); }}
                 onDrop={function(e){ e.preventDefault(); setDragOver(null);
-                  if (dragSrc.current !== null && dragSrc.current !== idx) reorder(dragSrc.current, idx);
-                  dragSrc.current = null; }}
-                onDragEnd={function(){ setDragOver(null); dragSrc.current = null; }}
-                onClick={function(){ if (!isCurrent && !isEditing) onSelect(sheet.id, sheet.label); }}
+                  if(dragSrc.current!==null && dragSrc.current!==idx) reorder(dragSrc.current, idx);
+                  dragSrc.current=null; }}
+                onDragEnd={function(){ setDragOver(null); dragSrc.current=null; }}
+                onClick={function(){ if(!isCurrent && !isEditing) onSelect(sheet.id, sheet.label); }}
                 style={{
-                  background: isCurrent ? GREEN : isDragOver ? GREEN_LIGHT : "#f8f8f6",
-                  border: "1.5px solid " + (isCurrent ? GREEN : isDragOver ? GREEN : BORDER),
+                  background: isCurrent?GREEN:isDragOver?GREEN_LIGHT:"#f8f8f6",
+                  border:"1.5px solid "+(isCurrent?GREEN:isDragOver?GREEN:"#e0e0d8"),
                   borderRadius:8, padding:"7px 11px",
-                  cursor: isEditing ? "default" : isCurrent ? "default" : "pointer",
+                  cursor:isEditing?"default":isCurrent?"default":"pointer",
                   display:"flex", alignItems:"center", gap:8,
-                  opacity: dragSrc.current === idx ? 0.4 : 1,
                   transition:"background 0.12s, border 0.12s"
                 }}>
-                {/* Drag handle */}
                 {isWGE && !isEditing && (
-                  <span style={{ color: isCurrent?"rgba(255,255,255,0.5)":MUTED, fontSize:12, cursor:"grab", flexShrink:0 }}>⠿</span>
+                  <span style={{ color:isCurrent?"rgba(255,255,255,0.5)":MUTED, fontSize:12, cursor:"grab", flexShrink:0 }}>⠿</span>
                 )}
                 <div style={{ minWidth:0 }}>
                   {isEditing ? (
@@ -5379,29 +5554,32 @@ function SheetSelector({ refChantier, currentId, onSelect, onNew, onDelete, isWG
                       onChange={function(e){ setEditVal(e.target.value); }}
                       onKeyDown={function(e){ if(e.key==="Enter") saveEdit(sheet.id); if(e.key==="Escape") setEditingId(null); }}
                       onBlur={function(){ saveEdit(sheet.id); }}
-                      style={{ fontSize:13, fontWeight:700, border:"1px solid "+GREEN, borderRadius:4, padding:"2px 6px", minWidth:140 }}
+                      style={{ fontSize:13, fontWeight:700, border:"1px solid "+GREEN,
+                        borderRadius:4, padding:"2px 6px", minWidth:140 }}
                       autoFocus onClick={function(e){ e.stopPropagation(); }} />
                   ) : (
-                    <div style={{ fontWeight:700, fontSize:13, color: isCurrent?WHITE:"#1a1a1a", maxWidth:180, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
-                      {sheet.label || "Sans titre"}
+                    <div style={{ fontWeight:700, fontSize:13, color:isCurrent?WHITE:"#1a1a1a",
+                      maxWidth:180, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                      {sheet.label||"Sans titre"}
                     </div>
                   )}
-                  <div style={{ fontSize:10, color: isCurrent?"rgba(255,255,255,0.7)":MUTED, marginTop:1 }}>
+                  <div style={{ fontSize:10, color:isCurrent?"rgba(255,255,255,0.7)":MUTED, marginTop:1 }}>
                     {fmtDate(sheet.updated_at)}
                   </div>
                 </div>
                 {isCurrent && (
-                  <span style={{ fontSize:9, fontWeight:700, background:"rgba(255,255,255,0.22)", borderRadius:4, padding:"1px 6px", color:WHITE, textTransform:"uppercase", flexShrink:0 }}>
+                  <span style={{ fontSize:9, fontWeight:700, background:"rgba(255,255,255,0.22)",
+                    borderRadius:4, padding:"1px 6px", color:WHITE, textTransform:"uppercase", flexShrink:0 }}>
                     ouverte
                   </span>
                 )}
+                {/* ⋯ menu — Renommer uniquement, pas de Supprimer */}
                 {isWGE && !isEditing && (
                   <div style={{ position:"relative", flexShrink:0 }} onClick={function(e){ e.stopPropagation(); }}>
-                    <button
-                      onClick={function(e){ e.stopPropagation(); setMenuOpenId(menuOpenId===sheet.id ? null : sheet.id); }}
+                    <button onClick={function(e){ e.stopPropagation(); setMenuOpenId(menuOpenId===sheet.id?null:sheet.id); }}
                       title="Actions"
                       style={{ background:"none", border:"none",
-                        color: isCurrent?"rgba(255,255,255,0.8)":"#aaa",
+                        color:isCurrent?"rgba(255,255,255,0.8)":"#aaa",
                         cursor:"pointer", padding:"0 4px", fontSize:16, lineHeight:1, minHeight:0 }}>
                       ⋯
                     </button>
@@ -5410,24 +5588,12 @@ function SheetSelector({ refChantier, currentId, onSelect, onNew, onDelete, isWG
                         background:WHITE, border:"1px solid #e0e0d8", borderRadius:8,
                         boxShadow:"0 4px 16px rgba(0,0,0,0.12)", minWidth:150, overflow:"hidden" }}>
                         <button onClick={function(){ startEdit(sheet); setMenuOpenId(null); }}
-                          style={{ display:"block", width:"100%", textAlign:"left",
-                            padding:"10px 14px", border:"none", background:"none",
-                            cursor:"pointer", fontSize:13, color:"#1a1a1a" }}
+                          style={{ display:"block", width:"100%", textAlign:"left", padding:"10px 14px",
+                            border:"none", background:"none", cursor:"pointer", fontSize:13, color:"#1a1a1a" }}
                           onMouseOver={function(e){ e.currentTarget.style.background="#f5f5f2"; }}
                           onMouseOut={function(e){ e.currentTarget.style.background="none"; }}>
                           ✏️ Renommer
                         </button>
-                        {!isCurrent && (
-                          <button onClick={function(){ handleDelete(sheet); setMenuOpenId(null); }}
-                            style={{ display:"block", width:"100%", textAlign:"left",
-                              padding:"10px 14px", border:"none", background:"none",
-                              cursor:"pointer", fontSize:13, color:"#e74c3c",
-                              borderTop:"1px solid #f0f0ec" }}
-                            onMouseOver={function(e){ e.currentTarget.style.background="#fdf0ee"; }}
-                            onMouseOut={function(e){ e.currentTarget.style.background="none"; }}>
-                            🗑 Supprimer
-                          </button>
-                        )}
                       </div>
                     )}
                   </div>
@@ -5855,10 +6021,18 @@ function generateAsBuilt(data, logoSrc, sheetLabel) {
 
 
 // ── AsBuiltViewer : dossier AS-Built interactif (mode client ?client=1) ──────
-function AsBuiltViewer() {
+function AsBuiltViewer({ wgeUser }) {
   var params = new URLSearchParams(window.location.search);
   var ref     = params.get("ref") || "";
   var sheetId = params.get("sheet") || null;
+
+  // Détecter si ouvert par un membre WGE (pour afficher les outils de partage)
+  var isViewerWGE = (function() {
+    try {
+      var u = JSON.parse(localStorage.getItem("wge_user") || "{}");
+      return u && (u.type === "wge" || (u.email && (u.email.endsWith("@we-green.be") || u.email.endsWith("@we-green.fr"))));
+    } catch(e) { return false; }
+  })();
 
   var [sheets, setSheets]     = useState([]);
   var [activeId, setActiveId] = useState(null);
@@ -6050,6 +6224,43 @@ function AsBuiltViewer() {
               borderRadius:6, padding:"7px 14px", fontSize:12, fontWeight:700, cursor:"pointer" }}>
             🔗 Copier le lien
           </button>
+          {isViewerWGE && (
+            <button onClick={function(){
+              // Générer l'identifiant client depuis le nom du client
+              var clientName = (meta.client || "client").toLowerCase()
+                .normalize("NFD").replace(/[\u0300-\u036f]/g,"")
+                .replace(/[^a-z0-9]/g,"").slice(0, 20) || "client";
+              var url = window.location.href;
+              var email = [
+                "Objet : Votre dossier AS-Built — " + ref,
+                "",
+                "Cher(e) " + (meta.client || "Client") + ",",
+                "",
+                "Votre dossier AS-Built est disponible via le lien suivant :",
+                url,
+                "",
+                "Pour y accéder, utilisez vos identifiants :",
+                "  • Identifiant : " + clientName,
+                "  • Mot de passe : " + clientName,
+                "",
+                "Ce dossier contient les photos de vos installations, les documents administratifs et vous permet de télécharger l'ensemble des fichiers.",
+                "",
+                "Nous vous remercions pour votre confiance et restons à votre disposition pour toute question.",
+                "",
+                "Cordialement,",
+                "L'équipe We Green Energy",
+                "📞 www.we-green.be"
+              ].join("\n");
+              navigator.clipboard.writeText(email).then(function(){
+                alert("✅ Email copié !\n\nIdentifiant client : " + clientName + "\nMot de passe : " + clientName + "\n\nCollez-le dans votre boite mail et envoyez-le au client.");
+              }).catch(function(){ prompt("Copiez cet email :", email); });
+            }}
+              title="Copier l'email de partage pour le client"
+              style={{ background:"rgba(255,255,255,0.2)", border:"1px solid rgba(255,255,255,0.35)", color:"#fff",
+                borderRadius:6, padding:"7px 14px", fontSize:12, fontWeight:700, cursor:"pointer" }}>
+              📧 Envoyer au client
+            </button>
+          )}
         </div>
       </div>
 
@@ -6886,8 +7097,8 @@ function App() {
   var dcComp = calcDCCompletion(data);
   var acComp = calcACCompletion(data);
 
-  // Mode client → AS-Built viewer interactif
-  if (CLIENT_MODE) return <AsBuiltViewer />;
+  // Mode client (URL ?client=1) ou connecté comme client → AS-Built viewer
+  if (CLIENT_MODE || (user && user.type === "client")) return <AsBuiltViewer wgeUser={null} />;
 
   return (
     <div style={{ minHeight: "100vh", background:"#f4f4f0", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }}>
@@ -6998,24 +7209,16 @@ function App() {
             style={{ background: "rgba(255,255,255,0.2)", border: "none", color: WHITE, borderRadius: 6, padding: "5px 10px", fontSize: 12, cursor: "pointer" }}>
             🖨️ Imprimer
           </button>
-          <button onClick={function(){ generateAsBuilt(data, LOGO_SRC, currentSheetLabel); }}
-            style={{ background: "rgba(255,255,255,0.2)", border: "none", color: WHITE, borderRadius: 6, padding: "5px 10px", fontSize: 12, cursor: "pointer" }}>
-            📋 AS-Built
-          </button>
-          {user && (user.type === "wge" || isWGEEmail(user.email)) && data.meta.ref && (
+          {data.meta.ref && (
             <button onClick={function(){
               var url = window.location.origin + window.location.pathname +
                 "?client=1&ref=" + encodeURIComponent(data.meta.ref) +
                 (currentSheetId ? "&sheet=" + currentSheetId : "");
-              navigator.clipboard.writeText(url).then(function(){
-                alert("✅ Lien AS-Built client copié !\n\n" + url + "\n\nLe client verra le dossier AS-Built (photos zoomables/téléchargeables, PDFs, impression).");
-              }).catch(function(){
-                prompt("Copiez ce lien client :", url);
-              });
+              window.open(url, "_blank");
             }}
-              title="Partager le dossier AS-Built avec le client"
-              style={{ background: "rgba(255,255,255,0.2)", border: "1px solid rgba(255,255,255,0.4)", color: WHITE, borderRadius: 6, padding: "5px 10px", fontSize: 12, cursor: "pointer" }}>
-              🔗 Lien client
+              title="Ouvrir le dossier AS-Built (photos, PDFs, impression)"
+              style={{ background: "rgba(255,255,255,0.2)", border: "1px solid rgba(255,255,255,0.4)", color: WHITE, borderRadius: 6, padding: "5px 10px", fontSize: 12, cursor: "pointer", fontWeight: 600 }}>
+              📋 AS-Built
             </button>
           )}
           {user && (
