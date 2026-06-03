@@ -456,6 +456,7 @@ async function supaLoadList(ref) {
   try {
     var res = await fetch(
       SUPA_URL + "/rest/v1/feuilles_controle?ref=eq." + encodeURIComponent(ref) +
+      "&label=neq." + encodeURIComponent(ORDER_LABEL) +
       "&select=id,ref,label,created_at,updated_at&order=updated_at.desc",
       { headers: { "apikey": SUPA_KEY, "Authorization": "Bearer " + SUPA_KEY } }
     );
@@ -543,6 +544,51 @@ async function supaDeleteSheet(id) {
     });
     return true;
   } catch(e) { return false; }
+}
+
+// ── Persistance de l'ordre + sections dans Supabase ─────────────────────────
+// Utilise une ligne spéciale label="__sheet_order__" dans feuilles_controle.
+// Aucun changement de schéma nécessaire.
+var ORDER_LABEL = "__sheet_order__";
+
+async function supaLoadOrder(ref) {
+  try {
+    var res = await fetch(
+      SUPA_URL + "/rest/v1/feuilles_controle?ref=eq." + encodeURIComponent(ref) +
+      "&label=eq." + encodeURIComponent(ORDER_LABEL) + "&select=id,data",
+      { headers: { "apikey": SUPA_KEY, "Authorization": "Bearer " + SUPA_KEY } }
+    );
+    if (!res.ok) return null;
+    var rows = await res.json();
+    return (rows && rows[0] && rows[0].data && rows[0].data.order) ? rows[0] : null;
+  } catch(e) { return null; }
+}
+
+async function supaUpsertOrder(ref, order) {
+  try {
+    // Chercher si la ligne existe déjà
+    var existing = await supaLoadOrder(ref);
+    var payload = { ref: ref, label: ORDER_LABEL, data: { order: order },
+                    updated_at: new Date().toISOString() };
+    if (existing && existing.id) {
+      // PATCH
+      await fetch(SUPA_URL + "/rest/v1/feuilles_controle?id=eq." + existing.id, {
+        method: "PATCH",
+        headers: { "apikey": SUPA_KEY, "Authorization": "Bearer " + SUPA_KEY,
+                   "Content-Type": "application/json" },
+        body: JSON.stringify({ data: { order: order }, updated_at: new Date().toISOString() })
+      });
+    } else {
+      // POST
+      await fetch(SUPA_URL + "/rest/v1/feuilles_controle", {
+        method: "POST",
+        headers: { "apikey": SUPA_KEY, "Authorization": "Bearer " + SUPA_KEY,
+                   "Content-Type": "application/json",
+                   "Prefer": "return=minimal" },
+        body: JSON.stringify(payload)
+      });
+    }
+  } catch(e) { console.warn("[Ordre] Sauvegarde Supabase échouée:", e); }
 }
 
 async function supaUpdateSheetLabel(id, label) {
@@ -5302,8 +5348,36 @@ function SheetSelector({ refChantier, currentId, onSelect, onNew, onDelete, isWG
     setLoading(true);
     supaLoadList(refChantier).then(function(rows) {
       setSheets(rows || []);
-      setOrdered(applySortOrder(rows || [], refChantier));
-      setLoading(false);
+      // Charger l'ordre depuis Supabase (puis fallback localStorage)
+      supaLoadOrder(refChantier).then(function(orderRow) {
+        if (orderRow && orderRow.data && orderRow.data.order && orderRow.data.order.length > 0) {
+          // Supabase a l'ordre → mettre à jour localStorage et appliquer
+          saveSheetOrder(refChantier, orderRow.data.order);
+          var result = [];
+          orderRow.data.order.forEach(function(item) {
+            if (item.type === "section") { result.push(item); }
+            else {
+              var s = (rows||[]).find(function(sh){ return sh.id === item.id; });
+              if (s) result.push({ type:"sheet", data:s });
+            }
+          });
+          (rows||[]).forEach(function(s) {
+            var inOrder = orderRow.data.order.some(function(o){ return o.type==="sheet" && o.id===s.id; });
+            if (!inOrder) result.push({ type:"sheet", data:s });
+          });
+          setOrdered(result);
+        } else {
+          // Fallback localStorage — et migration automatique vers Supabase
+          var localOrder = getSheetOrder(refChantier);
+          setOrdered(applySortOrder(rows || [], refChantier));
+          // Si localStorage a des données (sections déjà créées avant cette version),
+          // les migrer automatiquement vers Supabase pour que les clients puissent les voir
+          if (localOrder && localOrder.length > 0) {
+            supaUpsertOrder(refChantier, localOrder);
+          }
+        }
+        setLoading(false);
+      });
     });
   }, [refChantier]);
 
@@ -5314,7 +5388,8 @@ function SheetSelector({ refChantier, currentId, onSelect, onNew, onDelete, isWG
         ? { type:"section", id:o.id, label:o.label }
         : { type:"sheet", id:o.data.id };
     });
-    saveSheetOrder(refChantier, flat);
+    saveSheetOrder(refChantier, flat);        // localStorage (rapide, local)
+    supaUpsertOrder(refChantier, flat);       // Supabase (partageable avec clients)
   }
 
   function addSection(label) {
@@ -6097,21 +6172,44 @@ function AsBuiltViewer({ wgeUser }) {
     } catch(e) { return false; }
   })();
 
-  var [sheets, setSheets]     = useState([]);
-  var [activeId, setActiveId] = useState(null);
-  var [data, setData]         = useState(null);
-  var [loading, setLoading]   = useState(true);
-  var [error, setError]       = useState("");
-  var [lightbox, setLightbox] = useState(null); // { url, name }
+  var [sheets, setSheets]       = useState([]);
+  var [orderedItems, setOrdered] = useState([]); // [{type:"sheet"|"section", data?:..., label?:..., id?:...}]
+  var [activeId, setActiveId]   = useState(null);
+  var [data, setData]           = useState(null);
+  var [loading, setLoading]     = useState(true);
+  var [error, setError]         = useState("");
+  var [lightbox, setLightbox]   = useState(null); // { url, name }
 
   // Load sheet list
   useEffect(function() {
     if (!ref) { setError("Référence chantier manquante dans l'URL."); setLoading(false); return; }
     supaLoadList(ref).then(function(rows) {
       setSheets(rows || []);
-      var defaultId = sheetId || (rows && rows[0] && rows[0].id) || null;
-      if (defaultId) setActiveId(defaultId);
-      else { setLoading(false); }
+      // Charger l'ordre depuis Supabase (sections visibles pour le client)
+      supaLoadOrder(ref).then(function(orderRow) {
+        if (orderRow && orderRow.data && orderRow.data.order && orderRow.data.order.length > 0) {
+          var order = orderRow.data.order;
+          var result = [];
+          order.forEach(function(item) {
+            if (item.type === "section") { result.push(item); }
+            else {
+              var s = (rows||[]).find(function(sh){ return sh.id === item.id; });
+              if (s) result.push({ type:"sheet", data:s });
+            }
+          });
+          (rows||[]).forEach(function(s) {
+            var inOrder = order.some(function(o){ return o.type==="sheet" && o.id===s.id; });
+            if (!inOrder) result.push({ type:"sheet", data:s });
+          });
+          setOrdered(result);
+        } else {
+          // Fallback localStorage si Supabase n'a pas encore l'ordre
+          setOrdered(applySortOrder(rows || [], ref));
+        }
+        var defaultId = sheetId || (rows && rows[0] && rows[0].id) || null;
+        if (defaultId) setActiveId(defaultId);
+        else setLoading(false);
+      });
     }).catch(function(){ setError("Impossible de charger les feuilles."); setLoading(false); });
   }, []);
 
@@ -6324,15 +6422,28 @@ function AsBuiltViewer({ wgeUser }) {
 
       <div style={{ maxWidth:900, margin:"0 auto", padding:"20px 16px" }}>
 
-        {/* Sheet selector */}
-        {sheets.length > 1 && (
+        {/* Sheet selector — avec sections organisationnelles */}
+        {orderedItems.length > 1 && (
           <div className="ab-no-print" style={{ background:"#fff", border:"1px solid #e8e8e4", borderRadius:10, padding:"12px 16px", marginBottom:20 }}>
-            <div style={{ fontSize:11, fontWeight:700, color:"#666", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:8 }}>
+            <div style={{ fontSize:11, fontWeight:700, color:"#666", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:10 }}>
               Sélectionner une feuille
             </div>
-            <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
-              {sheets.map(function(s) {
-                var isCur = s.id===activeId;
+            <div style={{ display:"flex", flexWrap:"wrap", gap:6, alignItems:"center" }}>
+              {orderedItems.map(function(item) {
+                // Section separator
+                if (item.type === "section") {
+                  return (
+                    <div key={item.id} style={{ width:"100%", display:"flex", alignItems:"center", gap:8, margin:"4px 0 2px" }}>
+                      <span style={{ fontSize:10, fontWeight:700, color:"#8e44ad", textTransform:"uppercase", letterSpacing:"0.08em", whiteSpace:"nowrap" }}>
+                        {item.label}
+                      </span>
+                      <span style={{ flex:1, borderTop:"1.5px solid #e0d5f5" }} />
+                    </div>
+                  );
+                }
+                // Sheet button
+                var s = item.data; if (!s) return null;
+                var isCur = s.id === activeId;
                 return (
                   <button key={s.id} onClick={function(){ setActiveId(s.id); }}
                     style={{ background:isCur?"#1B6B3A":"#f8f8f6", color:isCur?"#fff":"#1a1a1a",
