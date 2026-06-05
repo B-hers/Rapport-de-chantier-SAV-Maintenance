@@ -6846,12 +6846,14 @@ function AsBuiltViewer({ wgeUser }) {
         @media print {
           .ab-no-print { display:none!important; }
           .ab-page { break-inside:avoid; }
-          .ab-photo-grid { display:grid!important; grid-template-columns:repeat(2,1fr)!important; gap:12px!important; }
-          .ab-photo-item { break-inside:avoid; page-break-inside:avoid; }
-          .ab-photo-item img { max-height:none!important; object-fit:contain!important; width:100%!important; height:auto!important; }
+          /* Grille 2 colonnes en impression */
+          .ab-photo-grid { display:grid!important; grid-template-columns:repeat(2,1fr)!important; gap:10px!important; }
+          /* Chaque photo : jamais coupée entre deux pages */
+          .ab-photo-item { break-inside:avoid!important; page-break-inside:avoid!important; display:block!important; margin-bottom:10px; }
+          /* Hauteur max = ~40% de la page A4 → 2 photos par page possible, jamais de coupure */
+          .ab-photo-item img { max-height:220px!important; width:100%!important; height:auto!important; object-fit:contain!important; display:block!important; }
           .ab-iframe-wrap { display:none!important; }
           .ab-pdf-print-pages { display:block!important; }
-          .ab-pdf-print-link { display:none!important; }
           body { background:#fff!important; }
           @page { size:A4; margin:10mm 12mm; }
         }
