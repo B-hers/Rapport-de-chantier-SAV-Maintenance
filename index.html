@@ -6121,9 +6121,12 @@ function AsBuiltViewer({ wgeUser }) {
   var ref     = params.get("ref") || "";
   var sheetId = params.get("sheet") || null;
 
-  // Détecter si ouvert par un membre WGE (pour afficher les outils de partage)
+  // WGE mode : seulement si ?wge=1 dans l'URL ET session WGE en localStorage
+  // Sans ?wge=1 (lien partagé au client) → vue client pure, sans contrôles
   var isViewerWGE = (function() {
     try {
+      var p = new URLSearchParams(window.location.search);
+      if (p.get("wge") !== "1") return false; // lien client partagé → jamais WGE
       var u = JSON.parse(localStorage.getItem("wge_user") || "{}");
       return u && (u.type === "wge" || (u.email && (u.email.endsWith("@we-green.be") || u.email.endsWith("@we-green.fr"))));
     } catch(e) { return false; }
@@ -6136,7 +6139,211 @@ function AsBuiltViewer({ wgeUser }) {
   var [loading, setLoading]     = useState(true);
   var [error, setError]         = useState("");
   var [lightbox, setLightbox]   = useState(null);
-  var [hiddenPhotos, setHiddenPhotos] = useState({}); // url → true = masquée
+  var [hiddenPhotos, setHiddenPhotos] = useState({});
+  var [techInfo, setTechInfo]         = useState(null); // infos techniques par feuille
+  var [techEditing, setTechEditing]   = useState(false);
+
+  var TECH_EMPTY = { panels:{ count:"", power:"", type:"", total_kwp:"" },
+    inverters:[{ brand:"", model:"", count:"1" }],
+    battery:{ installed:false, brand:"", model:"", capacity:"" }, notes:"" };
+
+  function hasTechInfo(t) {
+    if (!t) return false;
+    return !!(t.panels&&(t.panels.count||t.panels.power||t.panels.type)) ||
+           !!(t.inverters&&t.inverters[0]&&(t.inverters[0].brand||t.inverters[0].model)) ||
+           !!(t.battery&&t.battery.installed) || !!(t.notes);
+  }
+
+  function saveTechInfo(newTech) {
+    setTechInfo(newTech);
+    supaLoadOrder(ref).then(function(row) {
+      var prev = (row&&row.data)||{};
+      var newData = Object.assign({}, prev, { techInfo: Object.assign({}, prev.techInfo||{}, { [activeId||"all"]: newTech }) });
+      if (row && row.id) {
+        fetch(SUPA_URL+"/rest/v1/feuilles_controle?id=eq."+row.id, {
+          method:"PATCH",
+          headers:{"apikey":SUPA_KEY,"Authorization":"Bearer "+SUPA_KEY,"Content-Type":"application/json"},
+          body:JSON.stringify({data:newData,updated_at:new Date().toISOString()})
+        });
+      } else {
+        supaUpsertOrder(ref, prev.order||[]);
+      }
+    });
+  }
+
+  function TechInfoPanel() {
+    var t = techInfo || TECH_EMPTY;
+    var inv = t.inverters && t.inverters[0] ? t.inverters[0] : { brand:"", model:"", count:"1" };
+
+    if (!isViewerWGE && !hasTechInfo(techInfo)) return null;
+
+    if (!isViewerWGE) {
+      // Vue client : affichage seul
+      return (
+        <div style={{ background:"#f0f7f2", border:"1px solid #d4ead9", borderRadius:10, padding:"16px 20px", marginBottom:20 }}>
+          <div style={{ fontWeight:700, fontSize:14, color:"#1B6B3A", marginBottom:12 }}>⚡ Informations techniques</div>
+          <table style={{ borderCollapse:"collapse", width:"100%", fontSize:13 }}>
+            {t.panels&&t.panels.count&&<tr><td style={{ padding:"4px 12px 4px 0", color:"#666", fontWeight:600, whiteSpace:"nowrap" }}>Panneaux</td><td>{t.panels.count} × {t.panels.power?t.panels.power+"Wc":""} {t.panels.type} {t.panels.total_kwp?"("+t.panels.total_kwp+" kWc)":""}</td></tr>}
+            {inv.brand&&<tr><td style={{ padding:"4px 12px 4px 0", color:"#666", fontWeight:600, whiteSpace:"nowrap" }}>Onduleur</td><td>{inv.count&&inv.count>1?inv.count+"× ":""}{inv.brand} {inv.model}</td></tr>}
+            {t.battery&&t.battery.installed&&<tr><td style={{ padding:"4px 12px 4px 0", color:"#666", fontWeight:600, whiteSpace:"nowrap" }}>Batterie</td><td>{t.battery.brand} {t.battery.model} {t.battery.capacity?"— "+t.battery.capacity:""}</td></tr>}
+            {t.notes&&<tr><td style={{ padding:"4px 12px 4px 0", color:"#666", fontWeight:600 }}>Notes</td><td style={{ fontStyle:"italic" }}>{t.notes}</td></tr>}
+          </table>
+        </div>
+      );
+    }
+
+    // Vue WGE : éditable
+    return (
+      <div style={{ border:"2px dashed #a8d5b5", borderRadius:10, padding:"14px 16px", marginBottom:20, background:"#fafff8" }}>
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom: techEditing?12:0 }}>
+          <div style={{ fontWeight:700, fontSize:13, color:"#1B6B3A" }}>
+            ⚡ Informations techniques
+            <span style={{ marginLeft:8, fontSize:10, color:"#999", fontWeight:400 }}>(visibles par le client si remplies)</span>
+          </div>
+          <div style={{ display:"flex", gap:8 }}>
+            {!techEditing && (
+              <button onClick={function(){
+                // Essayer d'importer depuis la fiche chantier
+                var fref = (data&&data.meta&&data.meta.ref)||ref;
+                fetch(SUPA_URL+"/rest/v1/feuilles_chantier?ref=eq."+encodeURIComponent(fref)+"&select=data&limit=1",
+                  {headers:{"apikey":SUPA_KEY,"Authorization":"Bearer "+SUPA_KEY}})
+                .then(function(r){ return r.json(); })
+                .then(function(rows) {
+                  if (!rows||!rows[0]||!rows[0].data) { alert("Aucune fiche chantier trouvée pour ce chantier."); return; }
+                  var fc = rows[0].data;
+                  var imported = Object.assign({}, techInfo||TECH_EMPTY);
+                  // Panneaux
+                  if (fc.pvInfo||fc.panels||fc.nbPanneaux) {
+                    imported.panels = {
+                      count: fc.nbPanneaux||fc.pvInfo&&fc.pvInfo.count||"",
+                      power: fc.puissancePanneau||fc.pvInfo&&fc.pvInfo.power||"",
+                      type:  fc.typePanneau||fc.pvInfo&&fc.pvInfo.type||"",
+                      total_kwp: fc.puissanceTotale||fc.pvInfo&&fc.pvInfo.total||""
+                    };
+                  }
+                  // Onduleur
+                  if (fc.onduleurs&&fc.onduleurs[0]) {
+                    imported.inverters = fc.onduleurs.map(function(o){ return { brand:o.marque||"", model:o.modele||o.nom||"", count:"1" }; });
+                  }
+                  saveTechInfo(imported);
+                  setTechEditing(true);
+                  alert("✅ Informations importées depuis la fiche chantier.");
+                }).catch(function(){ alert("Impossible d'accéder à la fiche chantier."); });
+              }}
+                style={{ background:"#e8f5ee", border:"1px solid #a8d5b5", color:"#1B6B3A",
+                  borderRadius:6, padding:"5px 10px", fontSize:11, fontWeight:600, cursor:"pointer" }}>
+                📥 Importer fiche chantier
+              </button>
+            )}
+            <button onClick={function(){ setTechEditing(function(v){ return !v; }); }}
+              style={{ background: techEditing?"#1B6B3A":"#e8f5ee", color: techEditing?"#fff":"#1B6B3A",
+                border:"1px solid #a8d5b5", borderRadius:6, padding:"5px 10px", fontSize:11, fontWeight:600, cursor:"pointer" }}>
+              {techEditing ? "✓ Fermer" : "✏️ Modifier"}
+            </button>
+          </div>
+        </div>
+
+        {!techEditing && hasTechInfo(techInfo) && (
+          <table style={{ borderCollapse:"collapse", fontSize:12, marginTop:6 }}>
+            {t.panels&&t.panels.count&&<tr><td style={{ padding:"3px 12px 3px 0", color:"#666", fontWeight:600 }}>Panneaux</td><td>{t.panels.count} × {t.panels.power?t.panels.power+"Wc":""} {t.panels.type} {t.panels.total_kwp?"("+t.panels.total_kwp+" kWc)":""}</td></tr>}
+            {inv.brand&&<tr><td style={{ padding:"3px 12px 3px 0", color:"#666", fontWeight:600 }}>Onduleur</td><td>{inv.count&&inv.count>1?inv.count+"× ":""}{inv.brand} {inv.model}</td></tr>}
+            {t.battery&&t.battery.installed&&<tr><td style={{ padding:"3px 12px 3px 0", color:"#666", fontWeight:600 }}>Batterie</td><td>{t.battery.brand} {t.battery.model} {t.battery.capacity?"— "+t.battery.capacity:""}</td></tr>}
+            {t.notes&&<tr><td style={{ padding:"3px 12px 3px 0", color:"#666", fontWeight:600 }}>Notes</td><td style={{ fontStyle:"italic" }}>{t.notes}</td></tr>}
+          </table>
+        )}
+        {!techEditing && !hasTechInfo(techInfo) && (
+          <div style={{ fontSize:11, color:"#aaa", fontStyle:"italic", marginTop:4 }}>Aucune information technique — cliquez "Modifier" pour en ajouter.</div>
+        )}
+
+        {techEditing && (
+          <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+            <div style={{ fontWeight:600, fontSize:11, color:"#555", textTransform:"uppercase", letterSpacing:"0.06em" }}>Panneaux</div>
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(160px,1fr))", gap:8 }}>
+              {[["Nombre","panels.count"],["Puissance (Wc)","panels.power"],["Modèle / Type","panels.type"],["Total (kWc)","panels.total_kwp"]].map(function(f){
+                var keys = f[1].split(".");
+                var val = t[keys[0]]&&t[keys[0]][keys[1]]||"";
+                return (
+                  <div key={f[1]}>
+                    <label style={{ fontSize:10, color:"#666", display:"block", marginBottom:2 }}>{f[0]}</label>
+                    <input type="text" value={val}
+                      onChange={function(e){
+                        var v = e.target.value;
+                        var newT = JSON.parse(JSON.stringify(t||TECH_EMPTY));
+                        newT[keys[0]][keys[1]] = v;
+                        saveTechInfo(newT);
+                      }}
+                      style={{ width:"100%", padding:"5px 8px", border:"1px solid #d4ead9", borderRadius:6, fontSize:12 }} />
+                  </div>
+                );
+              })}
+            </div>
+            <div style={{ fontWeight:600, fontSize:11, color:"#555", textTransform:"uppercase", letterSpacing:"0.06em", marginTop:4 }}>Onduleur</div>
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(160px,1fr))", gap:8 }}>
+              {[["Marque","brand"],["Modèle","model"],["Quantité","count"]].map(function(f){
+                var val = (t.inverters&&t.inverters[0]&&t.inverters[0][f[1]])||"";
+                return (
+                  <div key={f[1]}>
+                    <label style={{ fontSize:10, color:"#666", display:"block", marginBottom:2 }}>{f[0]}</label>
+                    <input type="text" value={val}
+                      onChange={function(e){
+                        var v = e.target.value;
+                        var newT = JSON.parse(JSON.stringify(t||TECH_EMPTY));
+                        if (!newT.inverters||!newT.inverters[0]) newT.inverters=[{brand:"",model:"",count:"1"}];
+                        newT.inverters[0][f[1]] = v;
+                        saveTechInfo(newT);
+                      }}
+                      style={{ width:"100%", padding:"5px 8px", border:"1px solid #d4ead9", borderRadius:6, fontSize:12 }} />
+                  </div>
+                );
+              })}
+            </div>
+            <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+              <label style={{ display:"flex", alignItems:"center", gap:6, fontSize:12, cursor:"pointer" }}>
+                <input type="checkbox" checked={!!(t.battery&&t.battery.installed)}
+                  onChange={function(e){
+                    var newT = JSON.parse(JSON.stringify(t||TECH_EMPTY));
+                    if (!newT.battery) newT.battery={installed:false,brand:"",model:"",capacity:""};
+                    newT.battery.installed = e.target.checked;
+                    saveTechInfo(newT);
+                  }} />
+                Batterie installée
+              </label>
+            </div>
+            {t.battery&&t.battery.installed && (
+              <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(160px,1fr))", gap:8 }}>
+                {[["Marque batterie","brand"],["Modèle","model"],["Capacité","capacity"]].map(function(f){
+                  var val = (t.battery&&t.battery[f[1]])||"";
+                  return (
+                    <div key={f[1]}>
+                      <label style={{ fontSize:10, color:"#666", display:"block", marginBottom:2 }}>{f[0]}</label>
+                      <input type="text" value={val}
+                        onChange={function(e){
+                          var v = e.target.value;
+                          var newT = JSON.parse(JSON.stringify(t||TECH_EMPTY));
+                          newT.battery[f[1]] = v;
+                          saveTechInfo(newT);
+                        }}
+                        style={{ width:"100%", padding:"5px 8px", border:"1px solid #d4ead9", borderRadius:6, fontSize:12 }} />
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            <div>
+              <label style={{ fontSize:10, color:"#666", display:"block", marginBottom:2 }}>Notes / Observations</label>
+              <textarea value={t.notes||""} rows={2}
+                onChange={function(e){
+                  var newT = JSON.parse(JSON.stringify(t||TECH_EMPTY));
+                  newT.notes = e.target.value;
+                  saveTechInfo(newT);
+                }}
+                style={{ width:"100%", padding:"5px 8px", border:"1px solid #d4ead9", borderRadius:6, fontSize:12, resize:"vertical" }} />
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  } // url → true = masquée
 
   function onTogglePhoto(url) {
     setHiddenPhotos(function(prev) {
@@ -6202,13 +6409,12 @@ function AsBuiltViewer({ wgeUser }) {
       else setError("Feuille introuvable.");
       setLoading(false);
     }).catch(function(){ setError("Erreur de chargement."); setLoading(false); });
-    // Charger les photos masquées depuis __sheet_order__
+    // Charger les photos masquées + infos techniques depuis __sheet_order__
     supaLoadOrder(ref).then(function(row) {
-      if (row && row.data && row.data.hiddenPhotos && row.data.hiddenPhotos[activeId]) {
-        setHiddenPhotos(row.data.hiddenPhotos[activeId]);
-      } else {
-        setHiddenPhotos({});
-      }
+      var d = (row&&row.data)||{};
+      setHiddenPhotos((d.hiddenPhotos&&d.hiddenPhotos[activeId])||{});
+      setTechInfo((d.techInfo&&d.techInfo[activeId])||null);
+      setTechEditing(false);
     });
   }, [activeId]);
 
@@ -6221,23 +6427,34 @@ function AsBuiltViewer({ wgeUser }) {
   }
 
   function PhotoGrid({ photos, isWGE, hiddenPhotos, onTogglePhoto }) {
+    // WGE : toutes les photos visibles (masquées = grisées avec bouton)
+    // Client : photos masquées exclues
+    var displayPhotos = isWGE
+      ? photos
+      : photos.filter(function(p){ return !hiddenPhotos || !hiddenPhotos[p.url]; });
+
     return (
       <div className="ab-photo-grid" style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(200px, 1fr))", gap:12, marginTop:10 }}>
-        {photos.filter(function(p){ return !hiddenPhotos || !hiddenPhotos[p.url]; }).map(function(p, i) {
+        {displayPhotos.map(function(p, i) {
           var by = p.uploadedBy ? "👤 "+p.uploadedBy : "";
           var isHidden = hiddenPhotos && hiddenPhotos[p.url];
           return (
-            <div key={i} className="ab-photo-item" style={{ borderRadius:8, overflow:"hidden", border:"1px solid #e0e0d8", background:"#fafaf8", opacity: isHidden?0.4:1 }}>
-              <div style={{ position:"relative", cursor:"zoom-in" }} onClick={function(){ if(!isHidden) setLightbox(p); }}>
-                <img src={p.url} alt={p.name||""} style={{ width:"100%", aspectRatio:"4/3", objectFit:"cover", display:"block" }} />
+            <div key={i} className="ab-photo-item" style={{ borderRadius:8, overflow:"hidden", border:"1px solid "+(isHidden?"#f5a0a0":"#e0e0d8"), background:"#fafaf8" }}>
+              <div style={{ position:"relative", cursor: isHidden?"default":"zoom-in" }} onClick={function(){ if(!isHidden) setLightbox(p); }}>
+                <img src={p.url} alt={p.name||""} style={{ width:"100%", aspectRatio:"4/3", objectFit:"cover", display:"block", opacity: isHidden?0.35:1, transition:"opacity 0.2s" }} />
+                {isHidden && (
+                  <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center", pointerEvents:"none" }}>
+                    <span style={{ background:"rgba(0,0,0,0.55)", color:"#fff", borderRadius:20, padding:"4px 12px", fontSize:11, fontWeight:700 }}>Masquée</span>
+                  </div>
+                )}
                 {isWGE && onTogglePhoto && (
                   <div style={{ position:"absolute", top:6, left:6 }} onClick={function(e){ e.stopPropagation(); onTogglePhoto(p.url); }}>
-                    <div title={isHidden?"Réactiver dans l'AS-Built":"Masquer dans l'AS-Built"}
-                      style={{ width:22, height:22, borderRadius:4, border:"2px solid #fff",
-                        background:isHidden?"rgba(0,0,0,0.5)":"#1B6B3A",
+                    <div title={isHidden?"Réactiver dans l'AS-Built client":"Masquer dans l'AS-Built client"}
+                      style={{ width:24, height:24, borderRadius:5, border:"2px solid #fff",
+                        background:isHidden?"rgba(231,76,60,0.85)":"#1B6B3A",
                         display:"flex", alignItems:"center", justifyContent:"center",
                         cursor:"pointer", boxShadow:"0 1px 4px rgba(0,0,0,0.3)" }}>
-                      {!isHidden && <span style={{ color:"#fff", fontSize:12, fontWeight:900, lineHeight:1 }}>✓</span>}
+                      <span style={{ color:"#fff", fontSize:13, fontWeight:900, lineHeight:1 }}>{isHidden?"✕":"✓"}</span>
                     </div>
                   </div>
                 )}
@@ -6389,13 +6606,11 @@ function AsBuiltViewer({ wgeUser }) {
         <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
           {isViewerWGE && (
             <button onClick={function(){
-              // Ouvrir dans un onglet privé/incognito n'est pas possible via JS,
-              // mais on peut ouvrir un nouvel onglet sans la session WGE en localStorage
-              var url = window.location.href;
-              alert("💡 Pour voir exactement la vue client :\n\nOuvrez ce lien dans un onglet privé / navigation privée :\n\n" + url + "\n\nOu connectez-vous avec l'onglet Client (identifiant = mot de passe).");
-              navigator.clipboard.writeText(url).catch(function(){});
+              // Ouvrir la vue client pure : même URL sans &wge=1
+              var url = window.location.href.replace(/[&?]wge=1/g, "").replace(/&&/g,"&").replace(/\?&/,"?");
+              window.open(url, "_blank");
             }}
-              title="Simuler la vue client"
+              title="Voir exactement ce que voit le client"
               style={{ background:"rgba(255,255,255,0.2)", border:"1px solid rgba(255,255,255,0.35)", color:"#fff",
                 borderRadius:6, padding:"7px 14px", fontSize:12, fontWeight:700, cursor:"pointer" }}>
               👁 Vue client
@@ -6525,6 +6740,9 @@ function AsBuiltViewer({ wgeUser }) {
                   );})}
               </table>
             </div>
+
+            {/* Informations techniques */}
+            <TechInfoPanel />
 
             {/* DC */}
             {dcSecs.length > 0 && (
@@ -7417,7 +7635,7 @@ function App() {
             <button onClick={function(){
               var url = window.location.origin + window.location.pathname +
                 "?client=1&ref=" + encodeURIComponent(data.meta.ref) +
-                (currentSheetId ? "&sheet=" + currentSheetId : "");
+                (currentSheetId ? "&sheet=" + currentSheetId : "") + "&wge=1";
               window.open(url, "_blank");
             }}
               title="Ouvrir le dossier AS-Built (photos, PDFs, impression)"
