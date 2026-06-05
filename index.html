@@ -5241,21 +5241,41 @@ function ChantierPanel({ refChantier, onClose }) {
             )}
 
             {/* ─ Informations techniques ─ */}
-            {/* ─ Informations techniques (nouvelle structure: sites[]) ─ */}
-            {(chData.sites||[]).map(function(site, si) {
-              var elec  = site.electrical || {};
-              var pvArr = site.pvInstallations || [];
-              var brArr = site.brInstallations || [];
-              var nbSites = (chData.sites||[]).length;
+            {/* ─ Informations techniques (gère ancienne ET nouvelle structure) ─ */}
+            {(function() {
+              // Nouvelle structure : chData.sites[].pvInstallations[].tech + .electrical
+              // Ancienne structure : chData.installations[].tech (électrique dans tech aussi)
+              var allBlocks = [];
 
-              return pvArr.map(function(inst, ii) {
-                var tech = inst && inst.tech;
-                if (!tech) return null;
-                var pfx = (nbSites > 1 ? " — Site "+(si+1) : "") + (pvArr.length > 1 ? " — Inst. "+(ii+1) : "");
+              // Nouvelle structure : sites[]
+              if (chData.sites && chData.sites.length > 0) {
+                chData.sites.forEach(function(site, si) {
+                  var elec  = site.electrical || {};
+                  var pvArr = site.pvInstallations || [];
+                  pvArr.forEach(function(inst, ii) {
+                    var tech = inst && inst.tech;
+                    if (tech) allBlocks.push({ tech:tech, elec:elec, si:si, ii:ii, total: pvArr.length, nbSites: chData.sites.length });
+                  });
+                });
+              }
+
+              // Ancienne structure : installations[] (fallback)
+              if (allBlocks.length === 0 && chData.installations && chData.installations.length > 0) {
+                chData.installations.forEach(function(inst, ii) {
+                  var tech = inst && inst.tech;
+                  if (tech) allBlocks.push({ tech:tech, elec:tech, si:0, ii:ii, total: chData.installations.length, nbSites: 1 });
+                });
+              }
+
+              if (allBlocks.length === 0) return null;
+
+              return allBlocks.map(function(b, idx) {
+                var tech = b.tech, elec = b.elec;
+                var pfx = (b.nbSites > 1 ? " — Site "+(b.si+1) : "") + (b.total > 1 ? " — Inst. "+(b.ii+1) : "");
                 var rows = [
                   tech.panneaux && tech.panneaux.nbr && ["Panneaux",
                     [tech.panneaux.nbr+" pcs", tech.panneaux.type, tech.panneaux.kWc&&tech.panneaux.kWc+" kWc"].filter(Boolean).join(" — ")],
-                  tech.panneaux2 && tech.panneaux2.active && tech.panneaux2.type && ["Panneaux 2",
+                  tech.panneaux2 && tech.panneaux2.active && (tech.panneaux2.type||tech.panneaux2.nbr) && ["Panneaux 2",
                     [tech.panneaux2.nbr&&tech.panneaux2.nbr+" pcs", tech.panneaux2.type, tech.panneaux2.kWc&&tech.panneaux2.kWc+" kWc"].filter(Boolean).join(" — ")],
                   tech.onduleurs && tech.onduleurs.length > 0 && ["Onduleur(s)",
                     tech.onduleurs.map(function(o){ return [o.type, o.kva&&o.kva+" kVA"].filter(Boolean).join(" "); }).filter(Boolean).join(", ")||"—"],
@@ -5265,7 +5285,6 @@ function ChantierPanel({ refChantier, onClose }) {
                       : tech.batterie.inclus],
                   tech.borne && tech.borne.inclus==="OUI" && ["Borne recharge",
                     [tech.borne.qty&&tech.borne.qty+"×", tech.borne.type].filter(Boolean).join(" ")||"OUI"],
-                  // Électrique au niveau site
                   elec.amperageDisj && ["Disj. général", elec.amperageDisj+" A"],
                   elec.compteur && (elec.compteur.serie||elec.compteur.ean) && ["Compteur",
                     [elec.compteur.serie&&"N° "+elec.compteur.serie, elec.compteur.ean&&"EAN: "+elec.compteur.ean].filter(Boolean).join(" — ")],
@@ -5274,7 +5293,7 @@ function ChantierPanel({ refChantier, onClose }) {
 
                 if (rows.length === 0) return null;
                 return (
-                  <Section key={si+"-"+ii} id={"tech"+si+ii} title={"🔧 Informations techniques"+pfx}>
+                  <Section key={idx} id={"tech"+idx} title={"🔧 Informations techniques"+pfx}>
                     <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12 }}>
                       <tbody>
                         {rows.map(function(r, ri){ return (
@@ -5288,7 +5307,7 @@ function ChantierPanel({ refChantier, onClose }) {
                   </Section>
                 );
               });
-            })}
+            })()}
           </div>
         )}
       </div>
