@@ -6219,6 +6219,7 @@ function AsBuiltViewer({ wgeUser }) {
 
   var TECH_EMPTY = {
     panels:     { count:"", power:"", type:"", total_kwp:"" },
+    panels2:    { active:false, count:"", power:"", type:"", total_kwp:"" },
     inverters:  [{ brand:"", model:"", count:"1", serial:"" }],
     battery:    { installed:false, brand:"", model:"", capacity:"" },
     protections:{ disjAC:"", disjPV:"", parafoudre:false, differentiel:"", miseTerre:"" },
@@ -6316,6 +6317,7 @@ function AsBuiltViewer({ wgeUser }) {
   function hasTechInfo(t) {
     if (!t) return false;
     return !!(t.panels&&(t.panels.count||t.panels.power||t.panels.type)) ||
+           !!(t.panels2&&t.panels2.active&&(t.panels2.count||t.panels2.type)) ||
            !!(t.inverters&&t.inverters[0]&&(t.inverters[0].brand||t.inverters[0].model)) ||
            !!(t.battery&&t.battery.installed) ||
            !!(t.protections&&(t.protections.disjAC||t.protections.disjPV||t.protections.parafoudre||t.protections.differentiel||t.protections.miseTerre)) ||
@@ -6377,6 +6379,10 @@ function AsBuiltViewer({ wgeUser }) {
             {t.panels&&t.panels.count&&(
               <tr><td style={{ padding:"4px 14px 4px 0", color:"#555", fontWeight:600, whiteSpace:"nowrap" }}>Panneaux</td>
               <td>{t.panels.count} panneaux{t.panels.power?" × "+t.panels.power+" Wc":""} {t.panels.type?t.panels.type:""} {t.panels.total_kwp?"→ "+t.panels.total_kwp+" kWc":""}</td></tr>
+            )}
+            {t.panels2&&t.panels2.active&&t.panels2.count&&(
+              <tr><td style={{ padding:"4px 14px 4px 0", color:"#555", fontWeight:600, whiteSpace:"nowrap" }}>Panneaux 2</td>
+              <td>{t.panels2.count} panneaux{t.panels2.power?" × "+t.panels2.power+" Wc":""} {t.panels2.type?t.panels2.type:""} {t.panels2.total_kwp?"→ "+t.panels2.total_kwp+" kWc":""}</td></tr>
             )}
             {inv.brand&&(
               <tr><td style={{ padding:"4px 14px 4px 0", color:"#555", fontWeight:600, whiteSpace:"nowrap" }}>Onduleur</td>
@@ -6444,6 +6450,18 @@ function AsBuiltViewer({ wgeUser }) {
                       if (wc > 0) imported.panels.power = String(wc);
                     }
                   }
+                  // ── Panneaux 2 ────────────────────────────────────────────
+                  if (tech.panneaux2 && tech.panneaux2.active && (tech.panneaux2.type || tech.panneaux2.nbr)) {
+                    imported.panels2 = {
+                      active: true,
+                      type:      tech.panneaux2.type || "",
+                      count:     tech.panneaux2.nbr  ? String(tech.panneaux2.nbr) : "",
+                      total_kwp: tech.panneaux2.kWc  ? String(tech.panneaux2.kWc) : "",
+                      power: (tech.panneaux2.nbr && tech.panneaux2.kWc && parseFloat(tech.panneaux2.nbr) > 0)
+                        ? String(Math.round(parseFloat(tech.panneaux2.kWc)*1000/parseFloat(tech.panneaux2.nbr)))
+                        : ""
+                    };
+                  }
                   // ── Onduleurs ─────────────────────────────────────────────
                   if (tech.onduleurs && tech.onduleurs.length > 0) {
                     imported.inverters = tech.onduleurs.map(function(o){
@@ -6467,8 +6485,8 @@ function AsBuiltViewer({ wgeUser }) {
                   }
 
                   saveTechInfo(imported);
-                  setTechEditing(true);
-                  alert("✅ Informations importées depuis la fiche chantier.\nVérifiez et complétez si nécessaire.");
+                  setTechEditing(false); // fermer le formulaire — données sauvegardées
+                  alert("✅ Informations importées et sauvegardées.\nCliquez ✏️ Modifier pour ajuster si nécessaire.");
                 }).catch(function(e){ alert("Impossible d'accéder à la fiche chantier ("+e+")."); });
               }}
                 style={{ background:"#e8f5ee", border:"1px solid #a8d5b5", color:"#1B6B3A",
@@ -6488,6 +6506,7 @@ function AsBuiltViewer({ wgeUser }) {
         {!techEditing && hasTechInfo(techInfo) && (
           <div style={{ fontSize:12, color:"#444", lineHeight:1.8 }}>
             {t.panels&&t.panels.count&&<div>🔋 <strong>Panneaux :</strong> {t.panels.count} × {t.panels.power?t.panels.power+"Wc ":""}{t.panels.type} {t.panels.total_kwp?"("+t.panels.total_kwp+" kWc)":""}</div>}
+            {t.panels2&&t.panels2.active&&t.panels2.count&&<div>🔋 <strong>Panneaux 2 :</strong> {t.panels2.count} × {t.panels2.power?t.panels2.power+"Wc ":""}{t.panels2.type} {t.panels2.total_kwp?"("+t.panels2.total_kwp+" kWc)":""}</div>}
             {inv.brand&&<div>⚡ <strong>Onduleur :</strong> {inv.count&&inv.count>"1"?inv.count+"× ":""}{inv.brand} {inv.model} {inv.serial?"S/N: "+inv.serial:""}</div>}
             {t.battery&&t.battery.installed&&<div>🔋 <strong>Batterie :</strong> {t.battery.brand} {t.battery.model} {t.battery.capacity?"— "+t.battery.capacity:""}</div>}
             {(pro.disjAC||pro.disjPV||pro.parafoudre||pro.differentiel||pro.miseTerre)&&<div>🛡 <strong>Protections :</strong> {[pro.disjAC&&"Disj.AC "+pro.disjAC+"A", pro.disjPV&&"Disj.PV "+pro.disjPV+"A", pro.parafoudre&&"Parafoudre", pro.differentiel&&"Diff. "+pro.differentiel, pro.miseTerre&&"Terre: "+pro.miseTerre].filter(Boolean).join(" · ")}</div>}
@@ -6511,6 +6530,25 @@ function AsBuiltViewer({ wgeUser }) {
                 <Field label="Modèle / Type" path="panels.type" placeholder="ex: Longi 400 HiMO6" />
                 <Field label="Puissance totale (kWc)" path="panels.total_kwp" placeholder="ex: 8.0" />
               </div>
+              {/* Panneaux 2 */}
+              <label style={{ display:"flex", alignItems:"center", gap:6, fontSize:12, cursor:"pointer", marginTop:8 }}>
+                <input type="checkbox" checked={!!(t.panels2&&t.panels2.active)}
+                  onChange={function(e){
+                    var newT = JSON.parse(JSON.stringify(t||TECH_EMPTY));
+                    if (!newT.panels2) newT.panels2={active:false,count:"",power:"",type:"",total_kwp:""};
+                    newT.panels2.active = e.target.checked;
+                    saveTechInfo(newT);
+                  }} />
+                Deuxième type de panneaux
+              </label>
+              {t.panels2&&t.panels2.active&&(
+                <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(140px,1fr))", gap:8, marginTop:8 }}>
+                  <Field label="Nombre (type 2)" path="panels2.count" placeholder="ex: 10" />
+                  <Field label="Puissance unitaire (Wc)" path="panels2.power" placeholder="ex: 460" />
+                  <Field label="Modèle / Type 2" path="panels2.type" placeholder="ex: OSDA 460" />
+                  <Field label="Puissance totale (kWc)" path="panels2.total_kwp" placeholder="ex: 4.6" />
+                </div>
+              )}
             </div>
             {/* Onduleur */}
             <div>
