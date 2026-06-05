@@ -6155,6 +6155,70 @@ function AsBuiltViewer({ wgeUser }) {
     notes:""
   };
 
+  // ── Chargement initial : liste des feuilles + ordre des sections ──────────
+  useEffect(function() {
+    if (!ref) { setLoading(false); setError("Référence chantier manquante dans l'URL."); return; }
+    Promise.all([
+      supaLoadList(ref),
+      supaLoadOrder(ref)
+    ]).then(function(results) {
+      var rows      = results[0] || [];
+      var orderRow  = results[1];
+      setSheets(rows);
+
+      // Appliquer l'ordre avec les sections
+      if (orderRow && orderRow.data && orderRow.data.order && orderRow.data.order.length > 0) {
+        var order = orderRow.data.order;
+        var result = [];
+        order.forEach(function(item) {
+          if (item.type === "section") { result.push(item); }
+          else {
+            var s = rows.find(function(sh){ return sh.id === item.id; });
+            if (s) result.push({ type:"sheet", data:s });
+          }
+        });
+        rows.forEach(function(s) {
+          var inOrder = order.some(function(o){ return o.type==="sheet" && o.id===s.id; });
+          if (!inOrder) result.push({ type:"sheet", data:s });
+        });
+        setOrdered(result);
+      } else {
+        setOrdered(applySortOrder(rows, ref));
+      }
+
+      var defaultId = sheetId || (rows[0] && rows[0].id) || null;
+      if (defaultId) { setActiveId(defaultId); }
+      else           { setLoading(false); }
+    }).catch(function() {
+      setError("Impossible de charger les feuilles.");
+      setLoading(false);
+    });
+  }, []);
+
+  // ── Chargement d'une feuille spécifique ───────────────────────────────────
+  useEffect(function() {
+    if (!activeId) return;
+    setLoading(true);
+    Promise.all([
+      supaLoadById(activeId),
+      supaLoadOrder(ref)
+    ]).then(function(results) {
+      var row      = results[0];
+      var orderRow = results[1];
+      if (row && row.data) { setData(row.data); }
+      else                 { setError("Feuille introuvable."); }
+      // Photos masquées + infos techniques
+      var d = (orderRow && orderRow.data) || {};
+      setHiddenPhotos((d.hiddenPhotos && d.hiddenPhotos[activeId]) || {});
+      setTechInfo((d.techInfo    && d.techInfo[activeId])    || null);
+      setTechEditing(false);
+      setLoading(false);
+    }).catch(function() {
+      setError("Erreur de chargement.");
+      setLoading(false);
+    });
+  }, [activeId]);
+
   function hasTechInfo(t) {
     if (!t) return false;
     return !!(t.panels&&(t.panels.count||t.panels.power||t.panels.type)) ||
