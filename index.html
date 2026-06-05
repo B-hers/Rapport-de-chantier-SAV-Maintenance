@@ -7,6 +7,7 @@
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script src="https://unpkg.com/@babel/standalone@7.23.10/babel.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -346,11 +347,11 @@ const ALLOWED_DOMAIN = "we-green.be";
 const ALLOWED_DOMAINS = ["we-green.be", "we-green.fr"];
 function isWGEEmail(email) { return !!email && ALLOWED_DOMAINS.some(function(d){ return email.endsWith("@"+d); }); }
 
-// Mode client : ?client=1&ref=XXX → lecture seule, pas de connexion requise
+// Mode client/asbuilt : ?client=1 → vue client | ?asbuilt=1 → page de travail WGE
 var CLIENT_MODE = (function(){
   try {
     var p = new URLSearchParams(window.location.search);
-    return p.get("client") === "1" || p.get("view") === "client";
+    return p.get("client") === "1" || p.get("asbuilt") === "1" || p.get("view") === "client";
   } catch(e) { return false; }
 })();
 
@@ -6121,12 +6122,14 @@ function AsBuiltViewer({ wgeUser }) {
   var ref     = params.get("ref") || "";
   var sheetId = params.get("sheet") || null;
 
-  // WGE mode : seulement si ?wge=1 dans l'URL ET session WGE en localStorage
-  // Sans ?wge=1 (lien partagé au client) → vue client pure, sans contrôles
+  var params = new URLSearchParams(window.location.search);
+  var isAsBuiltMode = params.get("asbuilt") === "1"; // page de travail WGE
+  var isClientMode  = params.get("client") === "1";  // vue client finale
+
+  // Mode WGE : ?asbuilt=1 avec session WGE valide
   var isViewerWGE = (function() {
     try {
-      var p = new URLSearchParams(window.location.search);
-      if (p.get("wge") !== "1") return false; // lien client partagé → jamais WGE
+      if (!isAsBuiltMode) return false; // lien client → jamais WGE
       var u = JSON.parse(localStorage.getItem("wge_user") || "{}");
       return u && (u.type === "wge" || (u.email && (u.email.endsWith("@we-green.be") || u.email.endsWith("@we-green.fr"))));
     } catch(e) { return false; }
@@ -6143,15 +6146,23 @@ function AsBuiltViewer({ wgeUser }) {
   var [techInfo, setTechInfo]         = useState(null); // infos techniques par feuille
   var [techEditing, setTechEditing]   = useState(false);
 
-  var TECH_EMPTY = { panels:{ count:"", power:"", type:"", total_kwp:"" },
-    inverters:[{ brand:"", model:"", count:"1" }],
-    battery:{ installed:false, brand:"", model:"", capacity:"" }, notes:"" };
+  var TECH_EMPTY = {
+    panels:     { count:"", power:"", type:"", total_kwp:"" },
+    inverters:  [{ brand:"", model:"", count:"1", serial:"" }],
+    battery:    { installed:false, brand:"", model:"", capacity:"" },
+    protections:{ disjAC:"", disjPV:"", parafoudre:false, differentiel:"", miseTerre:"" },
+    compteur:   { serie:"", ean:"", type:"" },
+    notes:""
+  };
 
   function hasTechInfo(t) {
     if (!t) return false;
     return !!(t.panels&&(t.panels.count||t.panels.power||t.panels.type)) ||
            !!(t.inverters&&t.inverters[0]&&(t.inverters[0].brand||t.inverters[0].model)) ||
-           !!(t.battery&&t.battery.installed) || !!(t.notes);
+           !!(t.battery&&t.battery.installed) ||
+           !!(t.protections&&(t.protections.disjAC||t.protections.disjPV||t.protections.parafoudre||t.protections.differentiel||t.protections.miseTerre)) ||
+           !!(t.compteur&&(t.compteur.serie||t.compteur.ean||t.compteur.type)) ||
+           !!(t.notes);
   }
 
   function saveTechInfo(newTech) {
@@ -6172,63 +6183,124 @@ function AsBuiltViewer({ wgeUser }) {
   }
 
   function TechInfoPanel() {
-    var t = techInfo || TECH_EMPTY;
-    var inv = t.inverters && t.inverters[0] ? t.inverters[0] : { brand:"", model:"", count:"1" };
+    var t   = techInfo || TECH_EMPTY;
+    var inv = (t.inverters && t.inverters[0]) ? t.inverters[0] : { brand:"", model:"", count:"1", serial:"" };
+    var pro = t.protections || {};
+    var cpt = t.compteur    || {};
 
     if (!isViewerWGE && !hasTechInfo(techInfo)) return null;
 
+    // ── Helper champ éditable ──────────────────────────────────────────────
+    function Field({ label, path, placeholder }) {
+      var keys = path.split(".");
+      var val = t[keys[0]] !== undefined ? (keys[1] ? (t[keys[0]]&&t[keys[0]][keys[1]])||"" : t[keys[0]]||"") : "";
+      return (
+        <div>
+          <label style={{ fontSize:10, color:"#555", display:"block", marginBottom:2, fontWeight:600 }}>{label}</label>
+          <input type="text" value={val} placeholder={placeholder||""}
+            onChange={function(e){
+              var v = e.target.value;
+              var newT = JSON.parse(JSON.stringify(t||TECH_EMPTY));
+              if (keys[1]) { if(!newT[keys[0]]) newT[keys[0]]={};  newT[keys[0]][keys[1]] = v; }
+              else          { newT[keys[0]] = v; }
+              saveTechInfo(newT);
+            }}
+            style={{ width:"100%", padding:"5px 8px", border:"1px solid #d4ead9", borderRadius:6, fontSize:12, boxSizing:"border-box" }} />
+        </div>
+      );
+    }
+
+    // ── Vue CLIENT : uniquement si remplie ────────────────────────────────
     if (!isViewerWGE) {
-      // Vue client : affichage seul
       return (
         <div style={{ background:"#f0f7f2", border:"1px solid #d4ead9", borderRadius:10, padding:"16px 20px", marginBottom:20 }}>
-          <div style={{ fontWeight:700, fontSize:14, color:"#1B6B3A", marginBottom:12 }}>⚡ Informations techniques</div>
+          <div style={{ fontWeight:700, fontSize:14, color:"#1B6B3A", marginBottom:12 }}>⚡ Informations techniques de l'installation</div>
           <table style={{ borderCollapse:"collapse", width:"100%", fontSize:13 }}>
-            {t.panels&&t.panels.count&&<tr><td style={{ padding:"4px 12px 4px 0", color:"#666", fontWeight:600, whiteSpace:"nowrap" }}>Panneaux</td><td>{t.panels.count} × {t.panels.power?t.panels.power+"Wc":""} {t.panels.type} {t.panels.total_kwp?"("+t.panels.total_kwp+" kWc)":""}</td></tr>}
-            {inv.brand&&<tr><td style={{ padding:"4px 12px 4px 0", color:"#666", fontWeight:600, whiteSpace:"nowrap" }}>Onduleur</td><td>{inv.count&&inv.count>1?inv.count+"× ":""}{inv.brand} {inv.model}</td></tr>}
-            {t.battery&&t.battery.installed&&<tr><td style={{ padding:"4px 12px 4px 0", color:"#666", fontWeight:600, whiteSpace:"nowrap" }}>Batterie</td><td>{t.battery.brand} {t.battery.model} {t.battery.capacity?"— "+t.battery.capacity:""}</td></tr>}
-            {t.notes&&<tr><td style={{ padding:"4px 12px 4px 0", color:"#666", fontWeight:600 }}>Notes</td><td style={{ fontStyle:"italic" }}>{t.notes}</td></tr>}
+            {t.panels&&t.panels.count&&(
+              <tr><td style={{ padding:"4px 14px 4px 0", color:"#555", fontWeight:600, whiteSpace:"nowrap" }}>Panneaux</td>
+              <td>{t.panels.count} panneaux{t.panels.power?" × "+t.panels.power+" Wc":""} {t.panels.type?t.panels.type:""} {t.panels.total_kwp?"→ "+t.panels.total_kwp+" kWc":""}</td></tr>
+            )}
+            {inv.brand&&(
+              <tr><td style={{ padding:"4px 14px 4px 0", color:"#555", fontWeight:600, whiteSpace:"nowrap" }}>Onduleur</td>
+              <td>{inv.count&&inv.count>"1"?inv.count+"× ":""}{inv.brand} {inv.model} {inv.serial?"(S/N: "+inv.serial+")":""}</td></tr>
+            )}
+            {t.battery&&t.battery.installed&&(
+              <tr><td style={{ padding:"4px 14px 4px 0", color:"#555", fontWeight:600, whiteSpace:"nowrap" }}>Batterie</td>
+              <td>{t.battery.brand} {t.battery.model} {t.battery.capacity?"— "+t.battery.capacity:""}</td></tr>
+            )}
+            {(pro.disjAC||pro.disjPV||pro.differentiel||pro.miseTerre)&&(
+              <tr><td style={{ padding:"4px 14px 4px 0", color:"#555", fontWeight:600, whiteSpace:"nowrap", verticalAlign:"top" }}>Protections</td>
+              <td>{[pro.disjAC&&"Disj. AC: "+pro.disjAC+"A", pro.disjPV&&"Disj. PV: "+pro.disjPV+"A", pro.parafoudre&&"Parafoudre installé", pro.differentiel&&"Différentiel: "+pro.differentiel, pro.miseTerre&&"Mise à la terre: "+pro.miseTerre].filter(Boolean).join(" · ")}</td></tr>
+            )}
+            {(cpt.serie||cpt.ean||cpt.type)&&(
+              <tr><td style={{ padding:"4px 14px 4px 0", color:"#555", fontWeight:600, whiteSpace:"nowrap" }}>Compteur</td>
+              <td>{[cpt.type, cpt.serie&&"N°: "+cpt.serie, cpt.ean&&"EAN: "+cpt.ean].filter(Boolean).join(" · ")}</td></tr>
+            )}
+            {t.notes&&(
+              <tr><td style={{ padding:"4px 14px 4px 0", color:"#555", fontWeight:600 }}>Remarques</td>
+              <td style={{ fontStyle:"italic" }}>{t.notes}</td></tr>
+            )}
           </table>
         </div>
       );
     }
 
-    // Vue WGE : éditable
+    // ── Vue WGE : éditable ────────────────────────────────────────────────
     return (
       <div style={{ border:"2px dashed #a8d5b5", borderRadius:10, padding:"14px 16px", marginBottom:20, background:"#fafff8" }}>
-        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom: techEditing?12:0 }}>
-          <div style={{ fontWeight:700, fontSize:13, color:"#1B6B3A" }}>
-            ⚡ Informations techniques
-            <span style={{ marginLeft:8, fontSize:10, color:"#999", fontWeight:400 }}>(visibles par le client si remplies)</span>
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:6 }}>
+          <div>
+            <span style={{ fontWeight:700, fontSize:13, color:"#1B6B3A" }}>⚡ Informations techniques</span>
+            <span style={{ marginLeft:8, fontSize:11, color:"#999", fontWeight:400 }}>— champs vides = non affichés côté client</span>
           </div>
           <div style={{ display:"flex", gap:8 }}>
             {!techEditing && (
               <button onClick={function(){
-                // Essayer d'importer depuis la fiche chantier
                 var fref = (data&&data.meta&&data.meta.ref)||ref;
                 fetch(SUPA_URL+"/rest/v1/feuilles_chantier?ref=eq."+encodeURIComponent(fref)+"&select=data&limit=1",
                   {headers:{"apikey":SUPA_KEY,"Authorization":"Bearer "+SUPA_KEY}})
                 .then(function(r){ return r.json(); })
                 .then(function(rows) {
-                  if (!rows||!rows[0]||!rows[0].data) { alert("Aucune fiche chantier trouvée pour ce chantier."); return; }
+                  if (!rows||!rows[0]||!rows[0].data) { alert("Aucune fiche chantier trouvée pour ce chantier (réf: "+fref+")."); return; }
                   var fc = rows[0].data;
-                  var imported = Object.assign({}, techInfo||TECH_EMPTY);
+                  var imported = JSON.parse(JSON.stringify(t||TECH_EMPTY));
                   // Panneaux
-                  if (fc.pvInfo||fc.panels||fc.nbPanneaux) {
-                    imported.panels = {
-                      count: fc.nbPanneaux||fc.pvInfo&&fc.pvInfo.count||"",
-                      power: fc.puissancePanneau||fc.pvInfo&&fc.pvInfo.power||"",
-                      type:  fc.typePanneau||fc.pvInfo&&fc.pvInfo.type||"",
-                      total_kwp: fc.puissanceTotale||fc.pvInfo&&fc.pvInfo.total||""
+                  var pv = fc.pvInfo||fc.panels||{};
+                  if (fc.nbPanneaux||pv.count) imported.panels.count = fc.nbPanneaux||pv.count||"";
+                  if (fc.puissancePanneau||pv.power) imported.panels.power = fc.puissancePanneau||pv.power||"";
+                  if (fc.typePanneau||pv.type) imported.panels.type = fc.typePanneau||pv.type||"";
+                  if (fc.puissanceTotale||pv.total) imported.panels.total_kwp = fc.puissanceTotale||pv.total||"";
+                  // Onduleurs
+                  if (fc.onduleurs&&fc.onduleurs[0]) {
+                    imported.inverters = fc.onduleurs.map(function(o){
+                      return { brand:o.marque||o.brand||"", model:o.modele||o.nom||o.model||"", count:o.count||"1", serial:o.serie||o.serial||"" };
+                    });
+                  } else if (fc.onduleur) {
+                    imported.inverters = [{ brand:fc.onduleur.marque||"", model:fc.onduleur.modele||"", count:"1", serial:fc.onduleur.serie||"" }];
+                  }
+                  // Batterie
+                  if (fc.batterie&&fc.batterie.installed) {
+                    imported.battery = { installed:true, brand:fc.batterie.marque||fc.batterie.brand||"", model:fc.batterie.modele||fc.batterie.model||"", capacity:fc.batterie.capacite||fc.batterie.capacity||"" };
+                  }
+                  // Protections
+                  if (fc.disjAC||fc.protections) {
+                    var p = fc.protections||{};
+                    imported.protections = {
+                      disjAC: fc.disjAC||p.disjAC||"",
+                      disjPV: fc.disjPV||p.disjPV||"",
+                      parafoudre: !!(fc.parafoudre||p.parafoudre),
+                      differentiel: fc.differentiel||p.differentiel||"",
+                      miseTerre: fc.miseTerre||p.miseTerre||""
                     };
                   }
-                  // Onduleur
-                  if (fc.onduleurs&&fc.onduleurs[0]) {
-                    imported.inverters = fc.onduleurs.map(function(o){ return { brand:o.marque||"", model:o.modele||o.nom||"", count:"1" }; });
+                  // Compteur
+                  if (fc.compteur) {
+                    imported.compteur = { serie:fc.compteur.serie||"", ean:fc.compteur.ean||"", type:fc.compteur.type||"" };
                   }
                   saveTechInfo(imported);
                   setTechEditing(true);
-                  alert("✅ Informations importées depuis la fiche chantier.");
-                }).catch(function(){ alert("Impossible d'accéder à la fiche chantier."); });
+                  alert("✅ Informations importées depuis la fiche chantier. Vérifiez et complétez si nécessaire.");
+                }).catch(function(e){ alert("Impossible d'accéder à la fiche chantier ("+e+")."); });
               }}
                 style={{ background:"#e8f5ee", border:"1px solid #a8d5b5", color:"#1B6B3A",
                   borderRadius:6, padding:"5px 10px", fontSize:11, fontWeight:600, cursor:"pointer" }}>
@@ -6236,69 +6308,71 @@ function AsBuiltViewer({ wgeUser }) {
               </button>
             )}
             <button onClick={function(){ setTechEditing(function(v){ return !v; }); }}
-              style={{ background: techEditing?"#1B6B3A":"#e8f5ee", color: techEditing?"#fff":"#1B6B3A",
+              style={{ background:techEditing?"#1B6B3A":"#e8f5ee", color:techEditing?"#fff":"#1B6B3A",
                 border:"1px solid #a8d5b5", borderRadius:6, padding:"5px 10px", fontSize:11, fontWeight:600, cursor:"pointer" }}>
               {techEditing ? "✓ Fermer" : "✏️ Modifier"}
             </button>
           </div>
         </div>
 
+        {/* Résumé quand fermé */}
         {!techEditing && hasTechInfo(techInfo) && (
-          <table style={{ borderCollapse:"collapse", fontSize:12, marginTop:6 }}>
-            {t.panels&&t.panels.count&&<tr><td style={{ padding:"3px 12px 3px 0", color:"#666", fontWeight:600 }}>Panneaux</td><td>{t.panels.count} × {t.panels.power?t.panels.power+"Wc":""} {t.panels.type} {t.panels.total_kwp?"("+t.panels.total_kwp+" kWc)":""}</td></tr>}
-            {inv.brand&&<tr><td style={{ padding:"3px 12px 3px 0", color:"#666", fontWeight:600 }}>Onduleur</td><td>{inv.count&&inv.count>1?inv.count+"× ":""}{inv.brand} {inv.model}</td></tr>}
-            {t.battery&&t.battery.installed&&<tr><td style={{ padding:"3px 12px 3px 0", color:"#666", fontWeight:600 }}>Batterie</td><td>{t.battery.brand} {t.battery.model} {t.battery.capacity?"— "+t.battery.capacity:""}</td></tr>}
-            {t.notes&&<tr><td style={{ padding:"3px 12px 3px 0", color:"#666", fontWeight:600 }}>Notes</td><td style={{ fontStyle:"italic" }}>{t.notes}</td></tr>}
-          </table>
+          <div style={{ fontSize:12, color:"#444", lineHeight:1.8 }}>
+            {t.panels&&t.panels.count&&<div>🔋 <strong>Panneaux :</strong> {t.panels.count} × {t.panels.power?t.panels.power+"Wc ":""}{t.panels.type} {t.panels.total_kwp?"("+t.panels.total_kwp+" kWc)":""}</div>}
+            {inv.brand&&<div>⚡ <strong>Onduleur :</strong> {inv.count&&inv.count>"1"?inv.count+"× ":""}{inv.brand} {inv.model} {inv.serial?"S/N: "+inv.serial:""}</div>}
+            {t.battery&&t.battery.installed&&<div>🔋 <strong>Batterie :</strong> {t.battery.brand} {t.battery.model} {t.battery.capacity?"— "+t.battery.capacity:""}</div>}
+            {(pro.disjAC||pro.disjPV||pro.parafoudre||pro.differentiel||pro.miseTerre)&&<div>🛡 <strong>Protections :</strong> {[pro.disjAC&&"Disj.AC "+pro.disjAC+"A", pro.disjPV&&"Disj.PV "+pro.disjPV+"A", pro.parafoudre&&"Parafoudre", pro.differentiel&&"Diff. "+pro.differentiel, pro.miseTerre&&"Terre: "+pro.miseTerre].filter(Boolean).join(" · ")}</div>}
+            {(cpt.serie||cpt.ean||cpt.type)&&<div>🔌 <strong>Compteur :</strong> {[cpt.type, cpt.serie&&"N° "+cpt.serie, cpt.ean&&"EAN: "+cpt.ean].filter(Boolean).join(" · ")}</div>}
+            {t.notes&&<div>📝 <em>{t.notes}</em></div>}
+          </div>
         )}
         {!techEditing && !hasTechInfo(techInfo) && (
-          <div style={{ fontSize:11, color:"#aaa", fontStyle:"italic", marginTop:4 }}>Aucune information technique — cliquez "Modifier" pour en ajouter.</div>
+          <div style={{ fontSize:11, color:"#aaa", fontStyle:"italic" }}>Aucune info renseignée — cliquez "Modifier" ou "📥 Importer fiche chantier"</div>
         )}
 
+        {/* Formulaire d'édition */}
         {techEditing && (
-          <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
-            <div style={{ fontWeight:600, fontSize:11, color:"#555", textTransform:"uppercase", letterSpacing:"0.06em" }}>Panneaux</div>
-            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(160px,1fr))", gap:8 }}>
-              {[["Nombre","panels.count"],["Puissance (Wc)","panels.power"],["Modèle / Type","panels.type"],["Total (kWc)","panels.total_kwp"]].map(function(f){
-                var keys = f[1].split(".");
-                var val = t[keys[0]]&&t[keys[0]][keys[1]]||"";
-                return (
-                  <div key={f[1]}>
-                    <label style={{ fontSize:10, color:"#666", display:"block", marginBottom:2 }}>{f[0]}</label>
-                    <input type="text" value={val}
-                      onChange={function(e){
-                        var v = e.target.value;
-                        var newT = JSON.parse(JSON.stringify(t||TECH_EMPTY));
-                        newT[keys[0]][keys[1]] = v;
-                        saveTechInfo(newT);
-                      }}
-                      style={{ width:"100%", padding:"5px 8px", border:"1px solid #d4ead9", borderRadius:6, fontSize:12 }} />
-                  </div>
-                );
-              })}
+          <div style={{ display:"flex", flexDirection:"column", gap:14, marginTop:8 }}>
+            {/* Panneaux */}
+            <div>
+              <div style={{ fontWeight:700, fontSize:11, color:"#1B6B3A", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:6 }}>🔆 Panneaux photovoltaïques</div>
+              <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(140px,1fr))", gap:8 }}>
+                <Field label="Nombre" path="panels.count" placeholder="ex: 20" />
+                <Field label="Puissance unitaire (Wc)" path="panels.power" placeholder="ex: 400" />
+                <Field label="Modèle / Type" path="panels.type" placeholder="ex: Longi 400 HiMO6" />
+                <Field label="Puissance totale (kWc)" path="panels.total_kwp" placeholder="ex: 8.0" />
+              </div>
             </div>
-            <div style={{ fontWeight:600, fontSize:11, color:"#555", textTransform:"uppercase", letterSpacing:"0.06em", marginTop:4 }}>Onduleur</div>
-            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(160px,1fr))", gap:8 }}>
-              {[["Marque","brand"],["Modèle","model"],["Quantité","count"]].map(function(f){
-                var val = (t.inverters&&t.inverters[0]&&t.inverters[0][f[1]])||"";
-                return (
-                  <div key={f[1]}>
-                    <label style={{ fontSize:10, color:"#666", display:"block", marginBottom:2 }}>{f[0]}</label>
-                    <input type="text" value={val}
-                      onChange={function(e){
-                        var v = e.target.value;
-                        var newT = JSON.parse(JSON.stringify(t||TECH_EMPTY));
-                        if (!newT.inverters||!newT.inverters[0]) newT.inverters=[{brand:"",model:"",count:"1"}];
-                        newT.inverters[0][f[1]] = v;
-                        saveTechInfo(newT);
-                      }}
-                      style={{ width:"100%", padding:"5px 8px", border:"1px solid #d4ead9", borderRadius:6, fontSize:12 }} />
-                  </div>
-                );
-              })}
+            {/* Onduleur */}
+            <div>
+              <div style={{ fontWeight:700, fontSize:11, color:"#1B6B3A", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:6 }}>⚡ Onduleur</div>
+              <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(140px,1fr))", gap:8 }}>
+                {[["Marque","inverters.0.brand","ex: Fronius"],["Modèle","inverters.0.model","ex: Primo 8.0"],["Quantité","inverters.0.count","ex: 1"],["N° de série","inverters.0.serial","ex: 12345678"]].map(function(f){
+                  var keys = f[1].split(".");
+                  var obj = t.inverters&&t.inverters[parseInt(keys[1])];
+                  var val = obj ? obj[keys[2]]||"" : "";
+                  return (
+                    <div key={f[1]}>
+                      <label style={{ fontSize:10, color:"#555", display:"block", marginBottom:2, fontWeight:600 }}>{f[0]}</label>
+                      <input type="text" value={val} placeholder={f[2]}
+                        onChange={function(e){
+                          var v = e.target.value;
+                          var newT = JSON.parse(JSON.stringify(t||TECH_EMPTY));
+                          if (!newT.inverters) newT.inverters=[{brand:"",model:"",count:"1",serial:""}];
+                          if (!newT.inverters[0]) newT.inverters[0]={brand:"",model:"",count:"1",serial:""};
+                          newT.inverters[0][keys[2]] = v;
+                          saveTechInfo(newT);
+                        }}
+                        style={{ width:"100%", padding:"5px 8px", border:"1px solid #d4ead9", borderRadius:6, fontSize:12, boxSizing:"border-box" }} />
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-            <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-              <label style={{ display:"flex", alignItems:"center", gap:6, fontSize:12, cursor:"pointer" }}>
+            {/* Batterie */}
+            <div>
+              <div style={{ fontWeight:700, fontSize:11, color:"#1B6B3A", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:6 }}>🔋 Batterie</div>
+              <label style={{ display:"flex", alignItems:"center", gap:6, fontSize:12, cursor:"pointer", marginBottom:6 }}>
                 <input type="checkbox" checked={!!(t.battery&&t.battery.installed)}
                   onChange={function(e){
                     var newT = JSON.parse(JSON.stringify(t||TECH_EMPTY));
@@ -6308,167 +6382,55 @@ function AsBuiltViewer({ wgeUser }) {
                   }} />
                 Batterie installée
               </label>
+              {t.battery&&t.battery.installed&&(
+                <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(140px,1fr))", gap:8 }}>
+                  <Field label="Marque" path="battery.brand" placeholder="ex: SolarEdge" />
+                  <Field label="Modèle" path="battery.model" placeholder="ex: Home Hub" />
+                  <Field label="Capacité (kWh)" path="battery.capacity" placeholder="ex: 9.7 kWh" />
+                </div>
+              )}
             </div>
-            {t.battery&&t.battery.installed && (
-              <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(160px,1fr))", gap:8 }}>
-                {[["Marque batterie","brand"],["Modèle","model"],["Capacité","capacity"]].map(function(f){
-                  var val = (t.battery&&t.battery[f[1]])||"";
-                  return (
-                    <div key={f[1]}>
-                      <label style={{ fontSize:10, color:"#666", display:"block", marginBottom:2 }}>{f[0]}</label>
-                      <input type="text" value={val}
-                        onChange={function(e){
-                          var v = e.target.value;
-                          var newT = JSON.parse(JSON.stringify(t||TECH_EMPTY));
-                          newT.battery[f[1]] = v;
-                          saveTechInfo(newT);
-                        }}
-                        style={{ width:"100%", padding:"5px 8px", border:"1px solid #d4ead9", borderRadius:6, fontSize:12 }} />
-                    </div>
-                  );
+            {/* Protections */}
+            <div>
+              <div style={{ fontWeight:700, fontSize:11, color:"#1B6B3A", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:6 }}>🛡 Protections électriques</div>
+              <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(140px,1fr))", gap:8 }}>
+                {[["Disj. AC (A)","protections.disjAC","ex: 16"],["Disj. PV (A)","protections.disjPV","ex: 16"],["Différentiel","protections.differentiel","ex: 30mA type A"],["Mise à la terre","protections.miseTerre","ex: 4mm² Cu"]].map(function(f){
+                  return <Field key={f[1]} label={f[0]} path={f[1]} placeholder={f[2]} />;
                 })}
               </div>
-            )}
+              <label style={{ display:"flex", alignItems:"center", gap:6, fontSize:12, cursor:"pointer", marginTop:8 }}>
+                <input type="checkbox" checked={!!(pro.parafoudre)}
+                  onChange={function(e){
+                    var newT = JSON.parse(JSON.stringify(t||TECH_EMPTY));
+                    if (!newT.protections) newT.protections={disjAC:"",disjPV:"",parafoudre:false,differentiel:"",miseTerre:""};
+                    newT.protections.parafoudre = e.target.checked;
+                    saveTechInfo(newT);
+                  }} />
+                Parafoudre installé
+              </label>
+            </div>
+            {/* Compteur */}
             <div>
-              <label style={{ fontSize:10, color:"#666", display:"block", marginBottom:2 }}>Notes / Observations</label>
-              <textarea value={t.notes||""} rows={2}
+              <div style={{ fontWeight:700, fontSize:11, color:"#1B6B3A", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:6 }}>🔌 Compteur</div>
+              <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(140px,1fr))", gap:8 }}>
+                <Field label="Type" path="compteur.type" placeholder="ex: Compteur digital" />
+                <Field label="N° de série" path="compteur.serie" placeholder="ex: 543210" />
+                <Field label="EAN" path="compteur.ean" placeholder="ex: 5414804..." />
+              </div>
+            </div>
+            {/* Notes */}
+            <div>
+              <label style={{ fontSize:11, color:"#555", display:"block", marginBottom:4, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.06em" }}>📝 Remarques / Notes complémentaires</label>
+              <textarea value={t.notes||""} rows={2} placeholder="Informations spécifiques à l'installation, observations particulières…"
                 onChange={function(e){
                   var newT = JSON.parse(JSON.stringify(t||TECH_EMPTY));
                   newT.notes = e.target.value;
                   saveTechInfo(newT);
                 }}
-                style={{ width:"100%", padding:"5px 8px", border:"1px solid #d4ead9", borderRadius:6, fontSize:12, resize:"vertical" }} />
+                style={{ width:"100%", padding:"6px 8px", border:"1px solid #d4ead9", borderRadius:6, fontSize:12, resize:"vertical", boxSizing:"border-box" }} />
             </div>
           </div>
         )}
-      </div>
-    );
-  } // url → true = masquée
-
-  function onTogglePhoto(url) {
-    setHiddenPhotos(function(prev) {
-      var next = Object.assign({}, prev);
-      if (next[url]) delete next[url]; else next[url] = true;
-      // Sauvegarder dans Supabase (dans __sheet_order__ pour ce ref)
-      supaLoadOrder(ref).then(function(row) {
-        var order = (row && row.data && row.data.order) || getSheetOrder(ref) || [];
-        var hidden = Object.assign({}, next);
-        // On sauvegarde les photos masquées séparément par sheetId
-        var newData = Object.assign({}, (row&&row.data)||{}, { hiddenPhotos: Object.assign({}, ((row&&row.data)||{}).hiddenPhotos||{}, { [activeId||"all"]: hidden }) });
-        if (row && row.id) {
-          fetch(SUPA_URL+"/rest/v1/feuilles_controle?id=eq."+row.id, {
-            method:"PATCH",
-            headers:{"apikey":SUPA_KEY,"Authorization":"Bearer "+SUPA_KEY,"Content-Type":"application/json"},
-            body:JSON.stringify({data:newData,updated_at:new Date().toISOString()})
-          });
-        }
-      });
-      return next;
-    });
-  }
-
-  // Load sheet list
-  useEffect(function() {
-    if (!ref) { setError("Référence chantier manquante dans l'URL."); setLoading(false); return; }
-    supaLoadList(ref).then(function(rows) {
-      setSheets(rows || []);
-      // Charger l'ordre depuis Supabase (sections visibles pour le client)
-      supaLoadOrder(ref).then(function(orderRow) {
-        if (orderRow && orderRow.data && orderRow.data.order && orderRow.data.order.length > 0) {
-          var order = orderRow.data.order;
-          var result = [];
-          order.forEach(function(item) {
-            if (item.type === "section") { result.push(item); }
-            else {
-              var s = (rows||[]).find(function(sh){ return sh.id === item.id; });
-              if (s) result.push({ type:"sheet", data:s });
-            }
-          });
-          (rows||[]).forEach(function(s) {
-            var inOrder = order.some(function(o){ return o.type==="sheet" && o.id===s.id; });
-            if (!inOrder) result.push({ type:"sheet", data:s });
-          });
-          setOrdered(result);
-        } else {
-          // Fallback localStorage si Supabase n'a pas encore l'ordre
-          setOrdered(applySortOrder(rows || [], ref));
-        }
-        var defaultId = sheetId || (rows && rows[0] && rows[0].id) || null;
-        if (defaultId) setActiveId(defaultId);
-        else setLoading(false);
-      });
-    }).catch(function(){ setError("Impossible de charger les feuilles."); setLoading(false); });
-  }, []);
-
-  // Load selected sheet data + hidden photos
-  useEffect(function() {
-    if (!activeId) return;
-    setLoading(true);
-    supaLoadById(activeId).then(function(row) {
-      if (row && row.data) setData(row.data);
-      else setError("Feuille introuvable.");
-      setLoading(false);
-    }).catch(function(){ setError("Erreur de chargement."); setLoading(false); });
-    // Charger les photos masquées + infos techniques depuis __sheet_order__
-    supaLoadOrder(ref).then(function(row) {
-      var d = (row&&row.data)||{};
-      setHiddenPhotos((d.hiddenPhotos&&d.hiddenPhotos[activeId])||{});
-      setTechInfo((d.techInfo&&d.techInfo[activeId])||null);
-      setTechEditing(false);
-    });
-  }, [activeId]);
-
-  // ── Helpers ──
-  function collectPhotos(photosMap, sectionDefs, tabLabel, tabColor) {
-    // Utilise collectAllSectionPhotos (global) + ajoute tabColor pour l'UI
-    return collectAllSectionPhotos(photosMap, sectionDefs, tabLabel).map(function(s) {
-      return Object.assign({ tabColor: tabColor }, s);
-    });
-  }
-
-  function PhotoGrid({ photos, isWGE, hiddenPhotos, onTogglePhoto }) {
-    // WGE : toutes les photos visibles (masquées = grisées avec bouton)
-    // Client : photos masquées exclues
-    var displayPhotos = isWGE
-      ? photos
-      : photos.filter(function(p){ return !hiddenPhotos || !hiddenPhotos[p.url]; });
-
-    return (
-      <div className="ab-photo-grid" style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(200px, 1fr))", gap:12, marginTop:10 }}>
-        {displayPhotos.map(function(p, i) {
-          var by = p.uploadedBy ? "👤 "+p.uploadedBy : "";
-          var isHidden = hiddenPhotos && hiddenPhotos[p.url];
-          return (
-            <div key={i} className="ab-photo-item" style={{ borderRadius:8, overflow:"hidden", border:"1px solid "+(isHidden?"#f5a0a0":"#e0e0d8"), background:"#fafaf8" }}>
-              <div style={{ position:"relative", cursor: isHidden?"default":"zoom-in" }} onClick={function(){ if(!isHidden) setLightbox(p); }}>
-                <img src={p.url} alt={p.name||""} style={{ width:"100%", aspectRatio:"4/3", objectFit:"cover", display:"block", opacity: isHidden?0.35:1, transition:"opacity 0.2s" }} />
-                {isHidden && (
-                  <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center", pointerEvents:"none" }}>
-                    <span style={{ background:"rgba(0,0,0,0.55)", color:"#fff", borderRadius:20, padding:"4px 12px", fontSize:11, fontWeight:700 }}>Masquée</span>
-                  </div>
-                )}
-                {isWGE && onTogglePhoto && (
-                  <div style={{ position:"absolute", top:6, left:6 }} onClick={function(e){ e.stopPropagation(); onTogglePhoto(p.url); }}>
-                    <div title={isHidden?"Réactiver dans l'AS-Built client":"Masquer dans l'AS-Built client"}
-                      style={{ width:24, height:24, borderRadius:5, border:"2px solid #fff",
-                        background:isHidden?"rgba(231,76,60,0.85)":"#1B6B3A",
-                        display:"flex", alignItems:"center", justifyContent:"center",
-                        cursor:"pointer", boxShadow:"0 1px 4px rgba(0,0,0,0.3)" }}>
-                      <span style={{ color:"#fff", fontSize:13, fontWeight:900, lineHeight:1 }}>{isHidden?"✕":"✓"}</span>
-                    </div>
-                  </div>
-                )}
-                <div style={{ position:"absolute", top:6, right:6 }}>
-                  <a href={p.url} download={p.name||"photo.jpg"} onClick={function(e){ e.stopPropagation(); }}
-                    style={{ background:"rgba(0,0,0,0.55)", color:"#fff", borderRadius:5, padding:"3px 8px", fontSize:11, textDecoration:"none" }}>
-                    ⬇
-                  </a>
-                </div>
-              </div>
-              {by && <div style={{ padding:"4px 8px", fontSize:10, fontWeight:700, color:"#6c3483", background:"#f7f0ff" }}>{by}</div>}
-            </div>
-          );
-        })}
       </div>
     );
   }
@@ -6484,16 +6446,7 @@ function AsBuiltViewer({ wgeUser }) {
             <img src={doc.url} alt={doc.name} style={{ width:"100%", maxHeight:300, objectFit:"contain", background:"#f4f4f0", display:"block" }} />
           </div>
         )}
-        {isPdf && (
-          <div>
-            <div className="ab-iframe-wrap">
-              <iframe src={doc.url} style={{ width:"100%", height:400, border:"none", display:"block" }} title={doc.name} />
-            </div>
-            <div className="ab-pdf-print-link" style={{ padding:"10px 14px", background:"#f0f7f2", borderBottom:"1px solid #d4ead9", fontSize:12, color:"#1B6B3A" }}>
-              📄 <strong>{doc.name}</strong> — <a href={doc.url} target="_blank" style={{ color:"#1B6B3A" }}>Ouvrir le PDF complet (toutes les pages)</a>
-            </div>
-          </div>
-        )}
+        {isPdf && <PdfPages url={doc.url} name={doc.name} />}
         {!isImg&&!isPdf && <div style={{ padding:"20px", textAlign:"center", color:"#888", fontSize:13 }}>📎 {doc.name}</div>}
         <div style={{ padding:"8px 12px", background:"#f8f8f6", display:"flex", alignItems:"center", justifyContent:"space-between", gap:8 }}>
           <div>
@@ -6589,86 +6542,130 @@ function AsBuiltViewer({ wgeUser }) {
           .ab-photo-item { break-inside:avoid; page-break-inside:avoid; }
           .ab-photo-item img { max-height:none!important; object-fit:contain!important; width:100%!important; height:auto!important; }
           .ab-iframe-wrap { display:none!important; }
-          .ab-pdf-print-link { display:block!important; }
+          .ab-pdf-print-pages { display:block!important; }
+          .ab-pdf-print-link { display:none!important; }
           body { background:#fff!important; }
           @page { size:A4; margin:10mm 12mm; }
         }
+        .ab-pdf-print-pages { display:none; }
         .ab-pdf-print-link { display:none; }
       ` }} />
 
-      {/* Header */}
-      <div className="ab-no-print" style={{ background:"#1B6B3A", color:"#fff", padding:"12px 20px",
-        display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:8, position:"sticky", top:0, zIndex:100 }}>
-        <div>
-          <div style={{ fontWeight:700, fontSize:16 }}>📋 Dossier AS-Built — {ref}</div>
-          {meta.client && <div style={{ fontSize:12, opacity:0.8 }}>{meta.client} · {meta.adresse||""}</div>}
+      {/* ═══ HEADER ═══════════════════════════════════════════════════════════ */}
+      {isViewerWGE ? (
+        /* ── MODE ÉDITION WGE ─────────────────────────────────────────── */
+        <div className="ab-no-print" style={{ background:"#1a3a2a", color:"#fff",
+          borderBottom:"3px solid #f39c12", position:"sticky", top:0, zIndex:100 }}>
+          {/* Bandeau "Mode édition" */}
+          <div style={{ background:"#f39c12", color:"#1a1a1a", padding:"4px 20px",
+            fontSize:11, fontWeight:700, display:"flex", alignItems:"center", gap:8 }}>
+            ✏️ MODE ÉDITION — Page de travail interne (non visible par le client)
+          </div>
+          {/* Note explicative */}
+          <div style={{ background:"rgba(255,255,255,0.08)", padding:"6px 20px", fontSize:11, color:"rgba(255,255,255,0.85)", borderBottom:"1px solid rgba(255,255,255,0.1)" }}>
+            💡 <strong>✓ / ✕ sur chaque photo</strong> = incluse ou exclue de la vue client &nbsp;·&nbsp;
+            Les <strong>informations techniques vides</strong> n'apparaissent pas côté client &nbsp;·&nbsp;
+            <strong>Cliquez 👁 Vue client</strong> pour vérifier le rendu final avant envoi
+          </div>
+          <div style={{ padding:"10px 20px", display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:8 }}>
+            <div>
+              <div style={{ fontWeight:700, fontSize:15 }}>📋 AS-Built — {ref}</div>
+              {meta.client && <div style={{ fontSize:12, opacity:0.8 }}>{meta.client}{meta.adresse?" · "+meta.adresse:""}</div>}
+            </div>
+            <div style={{ display:"flex", gap:8, flexWrap:"wrap", alignItems:"center" }}>
+              {/* Actions WGE */}
+              <button onClick={function(){
+                var clientUrl = window.location.origin + window.location.pathname +
+                  "?client=1&ref=" + encodeURIComponent(ref) +
+                  (activeId ? "&sheet=" + activeId : "");
+                window.open(clientUrl, "_blank");
+              }}
+                style={{ background:"#27ae60", border:"none", color:"#fff",
+                  borderRadius:6, padding:"7px 14px", fontSize:12, fontWeight:700, cursor:"pointer" }}>
+                👁 Vue client
+              </button>
+              <button onClick={function(){
+                var clientName = (meta.client || "client").toLowerCase()
+                  .normalize("NFD").replace(/[̀-ͯ]/g,"")
+                  .replace(/[^a-z0-9]/g,"").slice(0,20) || "client";
+                var clientUrl = window.location.origin + window.location.pathname +
+                  "?client=1&ref=" + encodeURIComponent(ref) +
+                  (activeId ? "&sheet=" + activeId : "");
+                var email = [
+                  "Objet : Votre dossier AS-Built — " + ref,
+                  "",
+                  "Cher(e) " + (meta.client || "Client") + ",",
+                  "",
+                  "Votre dossier AS-Built est disponible via le lien suivant :",
+                  clientUrl,
+                  "",
+                  "Pour y accéder, utilisez vos identifiants :",
+                  "  • Identifiant : " + clientName,
+                  "  • Mot de passe : " + clientName,
+                  "",
+                  "Ce dossier contient les photos de vos installations, les documents administratifs",
+                  "et vous permet de télécharger l'ensemble des fichiers.",
+                  "",
+                  "Nous vous remercions pour votre confiance et restons à votre disposition.",
+                  "",
+                  "Cordialement,",
+                  "L'équipe We Green Energy",
+                  "www.we-green.be"
+                ].join("\n");
+                navigator.clipboard.writeText(email).then(function(){
+                  alert("✅ Email copié !\n\nIdentifiant : " + clientName + "\nMot de passe : " + clientName);
+                }).catch(function(){ prompt("Email :", email); });
+              }}
+                style={{ background:"rgba(255,255,255,0.15)", border:"1px solid rgba(255,255,255,0.3)", color:"#fff",
+                  borderRadius:6, padding:"7px 14px", fontSize:12, fontWeight:700, cursor:"pointer" }}>
+                📧 Envoyer au client
+              </button>
+              <button onClick={function(){
+                var clientUrl = window.location.origin + window.location.pathname +
+                  "?client=1&ref=" + encodeURIComponent(ref) +
+                  (activeId ? "&sheet=" + activeId : "");
+                navigator.clipboard.writeText(clientUrl).then(function(){
+                  alert("✅ Lien client copié !");
+                }).catch(function(){ prompt("Lien :", clientUrl); });
+              }}
+                style={{ background:"rgba(255,255,255,0.15)", border:"1px solid rgba(255,255,255,0.3)", color:"#fff",
+                  borderRadius:6, padding:"7px 14px", fontSize:12, fontWeight:700, cursor:"pointer" }}>
+                🔗 Lien client
+              </button>
+              <button onClick={function(){ window.print(); }}
+                style={{ background:"rgba(255,255,255,0.15)", border:"1px solid rgba(255,255,255,0.3)", color:"#fff",
+                  borderRadius:6, padding:"7px 14px", fontSize:12, fontWeight:700, cursor:"pointer" }}>
+                🖨️ Imprimer PDF
+              </button>
+            </div>
+          </div>
         </div>
-        <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
-          {isViewerWGE && (
-            <button onClick={function(){
-              // Ouvrir la vue client pure : même URL sans &wge=1
-              var url = window.location.href.replace(/[&?]wge=1/g, "").replace(/&&/g,"&").replace(/\?&/,"?");
-              window.open(url, "_blank");
-            }}
-              title="Voir exactement ce que voit le client"
+      ) : (
+        /* ── VUE CLIENT ────────────────────────────────────────────────── */
+        <div className="ab-no-print" style={{ background:"#1B6B3A", color:"#fff", padding:"12px 20px",
+          display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:8,
+          position:"sticky", top:0, zIndex:100 }}>
+          <div>
+            <div style={{ fontWeight:700, fontSize:15 }}>📋 Dossier AS-Built — {ref}</div>
+            {meta.client && <div style={{ fontSize:12, opacity:0.8 }}>{meta.client}{meta.adresse?" · "+meta.adresse:""}</div>}
+          </div>
+          <div style={{ display:"flex", gap:8 }}>
+            <button onClick={function(){ window.print(); }}
               style={{ background:"rgba(255,255,255,0.2)", border:"1px solid rgba(255,255,255,0.35)", color:"#fff",
                 borderRadius:6, padding:"7px 14px", fontSize:12, fontWeight:700, cursor:"pointer" }}>
-              👁 Vue client
+              🖨️ Imprimer / PDF
             </button>
-          )}
-          <button onClick={function(){ window.print(); }}
-            style={{ background:"rgba(255,255,255,0.2)", border:"1px solid rgba(255,255,255,0.35)", color:"#fff",
-              borderRadius:6, padding:"7px 14px", fontSize:12, fontWeight:700, cursor:"pointer" }}>
-            🖨️ Imprimer / PDF
-          </button>
-          <button onClick={function(){
-            navigator.clipboard.writeText(window.location.href).then(function(){
-              alert("✅ Lien copié !");
-            }).catch(function(){ prompt("Lien :", window.location.href); });
-          }}
-            style={{ background:"rgba(255,255,255,0.2)", border:"1px solid rgba(255,255,255,0.35)", color:"#fff",
-              borderRadius:6, padding:"7px 14px", fontSize:12, fontWeight:700, cursor:"pointer" }}>
-            🔗 Copier le lien
-          </button>
-          {isViewerWGE && (
             <button onClick={function(){
-              // Générer l'identifiant client depuis le nom du client
-              var clientName = (meta.client || "client").toLowerCase()
-                .normalize("NFD").replace(/[\u0300-\u036f]/g,"")
-                .replace(/[^a-z0-9]/g,"").slice(0, 20) || "client";
-              var url = window.location.href;
-              var email = [
-                "Objet : Votre dossier AS-Built — " + ref,
-                "",
-                "Cher(e) " + (meta.client || "Client") + ",",
-                "",
-                "Votre dossier AS-Built est disponible via le lien suivant :",
-                url,
-                "",
-                "Pour y accéder, utilisez vos identifiants :",
-                "  • Identifiant : " + clientName,
-                "  • Mot de passe : " + clientName,
-                "",
-                "Ce dossier contient les photos de vos installations, les documents administratifs et vous permet de télécharger l'ensemble des fichiers.",
-                "",
-                "Nous vous remercions pour votre confiance et restons à votre disposition pour toute question.",
-                "",
-                "Cordialement,",
-                "L'équipe We Green Energy",
-                "📞 www.we-green.be"
-              ].join("\n");
-              navigator.clipboard.writeText(email).then(function(){
-                alert("✅ Email copié !\n\nIdentifiant client : " + clientName + "\nMot de passe : " + clientName + "\n\nCollez-le dans votre boite mail et envoyez-le au client.");
-              }).catch(function(){ prompt("Copiez cet email :", email); });
+              navigator.clipboard.writeText(window.location.href).then(function(){ alert("✅ Lien copié !"); })
+                .catch(function(){ prompt("Lien :", window.location.href); });
             }}
-              title="Copier l'email de partage pour le client"
               style={{ background:"rgba(255,255,255,0.2)", border:"1px solid rgba(255,255,255,0.35)", color:"#fff",
                 borderRadius:6, padding:"7px 14px", fontSize:12, fontWeight:700, cursor:"pointer" }}>
-              📧 Envoyer au client
+              🔗 Copier le lien
             </button>
-          )}
+          </div>
         </div>
-      </div>
+      )}
 
       <div style={{ maxWidth:900, margin:"0 auto", padding:"20px 16px" }}>
 
@@ -7634,11 +7631,11 @@ function App() {
           {data.meta.ref && (
             <button onClick={function(){
               var url = window.location.origin + window.location.pathname +
-                "?client=1&ref=" + encodeURIComponent(data.meta.ref) +
-                (currentSheetId ? "&sheet=" + currentSheetId : "") + "&wge=1";
+                "?asbuilt=1&ref=" + encodeURIComponent(data.meta.ref) +
+                (currentSheetId ? "&sheet=" + currentSheetId : "");
               window.open(url, "_blank");
             }}
-              title="Ouvrir le dossier AS-Built (photos, PDFs, impression)"
+              title="Ouvrir la page de travail AS-Built (photos, PDFs, impression)"
               style={{ background: "rgba(255,255,255,0.2)", border: "1px solid rgba(255,255,255,0.4)", color: WHITE, borderRadius: 6, padding: "5px 10px", fontSize: 12, cursor: "pointer", fontWeight: 600 }}>
               📋 AS-Built
             </button>
