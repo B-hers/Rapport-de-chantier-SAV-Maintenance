@@ -6126,14 +6126,9 @@ function AsBuiltViewer({ wgeUser }) {
   var isAsBuiltMode = params.get("asbuilt") === "1"; // page de travail WGE
   var isClientMode  = params.get("client") === "1";  // vue client finale
 
-  // Mode WGE : ?asbuilt=1 avec session WGE valide
-  var isViewerWGE = (function() {
-    try {
-      if (!isAsBuiltMode) return false; // lien client → jamais WGE
-      var u = JSON.parse(localStorage.getItem("wge_user") || "{}");
-      return u && (u.type === "wge" || (u.email && (u.email.endsWith("@we-green.be") || u.email.endsWith("@we-green.fr"))));
-    } catch(e) { return false; }
-  })();
+  // Si ?asbuilt=1 → forcément WGE (ce paramètre n'est jamais dans les liens clients)
+  // Le lien client utilise toujours ?client=1, jamais ?asbuilt=1
+  var isViewerWGE = isAsBuiltMode;
 
   var [sheets, setSheets]       = useState([]);
   var [orderedItems, setOrdered] = useState([]);
