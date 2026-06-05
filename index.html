@@ -5239,6 +5239,36 @@ function ChantierPanel({ refChantier, onClose }) {
                 />
               </Section>
             )}
+
+            {/* ─ Informations techniques ─ */}
+            {chData.installations && chData.installations.map(function(inst, ii) {
+              var tech = inst && inst.tech;
+              if (!tech) return null;
+              var rows = [
+                tech.panneaux && tech.panneaux.nbr && ["Panneaux", [tech.panneaux.nbr+" pcs", tech.panneaux.type, tech.panneaux.kWc&&tech.panneaux.kWc+" kWc"].filter(Boolean).join(" — ")],
+                tech.panneaux2 && tech.panneaux2.active && tech.panneaux2.type && ["Panneaux 2", [tech.panneaux2.nbr&&tech.panneaux2.nbr+" pcs", tech.panneaux2.type, tech.panneaux2.kWc&&tech.panneaux2.kWc+" kWc"].filter(Boolean).join(" — ")],
+                tech.onduleurs && tech.onduleurs.length>0 && ["Onduleur(s)", tech.onduleurs.map(function(o){ return o.type||""; }).filter(Boolean).join(", ")||"—"],
+                tech.batterie && tech.batterie.inclus && ["Batterie", tech.batterie.inclus==="OUI" ? [tech.batterie.qty&&tech.batterie.qty+"×", tech.batterie.kwh&&tech.batterie.kwh+" kWh", tech.batterie.type].filter(Boolean).join(" ") || "OUI" : tech.batterie.inclus],
+                tech.borne && tech.borne.inclus==="OUI" && ["Borne recharge", [tech.borne.qty&&tech.borne.qty+"×", tech.borne.type].filter(Boolean).join(" ")||"OUI"],
+                tech.amperageDisj && ["Disj. général", tech.amperageDisj+" A"],
+                tech.compteur && (tech.compteur.serie||tech.compteur.ean) && ["Compteur", [tech.compteur.serie&&"N° "+tech.compteur.serie, tech.compteur.ean&&"EAN: "+tech.compteur.ean].filter(Boolean).join(" — ")],
+              ].filter(Boolean);
+              if (rows.length === 0) return null;
+              return (
+                <Section key={ii} id={"tech"+ii} title={"🔧 Informations techniques"+(chData.installations.length>1?" — Installation "+(ii+1):"")}>
+                  <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12 }}>
+                    <tbody>
+                      {rows.map(function(r, ri){ return (
+                        <tr key={ri} style={{ borderBottom:"1px solid #f0f0ec" }}>
+                          <td style={{ padding:"5px 10px 5px 0", fontWeight:600, color:"#555", whiteSpace:"nowrap", verticalAlign:"top" }}>{r[0]}</td>
+                          <td style={{ padding:"5px 0", color:"#1a1a1a" }}>{r[1]}</td>
+                        </tr>
+                      ); })}
+                    </tbody>
+                  </table>
+                </Section>
+              );
+            })}
           </div>
         )}
       </div>
@@ -6344,49 +6374,61 @@ function AsBuiltViewer({ wgeUser }) {
             {!techEditing && (
               <button onClick={function(){
                 var fref = (data&&data.meta&&data.meta.ref)||ref;
-                fetch(SUPA_URL+"/rest/v1/feuilles_chantier?ref=eq."+encodeURIComponent(fref)+"&select=data&limit=1",
-                  {headers:{"apikey":SUPA_KEY,"Authorization":"Bearer "+SUPA_KEY}})
+                fetch(BRIEFING_URL+"/rest/v1/feuilles_chantier?ref=eq."+encodeURIComponent(fref)+"&select=data&limit=1",
+                  {headers:{"apikey":BRIEFING_KEY,"Authorization":"Bearer "+BRIEFING_KEY}})
                 .then(function(r){ return r.json(); })
                 .then(function(rows) {
                   if (!rows||!rows[0]||!rows[0].data) { alert("Aucune fiche chantier trouvée pour ce chantier (réf: "+fref+")."); return; }
                   var fc = rows[0].data;
+                  // Structure réelle : fc.installations[0].tech.*
+                  var inst = fc.installations && fc.installations[0];
+                  var tech = inst && inst.tech;
+                  if (!tech) { alert("La fiche chantier ne contient pas de données techniques (réf: "+fref+")."); return; }
                   var imported = JSON.parse(JSON.stringify(t||TECH_EMPTY));
-                  // Panneaux
-                  var pv = fc.pvInfo||fc.panels||{};
-                  if (fc.nbPanneaux||pv.count) imported.panels.count = fc.nbPanneaux||pv.count||"";
-                  if (fc.puissancePanneau||pv.power) imported.panels.power = fc.puissancePanneau||pv.power||"";
-                  if (fc.typePanneau||pv.type) imported.panels.type = fc.typePanneau||pv.type||"";
-                  if (fc.puissanceTotale||pv.total) imported.panels.total_kwp = fc.puissanceTotale||pv.total||"";
-                  // Onduleurs
-                  if (fc.onduleurs&&fc.onduleurs[0]) {
-                    imported.inverters = fc.onduleurs.map(function(o){
-                      return { brand:o.marque||o.brand||"", model:o.modele||o.nom||o.model||"", count:o.count||"1", serial:o.serie||o.serial||"" };
+
+                  // ── Panneaux ──────────────────────────────────────────────
+                  if (tech.panneaux) {
+                    if (tech.panneaux.type) imported.panels.type  = tech.panneaux.type;
+                    if (tech.panneaux.nbr)  imported.panels.count = String(tech.panneaux.nbr);
+                    if (tech.panneaux.kWc)  imported.panels.total_kwp = String(tech.panneaux.kWc);
+                    // Puissance unitaire calculée si possible
+                    if (tech.panneaux.nbr && tech.panneaux.kWc && parseFloat(tech.panneaux.nbr) > 0) {
+                      var wc = Math.round(parseFloat(tech.panneaux.kWc)*1000 / parseFloat(tech.panneaux.nbr));
+                      if (wc > 0) imported.panels.power = String(wc);
+                    }
+                  }
+
+                  // ── Onduleurs ─────────────────────────────────────────────
+                  if (tech.onduleurs && tech.onduleurs.length > 0) {
+                    imported.inverters = tech.onduleurs.map(function(o){
+                      return { brand:"", model:o.type||"", count:"1", serial:"" };
                     });
-                  } else if (fc.onduleur) {
-                    imported.inverters = [{ brand:fc.onduleur.marque||"", model:fc.onduleur.modele||"", count:"1", serial:fc.onduleur.serie||"" }];
                   }
-                  // Batterie
-                  if (fc.batterie&&fc.batterie.installed) {
-                    imported.battery = { installed:true, brand:fc.batterie.marque||fc.batterie.brand||"", model:fc.batterie.modele||fc.batterie.model||"", capacity:fc.batterie.capacite||fc.batterie.capacity||"" };
-                  }
-                  // Protections
-                  if (fc.disjAC||fc.protections) {
-                    var p = fc.protections||{};
-                    imported.protections = {
-                      disjAC: fc.disjAC||p.disjAC||"",
-                      disjPV: fc.disjPV||p.disjPV||"",
-                      parafoudre: !!(fc.parafoudre||p.parafoudre),
-                      differentiel: fc.differentiel||p.differentiel||"",
-                      miseTerre: fc.miseTerre||p.miseTerre||""
+
+                  // ── Batterie ──────────────────────────────────────────────
+                  if (tech.batterie && tech.batterie.inclus === "OUI") {
+                    imported.battery = {
+                      installed: true,
+                      brand: "",
+                      model: tech.batterie.type || "",
+                      capacity: tech.batterie.kwh ? tech.batterie.kwh+" kWh" : ""
                     };
                   }
-                  // Compteur
-                  if (fc.compteur) {
-                    imported.compteur = { serie:fc.compteur.serie||"", ean:fc.compteur.ean||"", type:fc.compteur.type||"" };
+
+                  // ── Protections : disjoncteur général ─────────────────────
+                  if (tech.amperageDisj) {
+                    imported.protections.disjAC = String(tech.amperageDisj);
                   }
+
+                  // ── Compteur ──────────────────────────────────────────────
+                  if (tech.compteur) {
+                    if (tech.compteur.serie) imported.compteur.serie = String(tech.compteur.serie);
+                    if (tech.compteur.ean)   imported.compteur.ean   = String(tech.compteur.ean);
+                  }
+
                   saveTechInfo(imported);
                   setTechEditing(true);
-                  alert("✅ Informations importées depuis la fiche chantier. Vérifiez et complétez si nécessaire.");
+                  alert("✅ Informations importées depuis la fiche chantier.\nVérifiez et complétez si nécessaire.");
                 }).catch(function(e){ alert("Impossible d'accéder à la fiche chantier ("+e+")."); });
               }}
                 style={{ background:"#e8f5ee", border:"1px solid #a8d5b5", color:"#1B6B3A",
