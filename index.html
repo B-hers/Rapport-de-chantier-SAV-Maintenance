@@ -6123,12 +6123,17 @@ function AsBuiltViewer({ wgeUser }) {
   var sheetId = params.get("sheet") || null;
 
   var params = new URLSearchParams(window.location.search);
-  var isAsBuiltMode = params.get("asbuilt") === "1"; // page de travail WGE
-  var isClientMode  = params.get("client") === "1";  // vue client finale
-
-  // Si ?asbuilt=1 → forcément WGE (ce paramètre n'est jamais dans les liens clients)
-  // Le lien client utilise toujours ?client=1, jamais ?asbuilt=1
-  var isViewerWGE = isAsBuiltMode;
+  // isViewerWGE : WGE si l'utilisateur a une session WGE en localStorage
+  // ?preview=client dans l'URL force la vue client (pour prévisualiser ce que voit le client)
+  var forceClientPreview = params.get("preview") === "client";
+  var isViewerWGE = (function() {
+    if (forceClientPreview) return false; // prévisualisation client explicite
+    try {
+      var u = JSON.parse(localStorage.getItem("wge_user") || "{}");
+      return !!(u && (u.type === "wge" ||
+        (u.email && (u.email.endsWith("@we-green.be") || u.email.endsWith("@we-green.fr")))));
+    } catch(e) { return false; }
+  })();
 
   var [sheets, setSheets]       = useState([]);
   var [orderedItems, setOrdered] = useState([]);
@@ -6760,7 +6765,7 @@ function AsBuiltViewer({ wgeUser }) {
               <button onClick={function(){
                 var clientUrl = window.location.origin + window.location.pathname +
                   "?client=1&ref=" + encodeURIComponent(ref) +
-                  (activeId ? "&sheet=" + activeId : "");
+                  (activeId ? "&sheet=" + activeId : "") + "&preview=client";
                 window.open(clientUrl, "_blank");
               }}
                 style={{ background:"#27ae60", border:"none", color:"#fff",
