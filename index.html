@@ -4674,43 +4674,39 @@ function ProgressPanel({ data, onClose }) {
           });
         })()}
 
-        {/* ── VUE PAR JOUR (avec intervenants) ── */}
+        {/* ── VUE PAR JOUR ── */}
         {viewMode === "byDay" && days.map(function(day) {
           var dayPhotos   = byDay[day];
           var isOpen      = expandedDay === day;
           var dayJournees = allJourneesMap[day] || [];
-          // Sections pour les badges du header
           var daySections = groupBySection(dayPhotos);
-          // Intervenants pour le contenu étendu
-          var dayPersons  = groupByPersonThenSection(dayPhotos);
 
-          // Récupérer les intervenants uniques (photos + journées)
-          var allIntervenants = [];
-          dayPersons.forEach(function(p){ if(!allIntervenants.includes(p.who)) allIntervenants.push(p.who); });
-          dayJournees.forEach(function(j){ if(j.auteur && !allIntervenants.includes(j.auteur)) allIntervenants.push(j.auteur); });
+          // Intervenants uniques pour badge dans le header
+          var dayUploaders = [];
+          dayPhotos.forEach(function(p) {
+            if (p.uploadedBy && !dayUploaders.includes(p.uploadedBy)) dayUploaders.push(p.uploadedBy);
+          });
+          dayJournees.forEach(function(j) {
+            if (j.auteur && !dayUploaders.includes(j.auteur)) dayUploaders.push(j.auteur);
+          });
 
           return (
-            <div key={day} style={{ marginBottom:10, borderRadius:9,
-              border:"1px solid #e8e8e4", overflow:"hidden" }}>
-
+            <div key={day} style={{ marginBottom:10, borderRadius:9, border:"1px solid #e8e8e4", overflow:"hidden" }}>
               {/* Day header */}
               <div onClick={function(){ setExpandedDay(isOpen ? null : day); setExpandedSection(null); }}
                 style={{ padding:"11px 14px", background:isOpen?GREEN_LIGHT:"#fafaf8",
                   cursor:"pointer", userSelect:"none",
                   display:"flex", alignItems:"center", justifyContent:"space-between" }}>
                 <div style={{ flex:1, minWidth:0 }}>
-                  <div style={{ fontWeight:700, fontSize:13, color:isOpen?GREEN:"#1a1a1a",
-                    textTransform:"capitalize" }}>
+                  <div style={{ fontWeight:700, fontSize:13, color:isOpen?GREEN:"#1a1a1a", textTransform:"capitalize" }}>
                     📅 {fmtDay(day)}
                   </div>
-                  {/* Intervenants en sous-titre */}
-                  {allIntervenants.length > 0 && (
+                  {dayUploaders.length > 0 && (
                     <div style={{ fontSize:11, color:"#6c3483", marginTop:2, fontWeight:600 }}>
-                      👥 {allIntervenants.join(", ")}
+                      👥 {dayUploaders.join(", ")}
                     </div>
                   )}
-                  {/* Badges sections */}
-                  <div style={{ display:"flex", gap:6, marginTop:5, flexWrap:"wrap" }}>
+                  <div style={{ display:"flex", gap:6, marginTop:4, flexWrap:"wrap" }}>
                     {dayJournees.length > 0 && (
                       <span style={{ fontSize:10, background:"#f39c1222", color:"#856404",
                         borderRadius:4, padding:"1px 7px", fontWeight:700, border:"1px solid #f39c1244" }}>
@@ -4733,103 +4729,63 @@ function ProgressPanel({ data, onClose }) {
                 </div>
               </div>
 
-              {/* Day content — par intervenant */}
+              {/* Day content */}
               {isOpen && (
                 <div style={{ padding:"10px 14px 14px", background:WHITE }}>
-
                   {/* Journées clôturées */}
                   {dayJournees.map(function(j, ji) {
                     return (
                       <div key={j.id||ji} style={{ marginBottom:10, background:"#fffbf0",
                         border:"1.5px solid #f39c12", borderRadius:8, padding:"9px 12px" }}>
                         <div style={{ fontWeight:700, fontSize:11, color:"#856404",
-                          display:"flex", alignItems:"center", gap:8, marginBottom:j.note?4:0 }}>
+                          display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
                           ✅ Journée clôturée — {j.tab}
                           {j.heure && <span style={{ fontWeight:400, color:MUTED }}>à {j.heure}</span>}
-                          <span style={{ color:"#6c3483" }}>· 👤 {j.auteur}</span>
+                          {j.auteur && <span style={{ color:"#6c3483" }}>· 👤 {j.auteur}</span>}
                         </div>
                         {j.note && (
-                          <div style={{ fontSize:11, color:"#1a1a1a", lineHeight:1.5,
-                            background:"#fff", borderRadius:5, padding:"5px 8px",
+                          <div style={{ fontSize:11, color:"#1a1a1a", lineHeight:1.5, marginTop:4,
+                            background:WHITE, borderRadius:5, padding:"5px 8px",
                             borderLeft:"3px solid #f39c12", whiteSpace:"pre-wrap" }}>{j.note}</div>
                         )}
                       </div>
                     );
                   })}
 
-                  {/* Intervenants */}
-                  {dayPersons.map(function(person) {
-                    var personKey = "day_"+day+"_person_"+person.who;
-                    var personOpen = expandedSection === personKey;
+                  {/* Sections avec photos — directement accessibles, sans nesting personne */}
+                  {daySections.map(function(s, si) {
+                    var secKey = day+"|"+s.tab+"|"+s.section;
+                    var secOpen = expandedSection === secKey;
                     return (
-                      <div key={person.who} style={{ marginBottom:8, borderRadius:8,
-                        border:"1px solid #e0d5f5", overflow:"hidden" }}>
-
-                        {/* Intervenant header */}
-                        <div onClick={function(){ setExpandedSection(personOpen ? null : personKey); }}
-                          style={{ padding:"8px 12px", background:personOpen?"#f5eef8":"#faf8ff",
-                            cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"space-between",
-                            userSelect:"none" }}>
-                          <div>
-                            <div style={{ fontWeight:700, fontSize:12, color:"#6c3483" }}>
-                              👤 {person.who}
-                            </div>
-                            <div style={{ display:"flex", gap:5, marginTop:3, flexWrap:"wrap" }}>
-                              {person.sections.map(function(s, si) {
-                                return (
-                                  <span key={si} style={{ fontSize:10, background:s.tabColor+"22",
-                                    color:s.tabColor, borderRadius:3, padding:"1px 6px", fontWeight:600 }}>
-                                    {s.tab} — {s.section} ({s.photos.length})
-                                  </span>
-                                );
-                              })}
-                            </div>
-                          </div>
-                          <div style={{ display:"flex", alignItems:"center", gap:6, flexShrink:0 }}>
-                            <span style={{ fontSize:11, color:MUTED }}>
-                              {person.sections.reduce(function(n,s){ return n+s.photos.length; },0)} photo{person.sections.reduce(function(n,s){ return n+s.photos.length; },0)>1?"s":""}
-                            </span>
-                            <span style={{ fontSize:10, color:MUTED, transform:personOpen?"rotate(180deg)":"none", transition:"transform 0.2s" }}>▼</span>
-                          </div>
+                      <div key={si} style={{ marginBottom:8 }}>
+                        <div onClick={function(){ setExpandedSection(secOpen ? null : secKey); }}
+                          style={{ display:"flex", alignItems:"center", gap:8, padding:"7px 10px",
+                            borderRadius:7, cursor:"pointer",
+                            background:secOpen?s.tabColor+"12":"#f8f8f6",
+                            border:"1px solid "+(secOpen?s.tabColor+"44":"#e8e8e4") }}>
+                          <span style={{ width:8, height:8, borderRadius:"50%", background:s.tabColor, flexShrink:0 }} />
+                          <span style={{ flex:1, fontWeight:600, fontSize:12 }}>{s.tab} — {s.section}</span>
+                          <span style={{ fontSize:11, color:s.tabColor, fontWeight:700 }}>{s.photos.length} photo{s.photos.length>1?"s":""}</span>
+                          <span style={{ fontSize:10, color:MUTED, transform:secOpen?"rotate(180deg)":"none", transition:"0.2s" }}>▼</span>
                         </div>
-
-                        {/* Sections de cet intervenant */}
-                        {personOpen && (
-                          <div style={{ padding:"8px 10px", background:WHITE }}>
-                            {person.sections.map(function(s, si) {
-                              var secKey = personKey+"|"+s.tab+"|"+s.section;
-                              var secOpen = expandedSection === secKey;
+                        {secOpen && (
+                          <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:6, padding:"6px 4px" }}>
+                            {s.photos.map(function(p, pi) {
+                              var time = p.addedAt ? new Date(p.addedAt).toLocaleTimeString("fr-BE",{hour:"2-digit",minute:"2-digit"}) : "";
                               return (
-                                <div key={si} style={{ marginBottom:6 }}>
-                                  <div onClick={function(e){ e.stopPropagation(); setExpandedSection(secOpen ? personKey : secKey); }}
-                                    style={{ display:"flex", alignItems:"center", gap:7, padding:"6px 9px",
-                                      borderRadius:6, cursor:"pointer",
-                                      background:secOpen?s.tabColor+"12":"#f8f8f6",
-                                      border:"1px solid "+(secOpen?s.tabColor+"44":"#e8e8e4") }}>
-                                    <span style={{ width:7, height:7, borderRadius:"50%", background:s.tabColor, flexShrink:0 }} />
-                                    <span style={{ flex:1, fontWeight:600, fontSize:11 }}>{s.tab} — {s.section}</span>
-                                    <span style={{ fontSize:10, color:s.tabColor, fontWeight:700 }}>{s.photos.length} photo{s.photos.length>1?"s":""}</span>
-                                    <span style={{ fontSize:9, color:MUTED, transform:secOpen?"rotate(180deg)":"none" }}>▼</span>
+                                <div key={pi} style={{ borderRadius:7, overflow:"hidden", border:"1px solid "+BORDER, background:"#fafaf8" }}>
+                                  <img src={p.url} alt={p.name||""}
+                                    style={{ width:"100%", aspectRatio:"4/3", objectFit:"cover", display:"block", cursor:"zoom-in" }}
+                                    onClick={function(){ setZoomPhoto(Object.assign({},p,{section:s.section,tab:s.tab,tabColor:s.tabColor})); setZoomScale(1); }} />
+                                  <div style={{ padding:"4px 6px", background:"#f0f0ec", lineHeight:1.4 }}>
+                                    {p.uploadedBy && (
+                                      <div style={{ fontSize:10, fontWeight:800, color:"#6c3483",
+                                        overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                                        👤 {p.uploadedBy}
+                                      </div>
+                                    )}
+                                    {time && <div style={{ fontSize:9, color:GREEN, fontWeight:700 }}>{time}</div>}
                                   </div>
-                                  {secOpen && (
-                                    <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:5, padding:"6px 3px" }}>
-                                      {s.photos.map(function(p, pi) {
-                                        var time = p.addedAt ? new Date(p.addedAt).toLocaleTimeString("fr-BE",{hour:"2-digit",minute:"2-digit"}) : "";
-                                        return (
-                                          <div key={pi} style={{ borderRadius:6, overflow:"hidden", border:"1px solid "+BORDER, background:"#fafaf8" }}>
-                                            <img src={p.url} alt={p.name}
-                                              style={{ width:"100%", aspectRatio:"4/3", objectFit:"cover", display:"block", cursor:"zoom-in" }}
-                                              onClick={function(){ setZoomPhoto(Object.assign({},p,{section:s.section,tab:s.tab,tabColor:s.tabColor})); setZoomScale(1); }}
-                                            />
-                                            <div style={{ padding:"3px 5px", background:"#f0f0ec", lineHeight:1.4 }}>
-                                              {time && <div style={{ fontSize:9, color:GREEN, fontWeight:700 }}>{time}</div>}
-                                              {p.name && <div style={{ fontSize:9, color:MUTED, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{p.name}</div>}
-                                            </div>
-                                          </div>
-                                        );
-                                      })}
-                                    </div>
-                                  )}
                                 </div>
                               );
                             })}
@@ -4843,6 +4799,8 @@ function ProgressPanel({ data, onClose }) {
             </div>
           );
         })}
+
+
 
         {/* Photos sans date */}
         {viewMode === "byDay" && noDate.length > 0 && (
@@ -6172,12 +6130,35 @@ function AsBuiltViewer({ wgeUser }) {
   })();
 
   var [sheets, setSheets]       = useState([]);
-  var [orderedItems, setOrdered] = useState([]); // [{type:"sheet"|"section", data?:..., label?:..., id?:...}]
+  var [orderedItems, setOrdered] = useState([]);
   var [activeId, setActiveId]   = useState(null);
   var [data, setData]           = useState(null);
   var [loading, setLoading]     = useState(true);
   var [error, setError]         = useState("");
-  var [lightbox, setLightbox]   = useState(null); // { url, name }
+  var [lightbox, setLightbox]   = useState(null);
+  var [hiddenPhotos, setHiddenPhotos] = useState({}); // url → true = masquée
+
+  function onTogglePhoto(url) {
+    setHiddenPhotos(function(prev) {
+      var next = Object.assign({}, prev);
+      if (next[url]) delete next[url]; else next[url] = true;
+      // Sauvegarder dans Supabase (dans __sheet_order__ pour ce ref)
+      supaLoadOrder(ref).then(function(row) {
+        var order = (row && row.data && row.data.order) || getSheetOrder(ref) || [];
+        var hidden = Object.assign({}, next);
+        // On sauvegarde les photos masquées séparément par sheetId
+        var newData = Object.assign({}, (row&&row.data)||{}, { hiddenPhotos: Object.assign({}, ((row&&row.data)||{}).hiddenPhotos||{}, { [activeId||"all"]: hidden }) });
+        if (row && row.id) {
+          fetch(SUPA_URL+"/rest/v1/feuilles_controle?id=eq."+row.id, {
+            method:"PATCH",
+            headers:{"apikey":SUPA_KEY,"Authorization":"Bearer "+SUPA_KEY,"Content-Type":"application/json"},
+            body:JSON.stringify({data:newData,updated_at:new Date().toISOString()})
+          });
+        }
+      });
+      return next;
+    });
+  }
 
   // Load sheet list
   useEffect(function() {
@@ -6212,7 +6193,7 @@ function AsBuiltViewer({ wgeUser }) {
     }).catch(function(){ setError("Impossible de charger les feuilles."); setLoading(false); });
   }, []);
 
-  // Load selected sheet data
+  // Load selected sheet data + hidden photos
   useEffect(function() {
     if (!activeId) return;
     setLoading(true);
@@ -6221,6 +6202,14 @@ function AsBuiltViewer({ wgeUser }) {
       else setError("Feuille introuvable.");
       setLoading(false);
     }).catch(function(){ setError("Erreur de chargement."); setLoading(false); });
+    // Charger les photos masquées depuis __sheet_order__
+    supaLoadOrder(ref).then(function(row) {
+      if (row && row.data && row.data.hiddenPhotos && row.data.hiddenPhotos[activeId]) {
+        setHiddenPhotos(row.data.hiddenPhotos[activeId]);
+      } else {
+        setHiddenPhotos({});
+      }
+    });
   }, [activeId]);
 
   // ── Helpers ──
@@ -6231,15 +6220,27 @@ function AsBuiltViewer({ wgeUser }) {
     });
   }
 
-  function PhotoGrid({ photos }) {
+  function PhotoGrid({ photos, isWGE, hiddenPhotos, onTogglePhoto }) {
     return (
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(200px, 1fr))", gap:12, marginTop:10 }}>
-        {photos.map(function(p, i) {
+      <div className="ab-photo-grid" style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(200px, 1fr))", gap:12, marginTop:10 }}>
+        {photos.filter(function(p){ return !hiddenPhotos || !hiddenPhotos[p.url]; }).map(function(p, i) {
           var by = p.uploadedBy ? "👤 "+p.uploadedBy : "";
+          var isHidden = hiddenPhotos && hiddenPhotos[p.url];
           return (
-            <div key={i} style={{ borderRadius:8, overflow:"hidden", border:"1px solid #e0e0d8", background:"#fafaf8" }}>
-              <div style={{ position:"relative", cursor:"zoom-in" }} onClick={function(){ setLightbox(p); }}>
+            <div key={i} className="ab-photo-item" style={{ borderRadius:8, overflow:"hidden", border:"1px solid #e0e0d8", background:"#fafaf8", opacity: isHidden?0.4:1 }}>
+              <div style={{ position:"relative", cursor:"zoom-in" }} onClick={function(){ if(!isHidden) setLightbox(p); }}>
                 <img src={p.url} alt={p.name||""} style={{ width:"100%", aspectRatio:"4/3", objectFit:"cover", display:"block" }} />
+                {isWGE && onTogglePhoto && (
+                  <div style={{ position:"absolute", top:6, left:6 }} onClick={function(e){ e.stopPropagation(); onTogglePhoto(p.url); }}>
+                    <div title={isHidden?"Réactiver dans l'AS-Built":"Masquer dans l'AS-Built"}
+                      style={{ width:22, height:22, borderRadius:4, border:"2px solid #fff",
+                        background:isHidden?"rgba(0,0,0,0.5)":"#1B6B3A",
+                        display:"flex", alignItems:"center", justifyContent:"center",
+                        cursor:"pointer", boxShadow:"0 1px 4px rgba(0,0,0,0.3)" }}>
+                      {!isHidden && <span style={{ color:"#fff", fontSize:12, fontWeight:900, lineHeight:1 }}>✓</span>}
+                    </div>
+                  </div>
+                )}
                 <div style={{ position:"absolute", top:6, right:6 }}>
                   <a href={p.url} download={p.name||"photo.jpg"} onClick={function(e){ e.stopPropagation(); }}
                     style={{ background:"rgba(0,0,0,0.55)", color:"#fff", borderRadius:5, padding:"3px 8px", fontSize:11, textDecoration:"none" }}>
@@ -6267,8 +6268,16 @@ function AsBuiltViewer({ wgeUser }) {
           </div>
         )}
         {isPdf && (
-          <iframe src={doc.url} style={{ width:"100%", height:400, border:"none", display:"block" }} title={doc.name} />
+          <div>
+            <div className="ab-iframe-wrap">
+              <iframe src={doc.url} style={{ width:"100%", height:400, border:"none", display:"block" }} title={doc.name} />
+            </div>
+            <div className="ab-pdf-print-link" style={{ padding:"10px 14px", background:"#f0f7f2", borderBottom:"1px solid #d4ead9", fontSize:12, color:"#1B6B3A" }}>
+              📄 <strong>{doc.name}</strong> — <a href={doc.url} target="_blank" style={{ color:"#1B6B3A" }}>Ouvrir le PDF complet (toutes les pages)</a>
+            </div>
+          </div>
         )}
+        {!isImg&&!isPdf && <div style={{ padding:"20px", textAlign:"center", color:"#888", fontSize:13 }}>📎 {doc.name}</div>}
         <div style={{ padding:"8px 12px", background:"#f8f8f6", display:"flex", alignItems:"center", justifyContent:"space-between", gap:8 }}>
           <div>
             <div style={{ fontWeight:600, fontSize:12 }}>{doc.name}</div>
@@ -6284,8 +6293,10 @@ function AsBuiltViewer({ wgeUser }) {
     );
   }
 
-  function SectionBlock({ tab, tabColor, section, photos }) {
+  function SectionBlock({ tab, tabColor, section, photos, isWGE, hiddenPhotos, onTogglePhoto }) {
     var [open, setOpen] = useState(true);
+    var visibleCount = photos.filter(function(p){ return !hiddenPhotos||!hiddenPhotos[p.url]; }).length;
+    if (!isWGE && visibleCount === 0) return null;
     return (
       <div style={{ marginBottom:16 }}>
         <div onClick={function(){ setOpen(function(v){ return !v; }); }}
@@ -6293,10 +6304,15 @@ function AsBuiltViewer({ wgeUser }) {
             background: open ? tabColor+"18" : "#f8f8f6", border:"1px solid "+(open ? tabColor+"44" : "#e8e8e4") }}>
           <span style={{ width:8, height:8, borderRadius:"50%", background:tabColor, flexShrink:0 }} />
           <span style={{ flex:1, fontWeight:600, fontSize:13 }}>{tab} — {section}</span>
-          <span style={{ fontSize:11, color:tabColor, fontWeight:700 }}>{photos.length} photo{photos.length>1?"s":""}</span>
+          <span style={{ fontSize:11, color:tabColor, fontWeight:700 }}>
+            {isWGE ? photos.length : visibleCount} photo{photos.length>1?"s":""}
+            {isWGE && photos.length>visibleCount && (
+              <span style={{ fontSize:10, color:"#aaa", marginLeft:4 }}>({photos.length-visibleCount} masquée{photos.length-visibleCount>1?"s":""})</span>
+            )}
+          </span>
           <span style={{ fontSize:10, color:"#aaa", transform:open?"rotate(180deg)":"none", transition:"0.2s" }}>▼</span>
         </div>
-        {open && <PhotoGrid photos={photos} />}
+        {open && <PhotoGrid photos={photos} isWGE={isWGE} hiddenPhotos={hiddenPhotos} onTogglePhoto={onTogglePhoto} />}
       </div>
     );
   }
@@ -6352,9 +6368,15 @@ function AsBuiltViewer({ wgeUser }) {
         @media print {
           .ab-no-print { display:none!important; }
           .ab-page { break-inside:avoid; }
+          .ab-photo-grid { display:grid!important; grid-template-columns:repeat(2,1fr)!important; gap:12px!important; }
+          .ab-photo-item { break-inside:avoid; page-break-inside:avoid; }
+          .ab-photo-item img { max-height:none!important; object-fit:contain!important; width:100%!important; height:auto!important; }
+          .ab-iframe-wrap { display:none!important; }
+          .ab-pdf-print-link { display:block!important; }
           body { background:#fff!important; }
-          @page { size:A4; margin:12mm 14mm; }
+          @page { size:A4; margin:10mm 12mm; }
         }
+        .ab-pdf-print-link { display:none; }
       ` }} />
 
       {/* Header */}
@@ -6365,6 +6387,20 @@ function AsBuiltViewer({ wgeUser }) {
           {meta.client && <div style={{ fontSize:12, opacity:0.8 }}>{meta.client} · {meta.adresse||""}</div>}
         </div>
         <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+          {isViewerWGE && (
+            <button onClick={function(){
+              // Ouvrir dans un onglet privé/incognito n'est pas possible via JS,
+              // mais on peut ouvrir un nouvel onglet sans la session WGE en localStorage
+              var url = window.location.href;
+              alert("💡 Pour voir exactement la vue client :\n\nOuvrez ce lien dans un onglet privé / navigation privée :\n\n" + url + "\n\nOu connectez-vous avec l'onglet Client (identifiant = mot de passe).");
+              navigator.clipboard.writeText(url).catch(function(){});
+            }}
+              title="Simuler la vue client"
+              style={{ background:"rgba(255,255,255,0.2)", border:"1px solid rgba(255,255,255,0.35)", color:"#fff",
+                borderRadius:6, padding:"7px 14px", fontSize:12, fontWeight:700, cursor:"pointer" }}>
+              👁 Vue client
+            </button>
+          )}
           <button onClick={function(){ window.print(); }}
             style={{ background:"rgba(255,255,255,0.2)", border:"1px solid rgba(255,255,255,0.35)", color:"#fff",
               borderRadius:6, padding:"7px 14px", fontSize:12, fontWeight:700, cursor:"pointer" }}>
@@ -6495,7 +6531,7 @@ function AsBuiltViewer({ wgeUser }) {
               <div className="ab-page" style={{ background:"#fff", borderRadius:12, border:"1px solid #aed6f1", padding:"20px", marginBottom:16 }}>
                 <div style={{ fontWeight:700, fontSize:15, color:"#2980b9", marginBottom:14,
                   paddingBottom:8, borderBottom:"2px solid #aed6f1" }}>🟦 DC — Couverture &amp; Câblage</div>
-                {dcSecs.map(function(s, i){ return <SectionBlock key={i} {...s} />; })}
+                {dcSecs.map(function(s, i){ return <SectionBlock key={i} {...s} isWGE={isViewerWGE} hiddenPhotos={hiddenPhotos} onTogglePhoto={onTogglePhoto} />; })}
               </div>
             )}
 
@@ -6504,7 +6540,7 @@ function AsBuiltViewer({ wgeUser }) {
               <div className="ab-page" style={{ background:"#fff", borderRadius:12, border:"1px solid #f1948a", padding:"20px", marginBottom:16 }}>
                 <div style={{ fontWeight:700, fontSize:15, color:"#c0392b", marginBottom:14,
                   paddingBottom:8, borderBottom:"2px solid #f1948a" }}>🟥 AC — Installation électrique</div>
-                {acSecs.map(function(s, i){ return <SectionBlock key={i} {...s} />; })}
+                {acSecs.map(function(s, i){ return <SectionBlock key={i} {...s} isWGE={isViewerWGE} hiddenPhotos={hiddenPhotos} onTogglePhoto={onTogglePhoto} />; })}
               </div>
             )}
 
@@ -6513,7 +6549,7 @@ function AsBuiltViewer({ wgeUser }) {
               <div className="ab-page" style={{ background:"#fff", borderRadius:12, border:"1px solid #e8e8e4", padding:"20px", marginBottom:16 }}>
                 <div style={{ fontWeight:700, fontSize:15, color:"#6c3483", marginBottom:14,
                   paddingBottom:8, borderBottom:"2px solid #e8e8e4" }}>🏗️ Photos générales</div>
-                <PhotoGrid photos={genPh} />
+                <PhotoGrid photos={genPh} isWGE={isViewerWGE} hiddenPhotos={hiddenPhotos} onTogglePhoto={onTogglePhoto} />
               </div>
             )}
 
