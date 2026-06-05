@@ -5241,33 +5241,53 @@ function ChantierPanel({ refChantier, onClose }) {
             )}
 
             {/* ─ Informations techniques ─ */}
-            {chData.installations && chData.installations.map(function(inst, ii) {
-              var tech = inst && inst.tech;
-              if (!tech) return null;
-              var rows = [
-                tech.panneaux && tech.panneaux.nbr && ["Panneaux", [tech.panneaux.nbr+" pcs", tech.panneaux.type, tech.panneaux.kWc&&tech.panneaux.kWc+" kWc"].filter(Boolean).join(" — ")],
-                tech.panneaux2 && tech.panneaux2.active && tech.panneaux2.type && ["Panneaux 2", [tech.panneaux2.nbr&&tech.panneaux2.nbr+" pcs", tech.panneaux2.type, tech.panneaux2.kWc&&tech.panneaux2.kWc+" kWc"].filter(Boolean).join(" — ")],
-                tech.onduleurs && tech.onduleurs.length>0 && ["Onduleur(s)", tech.onduleurs.map(function(o){ return o.type||""; }).filter(Boolean).join(", ")||"—"],
-                tech.batterie && tech.batterie.inclus && ["Batterie", tech.batterie.inclus==="OUI" ? [tech.batterie.qty&&tech.batterie.qty+"×", tech.batterie.kwh&&tech.batterie.kwh+" kWh", tech.batterie.type].filter(Boolean).join(" ") || "OUI" : tech.batterie.inclus],
-                tech.borne && tech.borne.inclus==="OUI" && ["Borne recharge", [tech.borne.qty&&tech.borne.qty+"×", tech.borne.type].filter(Boolean).join(" ")||"OUI"],
-                tech.amperageDisj && ["Disj. général", tech.amperageDisj+" A"],
-                tech.compteur && (tech.compteur.serie||tech.compteur.ean) && ["Compteur", [tech.compteur.serie&&"N° "+tech.compteur.serie, tech.compteur.ean&&"EAN: "+tech.compteur.ean].filter(Boolean).join(" — ")],
-              ].filter(Boolean);
-              if (rows.length === 0) return null;
-              return (
-                <Section key={ii} id={"tech"+ii} title={"🔧 Informations techniques"+(chData.installations.length>1?" — Installation "+(ii+1):"")}>
-                  <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12 }}>
-                    <tbody>
-                      {rows.map(function(r, ri){ return (
-                        <tr key={ri} style={{ borderBottom:"1px solid #f0f0ec" }}>
-                          <td style={{ padding:"5px 10px 5px 0", fontWeight:600, color:"#555", whiteSpace:"nowrap", verticalAlign:"top" }}>{r[0]}</td>
-                          <td style={{ padding:"5px 0", color:"#1a1a1a" }}>{r[1]}</td>
-                        </tr>
-                      ); })}
-                    </tbody>
-                  </table>
-                </Section>
-              );
+            {/* ─ Informations techniques (nouvelle structure: sites[]) ─ */}
+            {(chData.sites||[]).map(function(site, si) {
+              var elec  = site.electrical || {};
+              var pvArr = site.pvInstallations || [];
+              var brArr = site.brInstallations || [];
+              var nbSites = (chData.sites||[]).length;
+
+              return pvArr.map(function(inst, ii) {
+                var tech = inst && inst.tech;
+                if (!tech) return null;
+                var pfx = (nbSites > 1 ? " — Site "+(si+1) : "") + (pvArr.length > 1 ? " — Inst. "+(ii+1) : "");
+                var rows = [
+                  tech.panneaux && tech.panneaux.nbr && ["Panneaux",
+                    [tech.panneaux.nbr+" pcs", tech.panneaux.type, tech.panneaux.kWc&&tech.panneaux.kWc+" kWc"].filter(Boolean).join(" — ")],
+                  tech.panneaux2 && tech.panneaux2.active && tech.panneaux2.type && ["Panneaux 2",
+                    [tech.panneaux2.nbr&&tech.panneaux2.nbr+" pcs", tech.panneaux2.type, tech.panneaux2.kWc&&tech.panneaux2.kWc+" kWc"].filter(Boolean).join(" — ")],
+                  tech.onduleurs && tech.onduleurs.length > 0 && ["Onduleur(s)",
+                    tech.onduleurs.map(function(o){ return [o.type, o.kva&&o.kva+" kVA"].filter(Boolean).join(" "); }).filter(Boolean).join(", ")||"—"],
+                  tech.batterie && tech.batterie.inclus && ["Batterie",
+                    tech.batterie.inclus==="OUI"
+                      ? [tech.batterie.qty&&tech.batterie.qty+"×", tech.batterie.kwh&&tech.batterie.kwh+" kWh", tech.batterie.type].filter(Boolean).join(" ")||"OUI"
+                      : tech.batterie.inclus],
+                  tech.borne && tech.borne.inclus==="OUI" && ["Borne recharge",
+                    [tech.borne.qty&&tech.borne.qty+"×", tech.borne.type].filter(Boolean).join(" ")||"OUI"],
+                  // Électrique au niveau site
+                  elec.amperageDisj && ["Disj. général", elec.amperageDisj+" A"],
+                  elec.compteur && (elec.compteur.serie||elec.compteur.ean) && ["Compteur",
+                    [elec.compteur.serie&&"N° "+elec.compteur.serie, elec.compteur.ean&&"EAN: "+elec.compteur.ean].filter(Boolean).join(" — ")],
+                  elec.reseau && ["Réseau", elec.reseau],
+                ].filter(Boolean);
+
+                if (rows.length === 0) return null;
+                return (
+                  <Section key={si+"-"+ii} id={"tech"+si+ii} title={"🔧 Informations techniques"+pfx}>
+                    <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12 }}>
+                      <tbody>
+                        {rows.map(function(r, ri){ return (
+                          <tr key={ri} style={{ borderBottom:"1px solid #f0f0ec" }}>
+                            <td style={{ padding:"5px 10px 5px 0", fontWeight:600, color:"#555", whiteSpace:"nowrap", verticalAlign:"top" }}>{r[0]}</td>
+                            <td style={{ padding:"5px 0", color:"#1a1a1a" }}>{r[1]}</td>
+                          </tr>
+                        ); })}
+                      </tbody>
+                    </table>
+                  </Section>
+                );
+              });
             })}
           </div>
         )}
@@ -6153,11 +6173,13 @@ function AsBuiltViewer({ wgeUser }) {
   var sheetId = params.get("sheet") || null;
 
   var params = new URLSearchParams(window.location.search);
-  // isViewerWGE : WGE si l'utilisateur a une session WGE en localStorage
-  // ?preview=client dans l'URL force la vue client (pour prévisualiser ce que voit le client)
+  var isAsBuiltMode = params.get("asbuilt") === "1";
   var forceClientPreview = params.get("preview") === "client";
+  // isViewerWGE : vrai si ?asbuilt=1 OU si session WGE en localStorage
+  // Double vérification pour couvrir tous les cas (URL + session)
   var isViewerWGE = (function() {
-    if (forceClientPreview) return false; // prévisualisation client explicite
+    if (forceClientPreview) return false; // ?preview=client → toujours vue client
+    if (isAsBuiltMode) return true;       // ?asbuilt=1 → toujours WGE (jamais dans les liens clients)
     try {
       var u = JSON.parse(localStorage.getItem("wge_user") || "{}");
       return !!(u && (u.type === "wge" ||
@@ -6380,9 +6402,16 @@ function AsBuiltViewer({ wgeUser }) {
                 .then(function(rows) {
                   if (!rows||!rows[0]||!rows[0].data) { alert("Aucune fiche chantier trouvée pour ce chantier (réf: "+fref+")."); return; }
                   var fc = rows[0].data;
-                  // Structure réelle : fc.installations[0].tech.*
-                  var inst = fc.installations && fc.installations[0];
-                  var tech = inst && inst.tech;
+                  // Nouvelle structure : fc.sites[0].pvInstallations[0].tech + fc.sites[0].electrical
+                  var site  = fc.sites && fc.sites[0];
+                  var inst  = site && site.pvInstallations && site.pvInstallations[0];
+                  var tech  = inst && inst.tech;
+                  var elec  = (site && site.electrical) || {};
+                  // Fallback ancienne structure (fc.installations[0].tech)
+                  if (!tech && fc.installations && fc.installations[0]) {
+                    tech = fc.installations[0].tech;
+                    elec = fc.installations[0].tech || {};
+                  }
                   if (!tech) { alert("La fiche chantier ne contient pas de données techniques (réf: "+fref+")."); return; }
                   var imported = JSON.parse(JSON.stringify(t||TECH_EMPTY));
 
@@ -6391,39 +6420,31 @@ function AsBuiltViewer({ wgeUser }) {
                     if (tech.panneaux.type) imported.panels.type  = tech.panneaux.type;
                     if (tech.panneaux.nbr)  imported.panels.count = String(tech.panneaux.nbr);
                     if (tech.panneaux.kWc)  imported.panels.total_kwp = String(tech.panneaux.kWc);
-                    // Puissance unitaire calculée si possible
                     if (tech.panneaux.nbr && tech.panneaux.kWc && parseFloat(tech.panneaux.nbr) > 0) {
                       var wc = Math.round(parseFloat(tech.panneaux.kWc)*1000 / parseFloat(tech.panneaux.nbr));
                       if (wc > 0) imported.panels.power = String(wc);
                     }
                   }
-
                   // ── Onduleurs ─────────────────────────────────────────────
                   if (tech.onduleurs && tech.onduleurs.length > 0) {
                     imported.inverters = tech.onduleurs.map(function(o){
                       return { brand:"", model:o.type||"", count:"1", serial:"" };
                     });
                   }
-
                   // ── Batterie ──────────────────────────────────────────────
                   if (tech.batterie && tech.batterie.inclus === "OUI") {
                     imported.battery = {
-                      installed: true,
-                      brand: "",
+                      installed: true, brand:"",
                       model: tech.batterie.type || "",
                       capacity: tech.batterie.kwh ? tech.batterie.kwh+" kWh" : ""
                     };
                   }
-
-                  // ── Protections : disjoncteur général ─────────────────────
-                  if (tech.amperageDisj) {
-                    imported.protections.disjAC = String(tech.amperageDisj);
-                  }
-
-                  // ── Compteur ──────────────────────────────────────────────
-                  if (tech.compteur) {
-                    if (tech.compteur.serie) imported.compteur.serie = String(tech.compteur.serie);
-                    if (tech.compteur.ean)   imported.compteur.ean   = String(tech.compteur.ean);
+                  // ── Protections (niveau site electrical) ──────────────────
+                  if (elec.amperageDisj) imported.protections.disjAC = String(elec.amperageDisj);
+                  // ── Compteur (niveau site electrical) ─────────────────────
+                  if (elec.compteur) {
+                    if (elec.compteur.serie) imported.compteur.serie = String(elec.compteur.serie);
+                    if (elec.compteur.ean)   imported.compteur.ean   = String(elec.compteur.ean);
                   }
 
                   saveTechInfo(imported);
