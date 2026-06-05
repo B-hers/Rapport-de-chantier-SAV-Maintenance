@@ -6551,16 +6551,10 @@ function AsBuiltViewer({ wgeUser }) {
     );
   }
 
-  // ── Helpers photos (doivent être avant le rendu) ────────────────────────
-  function collectPhotos(photosMap, sectionDefs, tabLabel, tabColor) {
-    return collectAllSectionPhotos(photosMap, sectionDefs, tabLabel).map(function(s) {
-      return Object.assign({ tabColor: tabColor }, s);
-    });
-  }
-
+  // ── Données photos (collectAllSectionPhotos est globale) ────────────────
   var meta    = (data&&data.meta)||{};
-  var dcSecs  = data ? collectPhotos(data.dc&&data.dc.photos, DC_SECTIONS, "DC", DC_COLOR) : [];
-  var acSecs  = data ? collectPhotos(data.ac&&data.ac.photos, AC_SECTIONS, "AC", AC_COLOR) : [];
+  var dcSecs  = data ? collectAllSectionPhotos(data.dc&&data.dc.photos, DC_SECTIONS, "DC").map(function(s){ return Object.assign({tabColor:DC_COLOR},s); }) : [];
+  var acSecs  = data ? collectAllSectionPhotos(data.ac&&data.ac.photos, AC_SECTIONS, "AC").map(function(s){ return Object.assign({tabColor:AC_COLOR},s); }) : [];
   var genPh   = data ? (data.photosGenerales||[]).filter(function(p){ return p&&p.url; }) : [];
   var adminSecDefs = [
     { key:"rgie",      label:"Rapport RGIE" },
