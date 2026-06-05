@@ -6551,6 +6551,13 @@ function AsBuiltViewer({ wgeUser }) {
     );
   }
 
+  // ── Helpers photos (doivent être avant le rendu) ────────────────────────
+  function collectPhotos(photosMap, sectionDefs, tabLabel, tabColor) {
+    return collectAllSectionPhotos(photosMap, sectionDefs, tabLabel).map(function(s) {
+      return Object.assign({ tabColor: tabColor }, s);
+    });
+  }
+
   var meta    = (data&&data.meta)||{};
   var dcSecs  = data ? collectPhotos(data.dc&&data.dc.photos, DC_SECTIONS, "DC", DC_COLOR) : [];
   var acSecs  = data ? collectPhotos(data.ac&&data.ac.photos, AC_SECTIONS, "AC", AC_COLOR) : [];
