@@ -57,8 +57,12 @@ button { font-family: inherit; cursor: pointer; }
   opacity: 0.6;
 }
 /* Lightbox overlay is position:fixed and must always be fully interactive */
+/* Double class selector to beat locked-section specificity (0,2,1) vs (0,2,1) → order wins */
 .photo-lightbox-overlay,
-.photo-lightbox-overlay * {
+.photo-lightbox-overlay *,
+.photo-lightbox-overlay.photo-lightbox-overlay button,
+.photo-lightbox-overlay.photo-lightbox-overlay a,
+.photo-lightbox-overlay.photo-lightbox-overlay input {
   pointer-events: all !important;
   opacity: 1 !important;
 }
@@ -6432,65 +6436,61 @@ function AsBuiltViewer({ wgeUser }) {
                 .then(function(rows) {
                   if (!rows||!rows[0]||!rows[0].data) { alert("Aucune fiche chantier trouvée pour ce chantier (réf: "+fref+")."); return; }
                   var fc = rows[0].data;
-                  // Nouvelle structure : fc.sites[0].pvInstallations[0].tech + fc.sites[0].electrical
+                  // Nouvelle structure : fc.sites[].pvInstallations[].tech + fc.sites[].electrical
                   var site  = fc.sites && fc.sites[0];
-                  var inst  = site && site.pvInstallations && site.pvInstallations[0];
-                  var tech  = inst && inst.tech;
                   var elec  = (site && site.electrical) || {};
-                  // Fallback ancienne structure (fc.installations[0].tech)
-                  if (!tech && fc.installations && fc.installations[0]) {
-                    tech = fc.installations[0].tech;
+                  // Fallback ancienne structure
+                  if (!site && fc.installations && fc.installations[0]) {
+                    site = { pvInstallations: fc.installations, electrical: fc.installations[0].tech || {} };
                     elec = fc.installations[0].tech || {};
                   }
-                  if (!tech) { alert("La fiche chantier ne contient pas de données techniques (réf: "+fref+")."); return; }
+                  var pvArr = (site && site.pvInstallations) || [];
+                  if (pvArr.length === 0) { alert("La fiche chantier ne contient pas de données techniques (réf: "+fref+")."); return; }
                   var imported = JSON.parse(JSON.stringify(t||TECH_EMPTY));
 
-                  // ── Panneaux ──────────────────────────────────────────────
-                  if (tech.panneaux) {
-                    if (tech.panneaux.type) imported.panels.type  = tech.panneaux.type;
-                    if (tech.panneaux.nbr)  imported.panels.count = String(tech.panneaux.nbr);
-                    if (tech.panneaux.kWc)  imported.panels.total_kwp = String(tech.panneaux.kWc);
-                    if (tech.panneaux.nbr && tech.panneaux.kWc && parseFloat(tech.panneaux.nbr) > 0) {
-                      var wc = Math.round(parseFloat(tech.panneaux.kWc)*1000 / parseFloat(tech.panneaux.nbr));
-                      if (wc > 0) imported.panels.power = String(wc);
+                  // ── Toutes les installations PV ───────────────────────────
+                  // PV1 → panels + inverters[0]
+                  // PV2 → panels2 + inverters[1]
+                  var allInverters = [];
+                  pvArr.forEach(function(inst, pvIdx) {
+                    var tech = inst && inst.tech;
+                    if (!tech) return;
+                    var isFirst = pvIdx === 0;
+                    var target = isFirst ? "panels" : "panels2";
+
+                    // Panneaux
+                    if (tech.panneaux) {
+                      var pCount = tech.panneaux.nbr ? String(tech.panneaux.nbr) : "";
+                      var pType  = tech.panneaux.type || "";
+                      var pkWc   = tech.panneaux.kWc ? String(tech.panneaux.kWc) : "";
+                      var pWc = (tech.panneaux.nbr && tech.panneaux.kWc && parseFloat(tech.panneaux.nbr) > 0)
+                        ? String(Math.round(parseFloat(tech.panneaux.kWc)*1000/parseFloat(tech.panneaux.nbr))) : "";
+                      imported[target] = { active: !isFirst || undefined, count: pCount, power: pWc, type: pType, total_kwp: pkWc };
+                      if (!isFirst) imported[target].active = true;
                     }
-                  }
-                  // ── Panneaux 2 ────────────────────────────────────────────
-                  if (tech.panneaux2 && tech.panneaux2.active && (tech.panneaux2.type || tech.panneaux2.nbr)) {
-                    imported.panels2 = {
-                      active: true,
-                      type:      tech.panneaux2.type || "",
-                      count:     tech.panneaux2.nbr  ? String(tech.panneaux2.nbr) : "",
-                      total_kwp: tech.panneaux2.kWc  ? String(tech.panneaux2.kWc) : "",
-                      power: (tech.panneaux2.nbr && tech.panneaux2.kWc && parseFloat(tech.panneaux2.nbr) > 0)
-                        ? String(Math.round(parseFloat(tech.panneaux2.kWc)*1000/parseFloat(tech.panneaux2.nbr)))
-                        : ""
-                    };
-                  }
-                  // ── Onduleurs (tous types, extraction marque/modèle) ──────
-                  if (tech.onduleurs && tech.onduleurs.length > 0) {
-                    imported.inverters = tech.onduleurs.map(function(o) {
-                      var typeStr = o.type || "";
-                      // Extraire la marque : tout ce qui précède le premier " - "
-                      var dashIdx = typeStr.indexOf(" - ");
-                      var brand = dashIdx > 0 ? typeStr.substring(0, dashIdx).trim() : "";
-                      var model = dashIdx > 0 ? typeStr.substring(dashIdx + 3).trim() : typeStr;
-                      // Quantité : kva peut contenir des infos supplémentaires
-                      var qty = o.qty || o.count || "1";
-                      return { brand: brand, model: model, count: String(qty), serial: "" };
-                    });
-                  }
-                  // ── Batterie ──────────────────────────────────────────────
-                  if (tech.batterie && tech.batterie.inclus === "OUI") {
-                    imported.battery = {
-                      installed: true, brand:"",
-                      model: tech.batterie.type || "",
-                      capacity: tech.batterie.kwh ? tech.batterie.kwh+" kWh" : ""
-                    };
-                  }
-                  // ── Protections (niveau site electrical) ──────────────────
+
+                    // Onduleurs de cette installation
+                    if (tech.onduleurs) {
+                      tech.onduleurs.forEach(function(o) {
+                        var typeStr = o.type || "";
+                        var dashIdx = typeStr.indexOf(" - ");
+                        var brand   = dashIdx > 0 ? typeStr.substring(0, dashIdx).trim() : "";
+                        var model   = dashIdx > 0 ? typeStr.substring(dashIdx + 3).trim() : typeStr;
+                        var qty     = o.qty || o.count || "1";
+                        allInverters.push({ brand: brand, model: model, count: String(qty), serial: "" });
+                      });
+                    }
+
+                    // Batterie (première installation avec batterie)
+                    if (tech.batterie && tech.batterie.inclus === "OUI" && !imported.battery.installed) {
+                      imported.battery = { installed: true, brand:"", model:tech.batterie.type||"", capacity:tech.batterie.kwh?tech.batterie.kwh+" kWh":"" };
+                    }
+                  });
+
+                  if (allInverters.length > 0) imported.inverters = allInverters;
+
+                  // ── Électrique niveau site ────────────────────────────────
                   if (elec.amperageDisj) imported.protections.disjAC = String(elec.amperageDisj);
-                  // ── Compteur (niveau site electrical) ─────────────────────
                   if (elec.compteur) {
                     if (elec.compteur.serie) imported.compteur.serie = String(elec.compteur.serie);
                     if (elec.compteur.ean)   imported.compteur.ean   = String(elec.compteur.ean);
