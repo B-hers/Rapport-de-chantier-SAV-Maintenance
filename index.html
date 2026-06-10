@@ -1389,7 +1389,7 @@ function PhotoZone({ catKey, label, items, onAdd, onDelete, onUpdate, onReorder,
     const arr = Array.from(files).filter(function(f) { return f.type.startsWith("image/") || f.type === "application/pdf"; });
     const result = [];
     const addedAt = new Date().toISOString();
-    var uploaderName = (window._wgeCurrentUser && window._wgeCurrentUser.name) ? window._wgeCurrentUser.name : "";
+    var uploaderName = (window._wgeCurrentUser && window._wgeCurrentUser.name) || (function(){ try { return JSON.parse(localStorage.getItem("wge_user")||"{}").name||""; } catch(e) { return ""; } })();
     for (let i=0; i<arr.length; i++) {
       const f = arr[i];
       const url = f.type.startsWith("image/") ? await compressImg(f, hiRes) : null;
@@ -1403,7 +1403,7 @@ function PhotoZone({ catKey, label, items, onAdd, onDelete, onUpdate, onReorder,
     if (!imgs.length) return; e.preventDefault();
     const result = [];
     const addedAt = new Date().toISOString();
-    var uploaderName = (window._wgeCurrentUser && window._wgeCurrentUser.name) ? window._wgeCurrentUser.name : "";
+    var uploaderName = (window._wgeCurrentUser && window._wgeCurrentUser.name) || (function(){ try { return JSON.parse(localStorage.getItem("wge_user")||"{}").name||""; } catch(e) { return ""; } })();
     for (let i=0; i<imgs.length; i++) { const blob = imgs[i].getAsFile(); result.push({ name: "colle_"+Date.now()+".jpg", url: await compressImg(blob, hiRes), type: blob.type, addedAt: addedAt, uploadedBy: uploaderName }); }
     onAdd(result);
   };
@@ -3879,7 +3879,7 @@ function AdminTab({ data, setData }) {
 
   async function handleFiles(sKey, files) {
     setUploading(function(u){ return Object.assign({}, u, { [sKey]: true }); });
-    var uploaderName = (window._wgeCurrentUser && window._wgeCurrentUser.name) || "";
+    var uploaderName = (window._wgeCurrentUser && window._wgeCurrentUser.name) || (function(){ try { return JSON.parse(localStorage.getItem("wge_user")||"{}").name||""; } catch(e) { return ""; } })();
     var added = [];
     for (var i = 0; i < files.length; i++) {
       var f = files[i];
@@ -6384,10 +6384,15 @@ function AsBuiltViewer({ wgeUser }) {
               <tr><td style={{ padding:"4px 14px 4px 0", color:"#555", fontWeight:600, whiteSpace:"nowrap" }}>Panneaux 2</td>
               <td>{t.panels2.count} panneaux{t.panels2.power?" × "+t.panels2.power+" Wc":""} {t.panels2.type?t.panels2.type:""} {t.panels2.total_kwp?"→ "+t.panels2.total_kwp+" kWc":""}</td></tr>
             )}
-            {inv.brand&&(
-              <tr><td style={{ padding:"4px 14px 4px 0", color:"#555", fontWeight:600, whiteSpace:"nowrap" }}>Onduleur</td>
-              <td>{inv.count&&inv.count>"1"?inv.count+"× ":""}{inv.brand} {inv.model} {inv.serial?"(S/N: "+inv.serial+")":""}</td></tr>
-            )}
+            {t.inverters&&t.inverters.map(function(inv, ii) {
+              if (!inv.brand&&!inv.model) return null;
+              return (
+                <tr key={ii}><td style={{ padding:"4px 14px 4px 0", color:"#555", fontWeight:600, whiteSpace:"nowrap" }}>
+                  {t.inverters.length>1?"Onduleur "+(ii+1):"Onduleur"}
+                </td>
+                <td>{inv.count&&inv.count>"1"?inv.count+"× ":""}{inv.brand} {inv.model} {inv.serial?"(S/N: "+inv.serial+")":""}</td></tr>
+              );
+            })}
             {t.battery&&t.battery.installed&&(
               <tr><td style={{ padding:"4px 14px 4px 0", color:"#555", fontWeight:600, whiteSpace:"nowrap" }}>Batterie</td>
               <td>{t.battery.brand} {t.battery.model} {t.battery.capacity?"— "+t.battery.capacity:""}</td></tr>
@@ -6462,10 +6467,17 @@ function AsBuiltViewer({ wgeUser }) {
                         : ""
                     };
                   }
-                  // ── Onduleurs ─────────────────────────────────────────────
+                  // ── Onduleurs (tous types, extraction marque/modèle) ──────
                   if (tech.onduleurs && tech.onduleurs.length > 0) {
-                    imported.inverters = tech.onduleurs.map(function(o){
-                      return { brand:"", model:o.type||"", count:"1", serial:"" };
+                    imported.inverters = tech.onduleurs.map(function(o) {
+                      var typeStr = o.type || "";
+                      // Extraire la marque : tout ce qui précède le premier " - "
+                      var dashIdx = typeStr.indexOf(" - ");
+                      var brand = dashIdx > 0 ? typeStr.substring(0, dashIdx).trim() : "";
+                      var model = dashIdx > 0 ? typeStr.substring(dashIdx + 3).trim() : typeStr;
+                      // Quantité : kva peut contenir des infos supplémentaires
+                      var qty = o.qty || o.count || "1";
+                      return { brand: brand, model: model, count: String(qty), serial: "" };
                     });
                   }
                   // ── Batterie ──────────────────────────────────────────────
@@ -6847,15 +6859,30 @@ function AsBuiltViewer({ wgeUser }) {
           .ab-no-print { display:none!important; }
           .ab-page { break-inside:avoid; }
           /* Grille 2 colonnes en impression */
-          .ab-photo-grid { display:grid!important; grid-template-columns:repeat(2,1fr)!important; gap:10px!important; }
-          /* Chaque photo : jamais coupée entre deux pages */
-          .ab-photo-item { break-inside:avoid!important; page-break-inside:avoid!important; display:block!important; margin-bottom:10px; }
-          /* Hauteur max = ~40% de la page A4 → 2 photos par page possible, jamais de coupure */
-          .ab-photo-item img { max-height:220px!important; width:100%!important; height:auto!important; object-fit:contain!important; display:block!important; }
+          .ab-photo-grid { display:grid!important; grid-template-columns:repeat(2,1fr)!important; gap:8px!important; }
+          /* Chaque photo : bloc indivisible */
+          .ab-photo-item {
+            break-inside:avoid!important;
+            page-break-inside:avoid!important;
+            display:block!important;
+            margin-bottom:8px;
+            max-height:260px;
+            overflow:hidden;
+          }
+          /* Image contrainte à ne pas dépasser la moitié de la page */
+          .ab-photo-item img {
+            max-height:220px!important;
+            width:100%!important;
+            height:auto!important;
+            object-fit:contain!important;
+            display:block!important;
+          }
+          /* Forcer un saut AVANT chaque section DC/AC */
+          .ab-section-dc, .ab-section-ac { page-break-before:auto; }
           .ab-iframe-wrap { display:none!important; }
           .ab-pdf-print-pages { display:block!important; }
           body { background:#fff!important; }
-          @page { size:A4; margin:10mm 12mm; }
+          @page { size:A4 portrait; margin:10mm 12mm; }
         }
         .ab-pdf-print-pages { display:none; }
         .ab-pdf-print-link { display:none; }
