@@ -57,12 +57,8 @@ button { font-family: inherit; cursor: pointer; }
   opacity: 0.6;
 }
 /* Lightbox overlay is position:fixed and must always be fully interactive */
-/* Double class selector to beat locked-section specificity (0,2,1) vs (0,2,1) → order wins */
 .photo-lightbox-overlay,
-.photo-lightbox-overlay *,
-.photo-lightbox-overlay.photo-lightbox-overlay button,
-.photo-lightbox-overlay.photo-lightbox-overlay a,
-.photo-lightbox-overlay.photo-lightbox-overlay input {
+.photo-lightbox-overlay * {
   pointer-events: all !important;
   opacity: 1 !important;
 }
@@ -1081,6 +1077,27 @@ function collectNOK(data) {
 }
 
 
+
+// Téléchargement forcé pour URLs cross-origin (Supabase Storage)
+async function downloadBlob(url, filename) {
+  try {
+    var res = await fetch(url);
+    if (!res.ok) { window.open(url, "_blank"); return; }
+    var blob = await res.blob();
+    var objUrl = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = objUrl;
+    a.download = filename || "photo.jpg";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function() { URL.revokeObjectURL(objUrl); }, 1000);
+  } catch(e) {
+    // Fallback : ouvrir dans un nouvel onglet
+    window.open(url, "_blank");
+  }
+}
+
 function AnnotationModal({ imageUrl, onSave, onClose }) {
   var canvasRef = useRef();
   var containerRef = useRef();
@@ -1329,8 +1346,8 @@ function AnnotationModal({ imageUrl, onSave, onClose }) {
         {zoomLevel !== 100 && <button onClick={function(){ zoom.current=1; setZoomLevel(100); if(canvasRef.current){ canvasRef.current.style.width=Math.round(canvasRef.current.width*initScale.current)+"px"; canvasRef.current.style.height="auto"; } }} style={{ padding: "2px 8px", borderRadius: 5, border: "none", background: "#555", color: "#fff", fontSize: 11, cursor: "pointer" }}>🔍 {zoomLevel}% ✕</button>}
       </div>
       {/* Canvas area */}
-      <div style={{ flex: 1, overflow: "auto", display: "flex", alignItems: "flex-start", justifyContent: "center", width: "100%", position: "relative", minHeight: 0 }}>
-        <div ref={containerRef} style={{ position: "relative", width: "100%", maxWidth: "100%" }}>
+      <div style={{ flex: 1, overflow: "auto", display: "flex", alignItems: "flex-start", justifyContent: "center", width: "100%", position: "relative", minHeight: 0, padding: "8px", boxSizing: "border-box" }}>
+        <div ref={containerRef} style={{ position: "relative", display: "inline-block", lineHeight: 0 }}>
           <canvas ref={canvasRef}
             onMouseDown={onStart} onMouseMove={onMove} onMouseUp={onEnd} onMouseLeave={onEnd}
             onTouchStart={onStart} onTouchMove={onMove} onTouchEnd={onEnd}
@@ -1544,8 +1561,8 @@ function PhotoZone({ catKey, label, items, onAdd, onDelete, onUpdate, onReorder,
                     style={{ flex:1, background:"none", border:"none", borderRight:"1px solid "+BORDER, cursor:"pointer", fontSize:isMobile?18:15, padding:"6px 0", color:"#555" }}>🔍</button>}
                   {item.url && <button title="Annoter / dessiner / écrire" onClick={function(e){ e.stopPropagation(); setAnnotating(i); }}
                     style={{ flex:1, background:"none", border:"none", borderRight:"1px solid "+BORDER, cursor:"pointer", fontSize:isMobile?18:15, padding:"6px 0", color:"#2980b9" }}>✏️</button>}
-                  {item.url && <a title="Télécharger" href={item.url} download={item.name||"photo.jpg"} onClick={function(e){ e.stopPropagation(); }}
-                    style={{ flex:1, background:"none", border:"none", borderRight:"1px solid "+BORDER, cursor:"pointer", fontSize:isMobile?18:15, padding:"6px 0", color:"#27ae60", textAlign:"center", textDecoration:"none", display:"block" }}>⬇️</a>}
+                  {item.url && <button title="Télécharger" data-lightbox="true" onClick={function(e){ e.stopPropagation(); downloadBlob(item.url, item.name||"photo.jpg"); }}
+                    style={{ flex:1, background:"none", border:"none", borderRight:"1px solid "+BORDER, cursor:"pointer", fontSize:isMobile?18:15, padding:"6px 0", color:"#27ae60" }}>⬇️</button>}
                   <button title="Supprimer cette photo" onClick={function(e){ e.stopPropagation(); if(window.confirm("Supprimer cette photo ?\nCette action est irréversible.")) onDelete(i); }}
                     style={{ flex:1, background:"#fdecea", border:"none", cursor:"pointer", fontSize:isMobile?15:13, padding:"6px 0", color:"#c0392b", fontWeight:700 }}>×</button>
                 </div>
@@ -1580,48 +1597,34 @@ function PhotoZone({ catKey, label, items, onAdd, onDelete, onUpdate, onReorder,
               <strong style={{ color:"#fff" }}>{label}</strong>
               {items.length>1 && <span style={{ color:"rgba(255,255,255,0.5)", marginLeft:8 }}>{previewIdx+1} / {items.length}</span>}
             </span>
-            <a href={items[previewIdx].url} download={items[previewIdx].name||"photo.jpg"} onClick={function(e){ e.stopPropagation(); }}
-              style={{ padding:"6px 12px", borderRadius:6, background:"#27ae60", color:"#fff", fontSize:13, textDecoration:"none", fontWeight:600, whiteSpace:"nowrap" }}>⬇ Télécharger</a>
-            <button onClick={function(e){ e.stopPropagation(); var idx=previewIdx; closePreview(); setAnnotating(idx); }}
+            <button data-lightbox="true" onClick={function(e){ e.stopPropagation(); downloadBlob(items[previewIdx].url, items[previewIdx].name||"photo.jpg"); }}
+              style={{ padding:"6px 12px", borderRadius:6, background:"#27ae60", color:"#fff", border:"none", fontSize:13, cursor:"pointer", fontWeight:600, whiteSpace:"nowrap" }}>⬇ Télécharger</button>
+            <button data-lightbox="true" onClick={function(e){ e.stopPropagation(); var idx=previewIdx; closePreview(); setAnnotating(idx); }}
               style={{ padding:"6px 12px", borderRadius:6, background:"#2980b9", color:"#fff", border:"none", fontSize:13, cursor:"pointer", fontWeight:600, whiteSpace:"nowrap" }}>✏️ Modifier</button>
-            {!isMobile && <button onClick={function(e){ e.stopPropagation(); setPreviewZoomed(function(z){return !z;}); }}
+            {!isMobile && <button data-lightbox="true" onClick={function(e){ e.stopPropagation(); setPreviewZoomed(function(z){return !z;}); }}
               title={previewZoomed?"Cliquer pour dézoomer":"Cliquer sur l'image pour zoomer"}
               style={{ padding:"6px 10px", borderRadius:6, background:previewZoomed?"#444":"#333", color:"#fff", border:"none", fontSize:13, cursor:"pointer" }}>
               {previewZoomed?"🔍 −":"🔍 +"}</button>}
-            <button onClick={function(e){ e.stopPropagation(); closePreview(); }}
-              style={{ padding:"10px 16px", borderRadius:8, background:"#e74c3c", color:"#fff", border:"none",
-                fontSize:20, lineHeight:1, cursor:"pointer", fontWeight:700,
-                minWidth:44, minHeight:44, display:"flex", alignItems:"center", justifyContent:"center" }}>✕</button>
+            <button data-lightbox="true" onClick={function(e){ e.stopPropagation(); closePreview(); }}
+              style={{ padding:"6px 10px", borderRadius:6, background:"#555", color:"#fff", border:"none", fontSize:18, lineHeight:1, cursor:"pointer" }}>✕</button>
           </div>
 
           {/* Image area */}
-          <div style={{ flex:1, overflow:previewZoomed?"auto":"hidden", display:"flex", alignItems:previewZoomed?"flex-start":"center", justifyContent:previewZoomed?"flex-start":"center", position:"relative", minHeight:0 }}>
+          <div style={{ flex:1, overflow:previewZoomed?"auto":"hidden", display:"flex", alignItems:previewZoomed?"flex-start":"center", justifyContent:"center", position:"relative", minHeight:0 }}>
             {previewIdx>0 && (
-              <button onClick={function(e){ e.stopPropagation(); openPrev(); }}
+              <button data-lightbox="true" onClick={function(e){ e.stopPropagation(); openPrev(); }}
                 style={{ position:"absolute", left:10, top:"50%", transform:"translateY(-50%)", background:"rgba(255,255,255,0.14)", border:"none", borderRadius:"50%", width:48, height:48, color:"#fff", fontSize:28, cursor:"pointer", zIndex:2, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>‹</button>
             )}
             {previewIdx<items.length-1 && (
-              <button onClick={function(e){ e.stopPropagation(); openNext(); }}
+              <button data-lightbox="true" onClick={function(e){ e.stopPropagation(); openNext(); }}
                 style={{ position:"absolute", right:10, top:"50%", transform:"translateY(-50%)", background:"rgba(255,255,255,0.14)", border:"none", borderRadius:"50%", width:48, height:48, color:"#fff", fontSize:28, cursor:"pointer", zIndex:2, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>›</button>
             )}
             <img src={items[previewIdx].url}
               onClick={function(e){ if(!isMobile){ e.stopPropagation(); setPreviewZoomed(function(z){return !z;}); } }}
-              style={{ maxWidth:previewZoomed?"none":"92vw", maxHeight:previewZoomed?"none":"calc(100vh - 160px)", width:"auto", height:"auto",
+              style={{ maxWidth:previewZoomed?"none":"92vw", maxHeight:previewZoomed?"none":"calc(100vh - 110px)", width:"auto", height:"auto",
                 objectFit:"contain", display:"block", borderRadius:previewZoomed?0:4,
                 cursor:isMobile?"default":(previewZoomed?"zoom-out":"zoom-in") }} alt="" />
           </div>
-
-          {/* Bouton fermer accessible sur iPhone (toujours visible en bas) */}
-          {isMobile && (
-            <div style={{ padding:"8px 16px", background:"rgba(0,0,0,0.75)", flexShrink:0, display:"flex", justifyContent:"center" }}>
-              <button onClick={function(e){ e.stopPropagation(); closePreview(); }}
-                style={{ background:"#e74c3c", color:"#fff", border:"none", borderRadius:8,
-                  padding:"12px 48px", fontSize:15, fontWeight:700, cursor:"pointer",
-                  minHeight:48, touchAction:"manipulation", WebkitTapHighlightColor:"transparent" }}>
-                ✕ Fermer la photo
-              </button>
-            </div>
-          )}
 
           {/* Thumbnails strip */}
           {items.length>1 && (
@@ -6450,61 +6453,65 @@ function AsBuiltViewer({ wgeUser }) {
                 .then(function(rows) {
                   if (!rows||!rows[0]||!rows[0].data) { alert("Aucune fiche chantier trouvée pour ce chantier (réf: "+fref+")."); return; }
                   var fc = rows[0].data;
-                  // Nouvelle structure : fc.sites[].pvInstallations[].tech + fc.sites[].electrical
+                  // Nouvelle structure : fc.sites[0].pvInstallations[0].tech + fc.sites[0].electrical
                   var site  = fc.sites && fc.sites[0];
+                  var inst  = site && site.pvInstallations && site.pvInstallations[0];
+                  var tech  = inst && inst.tech;
                   var elec  = (site && site.electrical) || {};
-                  // Fallback ancienne structure
-                  if (!site && fc.installations && fc.installations[0]) {
-                    site = { pvInstallations: fc.installations, electrical: fc.installations[0].tech || {} };
+                  // Fallback ancienne structure (fc.installations[0].tech)
+                  if (!tech && fc.installations && fc.installations[0]) {
+                    tech = fc.installations[0].tech;
                     elec = fc.installations[0].tech || {};
                   }
-                  var pvArr = (site && site.pvInstallations) || [];
-                  if (pvArr.length === 0) { alert("La fiche chantier ne contient pas de données techniques (réf: "+fref+")."); return; }
+                  if (!tech) { alert("La fiche chantier ne contient pas de données techniques (réf: "+fref+")."); return; }
                   var imported = JSON.parse(JSON.stringify(t||TECH_EMPTY));
 
-                  // ── Toutes les installations PV ───────────────────────────
-                  // PV1 → panels + inverters[0]
-                  // PV2 → panels2 + inverters[1]
-                  var allInverters = [];
-                  pvArr.forEach(function(inst, pvIdx) {
-                    var tech = inst && inst.tech;
-                    if (!tech) return;
-                    var isFirst = pvIdx === 0;
-                    var target = isFirst ? "panels" : "panels2";
-
-                    // Panneaux
-                    if (tech.panneaux) {
-                      var pCount = tech.panneaux.nbr ? String(tech.panneaux.nbr) : "";
-                      var pType  = tech.panneaux.type || "";
-                      var pkWc   = tech.panneaux.kWc ? String(tech.panneaux.kWc) : "";
-                      var pWc = (tech.panneaux.nbr && tech.panneaux.kWc && parseFloat(tech.panneaux.nbr) > 0)
-                        ? String(Math.round(parseFloat(tech.panneaux.kWc)*1000/parseFloat(tech.panneaux.nbr))) : "";
-                      imported[target] = { active: !isFirst || undefined, count: pCount, power: pWc, type: pType, total_kwp: pkWc };
-                      if (!isFirst) imported[target].active = true;
+                  // ── Panneaux ──────────────────────────────────────────────
+                  if (tech.panneaux) {
+                    if (tech.panneaux.type) imported.panels.type  = tech.panneaux.type;
+                    if (tech.panneaux.nbr)  imported.panels.count = String(tech.panneaux.nbr);
+                    if (tech.panneaux.kWc)  imported.panels.total_kwp = String(tech.panneaux.kWc);
+                    if (tech.panneaux.nbr && tech.panneaux.kWc && parseFloat(tech.panneaux.nbr) > 0) {
+                      var wc = Math.round(parseFloat(tech.panneaux.kWc)*1000 / parseFloat(tech.panneaux.nbr));
+                      if (wc > 0) imported.panels.power = String(wc);
                     }
-
-                    // Onduleurs de cette installation
-                    if (tech.onduleurs) {
-                      tech.onduleurs.forEach(function(o) {
-                        var typeStr = o.type || "";
-                        var dashIdx = typeStr.indexOf(" - ");
-                        var brand   = dashIdx > 0 ? typeStr.substring(0, dashIdx).trim() : "";
-                        var model   = dashIdx > 0 ? typeStr.substring(dashIdx + 3).trim() : typeStr;
-                        var qty     = o.qty || o.count || "1";
-                        allInverters.push({ brand: brand, model: model, count: String(qty), serial: "" });
-                      });
-                    }
-
-                    // Batterie (première installation avec batterie)
-                    if (tech.batterie && tech.batterie.inclus === "OUI" && !imported.battery.installed) {
-                      imported.battery = { installed: true, brand:"", model:tech.batterie.type||"", capacity:tech.batterie.kwh?tech.batterie.kwh+" kWh":"" };
-                    }
-                  });
-
-                  if (allInverters.length > 0) imported.inverters = allInverters;
-
-                  // ── Électrique niveau site ────────────────────────────────
+                  }
+                  // ── Panneaux 2 ────────────────────────────────────────────
+                  if (tech.panneaux2 && tech.panneaux2.active && (tech.panneaux2.type || tech.panneaux2.nbr)) {
+                    imported.panels2 = {
+                      active: true,
+                      type:      tech.panneaux2.type || "",
+                      count:     tech.panneaux2.nbr  ? String(tech.panneaux2.nbr) : "",
+                      total_kwp: tech.panneaux2.kWc  ? String(tech.panneaux2.kWc) : "",
+                      power: (tech.panneaux2.nbr && tech.panneaux2.kWc && parseFloat(tech.panneaux2.nbr) > 0)
+                        ? String(Math.round(parseFloat(tech.panneaux2.kWc)*1000/parseFloat(tech.panneaux2.nbr)))
+                        : ""
+                    };
+                  }
+                  // ── Onduleurs (tous types, extraction marque/modèle) ──────
+                  if (tech.onduleurs && tech.onduleurs.length > 0) {
+                    imported.inverters = tech.onduleurs.map(function(o) {
+                      var typeStr = o.type || "";
+                      // Extraire la marque : tout ce qui précède le premier " - "
+                      var dashIdx = typeStr.indexOf(" - ");
+                      var brand = dashIdx > 0 ? typeStr.substring(0, dashIdx).trim() : "";
+                      var model = dashIdx > 0 ? typeStr.substring(dashIdx + 3).trim() : typeStr;
+                      // Quantité : kva peut contenir des infos supplémentaires
+                      var qty = o.qty || o.count || "1";
+                      return { brand: brand, model: model, count: String(qty), serial: "" };
+                    });
+                  }
+                  // ── Batterie ──────────────────────────────────────────────
+                  if (tech.batterie && tech.batterie.inclus === "OUI") {
+                    imported.battery = {
+                      installed: true, brand:"",
+                      model: tech.batterie.type || "",
+                      capacity: tech.batterie.kwh ? tech.batterie.kwh+" kWh" : ""
+                    };
+                  }
+                  // ── Protections (niveau site electrical) ──────────────────
                   if (elec.amperageDisj) imported.protections.disjAC = String(elec.amperageDisj);
+                  // ── Compteur (niveau site electrical) ─────────────────────
                   if (elec.compteur) {
                     if (elec.compteur.serie) imported.compteur.serie = String(elec.compteur.serie);
                     if (elec.compteur.ean)   imported.compteur.ean   = String(elec.compteur.ean);
@@ -6701,10 +6708,10 @@ function AsBuiltViewer({ wgeUser }) {
                   </div>
                 )}
                 <div style={{ position:"absolute", top:6, right:6 }}>
-                  <a href={p.url} download={p.name||"photo.jpg"} onClick={function(e){ e.stopPropagation(); }}
-                    style={{ background:"rgba(0,0,0,0.55)", color:"#fff", borderRadius:5, padding:"3px 8px", fontSize:11, textDecoration:"none" }}>
+                  <button data-lightbox="true" onClick={function(e){ e.stopPropagation(); downloadBlob(p.url, p.name||"photo.jpg"); }}
+                    style={{ background:"rgba(0,0,0,0.55)", color:"#fff", borderRadius:5, padding:"3px 8px", fontSize:11, border:"none", cursor:"pointer" }}>
                     ⬇
-                  </a>
+                  </button>
                 </div>
               </div>
               {by && <div style={{ padding:"4px 8px", fontSize:10, fontWeight:700, color:"#6c3483", background:"#f7f0ff" }}>{by}</div>}
@@ -6852,11 +6859,11 @@ function AsBuiltViewer({ wgeUser }) {
           style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.92)", zIndex:9999,
             display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center" }}>
           <div style={{ position:"absolute", top:12, right:12, display:"flex", gap:8 }}>
-            <a href={lightbox.url} download={lightbox.name||"photo.jpg"}
+            <button data-lightbox="true" onClick={function(){ downloadBlob(lightbox.url, lightbox.name||"photo.jpg"); }}
               style={{ background:"rgba(255,255,255,0.15)", color:"#fff", border:"1px solid rgba(255,255,255,0.3)",
-                borderRadius:8, padding:"8px 16px", fontSize:13, fontWeight:700, textDecoration:"none" }}>
+                borderRadius:8, padding:"8px 16px", fontSize:13, fontWeight:700, cursor:"pointer" }}>
               ⬇ Télécharger
-            </a>
+            </button>
             <button onClick={function(){ setLightbox(null); }}
               style={{ background:"rgba(255,255,255,0.15)", border:"none", color:"#fff", borderRadius:8, padding:"8px 16px", fontSize:18, cursor:"pointer" }}>
               ✕
