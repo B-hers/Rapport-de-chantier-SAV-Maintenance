@@ -3,6 +3,9 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/>
+<meta http-equiv="Pragma" content="no-cache"/>
+<meta http-equiv="Expires" content="0"/>
 <title>Rapport de Chantier — We Green Energy</title>
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -187,6 +190,10 @@ document.addEventListener('click', function(e) {
   function showApp() {
     var login = document.getElementById("wge-login"); var root = document.getElementById("root");
     if (login) login.style.display = "none"; if (root) root.style.display = "";
+    // Notifier React qu'une connexion vient d'avoir lieu (Google/Client/Sous-traitant)
+    // pour qu'il relise localStorage et mette à jour son état 'user' immédiatement,
+    // sans attendre un rechargement de page.
+    try { window.dispatchEvent(new Event("wge-login-changed")); } catch(e) {}
   }
   function showLogin() {
     var login = document.getElementById("wge-login"); var root = document.getElementById("root");
@@ -6724,7 +6731,7 @@ function AsBuiltViewer({ wgeUser }) {
                   </button>
                 </div>
               </div>
-              {by && <div style={{ padding:"4px 8px", fontSize:10, fontWeight:700, color:"#6c3483", background:"#f7f0ff" }}>{by}</div>}
+              {isWGE && by && <div style={{ padding:"4px 8px", fontSize:10, fontWeight:700, color:"#6c3483", background:"#f7f0ff" }}>{by}</div>}
             </div>
           );
         })}
@@ -6785,7 +6792,7 @@ function AsBuiltViewer({ wgeUser }) {
     );
   }
 
-  function DocCard({ doc }) {
+  function DocCard({ doc, isWGE }) {
     var ext = (doc.name||"").split(".").pop().toLowerCase();
     var isImg = ["jpg","jpeg","png","gif","webp"].indexOf(ext) >= 0;
     var isPdf = ext === "pdf";
@@ -6801,7 +6808,7 @@ function AsBuiltViewer({ wgeUser }) {
         <div style={{ padding:"8px 12px", background:"#f8f8f6", display:"flex", alignItems:"center", justifyContent:"space-between", gap:8 }}>
           <div>
             <div style={{ fontWeight:600, fontSize:12 }}>{doc.name}</div>
-            {doc.uploadedBy && <div style={{ fontSize:10, color:"#6c3483" }}>👤 {doc.uploadedBy}</div>}
+            {isWGE && doc.uploadedBy && <div style={{ fontSize:10, color:"#6c3483" }}>👤 {doc.uploadedBy}</div>}
             {doc.note && <div style={{ fontSize:10, color:"#888", fontStyle:"italic" }}>{doc.note}</div>}
           </div>
           <a href={doc.url} download={doc.name} target="_blank"
@@ -7144,7 +7151,7 @@ function AsBuiltViewer({ wgeUser }) {
                 {adminSecs.map(function(s, i){ return (
                   <div key={i} style={{ marginBottom:16 }}>
                     <div style={{ fontWeight:600, fontSize:13, color:"#8e44ad", marginBottom:8 }}>{s.label}</div>
-                    {s.docs.map(function(d, j){ return <DocCard key={j} doc={d} />; })}
+                    {s.docs.map(function(d, j){ return <DocCard key={j} doc={d} isWGE={isViewerWGE} />; })}
                   </div>
                 );})}
               </div>
@@ -7399,6 +7406,24 @@ function App() {
       var stored = localStorage.getItem("wge_user");
       if (stored) { var u = JSON.parse(stored); if (u && u.name) { setUser(u); userRef.current = u; } }
     } catch(e) {}
+  }, []);
+
+  // Re-synchronisation immédiate après connexion (Google/Client/Sous-traitant) :
+  // sans cela, si React a déjà monté avant la fin du login (cas fréquent avec
+  // la connexion Google asynchrone), l'état 'user' restait à null indéfiniment
+  // et tous les uploads de photos étaient attribués à "Inconnu".
+  useEffect(function() {
+    function onLoginChanged() {
+      try {
+        var stored = localStorage.getItem("wge_user");
+        if (stored) {
+          var u = JSON.parse(stored);
+          if (u && u.name) { setUser(u); userRef.current = u; window._wgeCurrentUser = u; }
+        }
+      } catch(e) {}
+    }
+    window.addEventListener("wge-login-changed", onLoginChanged);
+    return function(){ window.removeEventListener("wge-login-changed", onLoginChanged); };
   }, []);
 
   useEffect(function() { userRef.current = user; window._wgeCurrentUser = user; }, [user]);
