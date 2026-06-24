@@ -4440,6 +4440,7 @@ function ProgressPanel({ data, onClose }) {
           url: p.url,
           name: p.name || "",
           addedAt: p.addedAt || null,
+          uploadedBy: p.uploadedBy || "",   // ← champ manquant : cause du bug "Inconnu"
           catKey: catKey,
           tab: label.tab,
           tabColor: label.tabColor,
@@ -4459,7 +4460,7 @@ function ProgressPanel({ data, onClose }) {
   // Photos générales
   (data.photosGenerales||[]).forEach(function(p) {
     if (!p || !p.url) return;
-    allPhotos.push({ url:p.url, name:p.name||"", addedAt:p.addedAt||null,
+    allPhotos.push({ url:p.url, name:p.name||"", addedAt:p.addedAt||null, uploadedBy:p.uploadedBy||"",
       catKey:"photos_generales", tab:"Général", tabColor:"#6c3483", section:"Photos générales", cat:"Photo" });
   });
 
@@ -5040,6 +5041,7 @@ function ChantierPanel({ refChantier, onClose }) {
   var [loading, setLoading] = useState(true);
   var [error, setError] = useState(false);
   var [openSection, setOpenSection] = useState("client");
+  var [lightboxUrl, setLightboxUrl] = useState(null); // lightbox interne
 
   useEffect(function() {
     if (!refChantier) return;
@@ -5252,8 +5254,8 @@ function ChantierPanel({ refChantier, onClose }) {
                               border: "1px solid " + BORDER }}>
                               <img src={p.url} alt={p.name||"photo"}
                                 style={{ width: "100%", aspectRatio: "4/3",
-                                  objectFit: "cover", display: "block", cursor: "pointer" }}
-                                onClick={function(){ window.open(p.url, "_blank"); }}
+                                  objectFit: "cover", display: "block", cursor: "zoom-in" }}
+                                onClick={function(){ setLightboxUrl(p.url); }}
                               />
                               {p.name && (
                                 <div style={{ fontSize: 10, color: MUTED, padding: "3px 6px",
@@ -5277,7 +5279,7 @@ function ChantierPanel({ refChantier, onClose }) {
               <Section id="calepinage" title="📐 Calepinage">
                 <img src={chData.calepinage.image} alt="Calepinage"
                   style={{ width: "100%", borderRadius: 7, cursor: "pointer" }}
-                  onClick={function(){ window.open(chData.calepinage.image, "_blank"); }}
+                  onClick={function(){ setLightboxUrl(chData.calepinage.image); }}
                 />
               </Section>
             )}
@@ -5352,7 +5354,25 @@ function ChantierPanel({ refChantier, onClose }) {
             })()}
           </div>
         )}
-      </div>
+
+      {/* Lightbox interne — remplace window.open pour revenir facilement */}
+      {lightboxUrl && (
+        <div onClick={function(){ setLightboxUrl(null); }}
+          style={{ position:"fixed", inset:0, zIndex:9999, background:"rgba(0,0,0,0.92)",
+            display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center" }}>
+          <img src={lightboxUrl} alt=""
+            style={{ maxWidth:"95vw", maxHeight:"85vh", objectFit:"contain", borderRadius:6,
+              boxShadow:"0 4px 32px rgba(0,0,0,0.5)" }}
+            onClick={function(e){ e.stopPropagation(); }}
+          />
+          <button onClick={function(){ setLightboxUrl(null); }}
+            style={{ marginTop:18, background:"#e74c3c", color:"#fff", border:"none",
+              borderRadius:8, padding:"12px 40px", fontSize:15, fontWeight:700,
+              cursor:"pointer", minHeight:48, touchAction:"manipulation" }}>
+            ✕ Fermer
+          </button>
+        </div>
+      )}
     </div>
   );
 }
