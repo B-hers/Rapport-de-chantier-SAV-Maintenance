@@ -99,7 +99,7 @@ button { font-family: inherit; cursor: pointer; }
 
     <!-- Panel WGE -->
     <div id="panel-wge" style="width:100%; display:flex; flex-direction:column; align-items:center; gap:14px;">
-      <div style="font-size:13px; color:#888; text-align:center; line-height:1.6">Connectez-vous avec votre compte<br><strong style="color:#1B6B3A">@we-green.be</strong> ou <strong style="color:#1B6B3A">@we-green.fr</strong></div>
+      <div style="font-size:13px; color:#888; text-align:center; line-height:1.6">Connectez-vous avec votre compte<br><strong style="color:#1B6B3A">@we-green.be</strong>, <strong style="color:#1B6B3A">@we-green.fr</strong> ou <strong style="color:#1B6B3A">@we-cover.be</strong></div>
       <div id="wge-google-btn" style="min-height:44px; display:flex; align-items:center; justify-content:center; width:100%;">
         <div style="font-size:13px; color:#aaa">⏳ Chargement…</div>
       </div>
@@ -176,7 +176,7 @@ document.addEventListener('click', function(e) {
 (function() {
   var GOOGLE_CLIENT_ID_PLAIN = "765677431332-2leuvo90bvhnmid77hml6cj230av8eao.apps.googleusercontent.com";
   var ALLOWED_DOMAIN_PLAIN = "we-green.be";
-  var ALLOWED_DOMAINS_PLAIN = ["we-green.be", "we-green.fr"];
+  var ALLOWED_DOMAINS_PLAIN = ["we-green.be", "we-green.fr", "we-cover.be"];
   // Codes d'accès sous-traitants — identification uniquement, pas de protection de données sensibles
   var ST_CODES = ["0479627511", "Wegreen001!", "Megreen001"];
 
@@ -208,13 +208,13 @@ document.addEventListener('click', function(e) {
             var payload = parseJwtPlain(response.credential);
             var emailAllowed = payload.email && ALLOWED_DOMAINS_PLAIN.some(function(d){ return payload.email.endsWith("@"+d); });
             if (!emailAllowed) {
-              showErr("⛔ Accès réservé aux membres @we-green.be ou @we-green.fr"); return;
+              showErr("⛔ Accès réservé aux membres @we-green.be, @we-green.fr ou @we-cover.be"); return;
             }
             var u = { email: payload.email, name: payload.name || payload.email.split("@")[0], picture: payload.picture || "", type: "wge" };
             try { localStorage.setItem("wge_user", JSON.stringify(u)); } catch(e) {}
             showApp();
           },
-          hd: "we-green.be",
+          // hd retiré pour autoriser plusieurs domaines (we-green.be, we-green.fr, we-cover.be)
         });
         var btnEl = document.getElementById("wge-google-btn");
         if (btnEl) { btnEl.innerHTML = ""; google.accounts.id.renderButton(btnEl, { theme: "outline", size: "large", text: "signin_with", shape: "rectangular", width: 280, locale: "fr" }); }
@@ -351,7 +351,7 @@ const SUPA_KEY = "sb_publishable_U6PddofdvgpD5IgU4ZsPdg_wqB-5Scw";
 const SUPA_STORAGE_BUCKET = "rapport-photos";
 const GOOGLE_CLIENT_ID = "765677431332-2leuvo90bvhnmid77hml6cj230av8eao.apps.googleusercontent.com";
 const ALLOWED_DOMAIN = "we-green.be";
-const ALLOWED_DOMAINS = ["we-green.be", "we-green.fr"];
+const ALLOWED_DOMAINS = ["we-green.be", "we-green.fr", "we-cover.be"];
 function isWGEEmail(email) { return !!email && ALLOWED_DOMAINS.some(function(d){ return email.endsWith("@"+d); }); }
 
 // Mode client/asbuilt : ?client=1 → vue client | ?asbuilt=1 → page de travail WGE
@@ -7387,6 +7387,1873 @@ function HeaderSection({ data, setData, onLoad, onPrefill, prefillMsg, loading }
 }
 
 // ── App ───────────────────────────────────────────────
+
+/* ─────────────────────────────────────────────────────────────────────────
+   WE COVER — Mode rapport activé sur référence WC-*
+   Code isolé dans une IIFE pour zéro pollution de l'espace de noms global.
+   Le rapport We Green ci-dessous reste totalement intact.
+   ─────────────────────────────────────────────────────────────────────── */
+var WCApp;
+(function() {
+  // Hooks React (locaux à l'IIFE)
+  var useState   = React.useState;
+  var useEffect  = React.useEffect;
+  var useRef     = React.useRef;
+  var useCallback= React.useCallback;
+  var useMemo    = React.useMemo;
+
+// ── PM_DATA We Cover (inclut Olivier Herz) ──
+const PM_DATA = {
+  "Olivier Herz":            { tel: "", email: "" },
+  "Alexander Vos":           { tel: "+32 475 86 92 76", email: "alexander.vos@we-green.be" },
+  "Benjamin Hers":           { tel: "+32 479 62 75 11", email: "benjamin.hers@we-green.be" },
+  "Dominic Rousselle":       { tel: "+32 495 81 16 70", email: "dominic.rousselle@we-green.be" },
+  "Enguerrand de Formanoir": { tel: "+32 495 87 09 86", email: "enguerrand.deformanoir@we-green.be" },
+  "Hugues Léglise":          { tel: "0496 57 68 66",   email: "hugues.leglise@gmail.com" },
+  "Nassim Fekreche":         { tel: "", email: "" },
+  "Nelson Hohlweg":          { tel: "0496 77 54 43",   email: "nelson.hohlweg@we-green.be" },
+  "Romain Janssens":         { tel: "+32 493 56 93 51", email: "romain.janssens@we-green.be" },
+  "Teresa Rousselle":        { tel: "+32 497 69 26 27", email: "teresa.rousselle@we-green.be" },
+  "Thibaut Cougnet":         { tel: "+32 494 47 11 85", email: "thibaut.cougnet@we-green.be" },
+  "Valentin Dabauvalle":     { tel: "+32 470 63 53 80", email: "valentin.dabauvalle@we-green.be" },
+  "Viktor A":                { tel: "", email: "" },
+  "Wajdi Habib":             { tel: "+32 495 28 86 66", email: "wajdi.habib@we-green.be" },
+  "Wissam Elhage":           { tel: "+32 471 91 63 13", email: "wissam.elhage@we-green.be" },
+  "Yohan Poullain":          { tel: "+33 6 42 96 82 63", email: "yohan.poullain@we-green.be" },
+};
+
+/* ── Supabase (même projet que le briefing, TABLE séparée pour le rapport) ── */
+
+// ── Storage upload (bucket We Green prod + préfixe wecover-rapport/) ──
+async function uploadPhotoToStorage(ref, catKey, base64DataUrl, fileName) {
+  if (!base64DataUrl || !base64DataUrl.startsWith("data:")) return base64DataUrl;
+  try {
+    var fetchRes = await fetch(base64DataUrl);
+    var blob = await fetchRes.blob();
+    var ext = blob.type === "image/jpeg" ? "jpg" : "png";
+    var safeName = (fileName || "photo").replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 60);
+    var path = "wecover-rapport/" + ref + "/" + catKey + "/" + Date.now() + "-" + safeName + "." + ext;
+    var uploadRes = await fetch(SUPA_URL + "/storage/v1/object/" + SUPA_STORAGE_BUCKET + "/" + path, {
+      method: "POST",
+      headers: { "apikey": SUPA_KEY, "Authorization": "Bearer " + SUPA_KEY, "Content-Type": blob.type, "x-upsert": "true" },
+      body: blob
+    });
+    if (uploadRes.ok) return SUPA_URL + "/storage/v1/object/public/" + SUPA_STORAGE_BUCKET + "/" + path;
+    console.warn("Storage upload failed (" + uploadRes.status + "), conservation base64");
+    return base64DataUrl;
+  } catch(e) { console.warn("Storage upload error:", e); return base64DataUrl; }
+}
+
+// ── Bulk upload + load + save ──
+async function wcUploadAllPhotos(ref, data) {
+  var changed = false;
+  function uploadList(list, catKey) {
+    return Promise.all((list || []).map(async function(photo){
+      var np = photo;
+      if (photo && photo.url && photo.url.startsWith("data:")) {
+        var u = await uploadPhotoToStorage(ref, catKey, photo.url, photo.name);
+        if (u !== photo.url) { np = Object.assign({}, np, { url: u }); changed = true; }
+      }
+      if (photo && photo.drawingUrl && photo.drawingUrl.startsWith("data:")) {
+        var du = await uploadPhotoToStorage(ref, catKey, photo.drawingUrl, "draw-" + photo.name);
+        if (du !== photo.drawingUrl) { np = Object.assign({}, np, { drawingUrl: du }); changed = true; }
+      }
+      return np;
+    }));
+  }
+  var newFacade = Object.assign({}, data.facade || {});
+  var newFacSections = Object.assign({}, newFacade.sections || {});
+  var facKeys = Object.keys(newFacSections);
+  for (var i = 0; i < facKeys.length; i++) {
+    var k = facKeys[i];
+    var sec = Object.assign({}, newFacSections[k]);
+    var newPassages = [];
+    for (var p = 0; p < (sec.passages || []).length; p++) {
+      var pass = Object.assign({}, sec.passages[p]);
+      pass.photos = await uploadList(pass.photos, "fac_" + k + "_" + pass.id);
+      newPassages.push(pass);
+    }
+    sec.passages = newPassages;
+    newFacSections[k] = sec;
+  }
+  newFacade.sections = newFacSections;
+
+  var newToitures = [];
+  for (var ti = 0; ti < (data.toitures || []).length; ti++) {
+    var rf = Object.assign({}, data.toitures[ti]);
+    var newRfSections = Object.assign({}, rf.sections || {});
+    var rfKeys = Object.keys(newRfSections);
+    for (var rk = 0; rk < rfKeys.length; rk++) {
+      var rsk = rfKeys[rk];
+      var rsec = Object.assign({}, newRfSections[rsk]);
+      var newRPassages = [];
+      for (var rp = 0; rp < (rsec.passages || []).length; rp++) {
+        var rpass = Object.assign({}, rsec.passages[rp]);
+        rpass.photos = await uploadList(rpass.photos, "toit_" + rf.id + "_" + rsk + "_" + rpass.id);
+        newRPassages.push(rpass);
+      }
+      rsec.passages = newRPassages;
+      newRfSections[rsk] = rsec;
+    }
+    rf.sections = newRfSections;
+    newToitures.push(rf);
+  }
+  if (!changed) return { data: data, changed: false };
+  return { data: Object.assign({}, data, { facade: newFacade, toitures: newToitures }), changed: true };
+}
+
+/* ── Chargement / sauvegarde (upsert sur ref) ── */
+async function wcLoad(ref) {
+  try {
+    var res = await fetch(SUPA_URL + "/rest/v1/" + WC_TABLE + "?ref=eq." + encodeURIComponent(ref) + "&select=data,updated_at", {
+      headers: { "apikey": SUPA_KEY, "Authorization": "Bearer " + SUPA_KEY }
+    });
+    if (!res.ok) return { ok: false, row: null };
+    var rows = await res.json();
+    return { ok: true, row: (rows && rows[0]) ? rows[0] : null };
+  } catch(e) { return { ok: false, row: null }; }
+}
+async function wcSave(ref, data) {
+  try {
+    var res = await fetch(SUPA_URL + "/rest/v1/" + WC_TABLE + "?on_conflict=ref", {
+      method: "POST",
+      headers: {
+        "apikey": SUPA_KEY, "Authorization": "Bearer " + SUPA_KEY,
+        "Content-Type": "application/json", "Prefer": "resolution=merge-duplicates,return=minimal"
+      },
+      body: JSON.stringify({ ref: ref, data: data, updated_at: new Date().toISOString() })
+    });
+    return res.ok;
+  } catch(e) { return false; }
+}
+
+/* Lecture du briefing associé (cross-ref) pour pré-remplir certaines méta. Optionnel. */
+
+// ── Briefing We Cover (autre projet Supabase) ──
+const WC_BRIEFING_URL = "https://brodjywccrirlzplovxg.supabase.co";
+const WC_BRIEFING_KEY = "sb_publishable_T4Syy3Nq5mLK0yqOUNgtEg_od2WUXEY";
+const WC_BRIEFING_TABLE = "briefings_wecover";
+async function wcLoadBriefing(ref) {
+  try {
+    var res = await fetch(WC_BRIEFING_URL + "/rest/v1/" + WC_BRIEFING_TABLE + "?ref=eq." + encodeURIComponent(ref) + "&select=data", {
+      headers: { "apikey": WC_BRIEFING_KEY, "Authorization": "Bearer " + WC_BRIEFING_KEY }
+    });
+    if (!res.ok) return null;
+    var rows = await res.json();
+    return (rows && rows[0] && rows[0].data) ? rows[0].data : null;
+  } catch(e) { return null; }
+}
+
+// ── Snapshots, audit, parser bon de commande ──
+const WC_VERSIONS_TABLE = "rapports_wecover_versions";
+const WC_AUDIT_TABLE = "rapports_wecover_audit";
+
+function _userTag(user) {
+  if (!user) return "anonyme";
+  if (user.type === "wge") return user.name || user.email || "WGE";
+  if (user.type === "contractor") return (user.name || "sous-traitant") + " (sous-traitant)";
+  return user.name || user.email || "utilisateur";
+}
+
+/* Lit la signature courte (avancement global, nb passages, nb photos) pour résumer un snapshot */
+function snapshotSignature(data) {
+  var pass = 0, photos = 0;
+  if (data && data.facade && data.facade.sections) {
+    Object.keys(data.facade.sections).forEach(function(k){
+      var sec = data.facade.sections[k];
+      pass += (sec.passages || []).length;
+      (sec.passages || []).forEach(function(p){ photos += (p.photos || []).length; });
+    });
+  }
+  if (data && Array.isArray(data.toitures)) {
+    data.toitures.forEach(function(r){
+      Object.keys(r.sections || {}).forEach(function(k){
+        var sec = r.sections[k];
+        pass += (sec.passages || []).length;
+        (sec.passages || []).forEach(function(p){ photos += (p.photos || []).length; });
+      });
+    });
+  }
+  return { passages: pass, photos: photos };
+}
+
+async function wcSaveSnapshot(ref, data, user, label) {
+  try {
+    var sig = snapshotSignature(data);
+    var body = {
+      ref: ref,
+      label: label || "",
+      author: _userTag(user),
+      data: data,
+      passages_count: sig.passages,
+      photos_count: sig.photos,
+      created_at: new Date().toISOString()
+    };
+    var res = await fetch(SUPA_URL + "/rest/v1/" + WC_VERSIONS_TABLE, {
+      method: "POST",
+      headers: {
+        "apikey": SUPA_KEY, "Authorization": "Bearer " + SUPA_KEY,
+        "Content-Type": "application/json", "Prefer": "return=minimal"
+      },
+      body: JSON.stringify(body)
+    });
+    return res.ok;
+  } catch(e) { return false; }
+}
+
+async function wcLoadSnapshots(ref) {
+  try {
+    var res = await fetch(SUPA_URL + "/rest/v1/" + WC_VERSIONS_TABLE +
+      "?ref=eq." + encodeURIComponent(ref) +
+      "&select=id,label,author,passages_count,photos_count,created_at" +
+      "&order=created_at.desc&limit=50", {
+      headers: { "apikey": SUPA_KEY, "Authorization": "Bearer " + SUPA_KEY }
+    });
+    if (!res.ok) return [];
+    return await res.json();
+  } catch(e) { return []; }
+}
+
+async function wcLoadSnapshotById(id) {
+  try {
+    var res = await fetch(SUPA_URL + "/rest/v1/" + WC_VERSIONS_TABLE +
+      "?id=eq." + encodeURIComponent(id) + "&select=data,created_at,label,author", {
+      headers: { "apikey": SUPA_KEY, "Authorization": "Bearer " + SUPA_KEY }
+    });
+    if (!res.ok) return null;
+    var rows = await res.json();
+    return rows && rows[0] ? rows[0] : null;
+  } catch(e) { return null; }
+}
+
+async function wcLogAudit(ref, user, action, detail) {
+  try {
+    await fetch(SUPA_URL + "/rest/v1/" + WC_AUDIT_TABLE, {
+      method: "POST",
+      headers: {
+        "apikey": SUPA_KEY, "Authorization": "Bearer " + SUPA_KEY,
+        "Content-Type": "application/json", "Prefer": "return=minimal"
+      },
+      body: JSON.stringify({
+        ref: ref, author: _userTag(user), action: action, detail: detail || "",
+        created_at: new Date().toISOString()
+      })
+    });
+  } catch(e) { /* silencieux */ }
+}
+
+async function wcLoadAudit(ref) {
+  try {
+    var res = await fetch(SUPA_URL + "/rest/v1/" + WC_AUDIT_TABLE +
+      "?ref=eq." + encodeURIComponent(ref) +
+      "&select=author,action,detail,created_at" +
+      "&order=created_at.desc&limit=100", {
+      headers: { "apikey": SUPA_KEY, "Authorization": "Bearer " + SUPA_KEY }
+    });
+    if (!res.ok) return [];
+    return await res.json();
+  } catch(e) { return []; }
+}
+
+/* ── Parseur Bon de commande PDF ──
+   Extrait via PDF.js : ref commande, vendeur (Project Manager), nom du client,
+   adresse de livraison. Logique éprouvée copiée de la feuille de chantier We Green
+   (auto-détection par positions XY des items, regroupement en lignes, colonnes
+   gauche/droite, sections « Adresse de facturation/livraison »). */
+async function parseBonDeCommande(file) {
+  if (!file || !file.type || !file.type.includes("pdf")) {
+    throw new Error("Format PDF requis");
+  }
+  var pdfjsLib = window["pdfjs-dist/build/pdf"];
+  if (!pdfjsLib) throw new Error("PDF.js non chargé");
+  pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+  var ab = await file.arrayBuffer();
+  var pdf = await pdfjsLib.getDocument({ data: ab }).promise;
+
+  // Items + positions XY (max 4 premières pages, suffisant pour l'en-tête BDC)
+  var allItems = [];
+  for (var pg = 1; pg <= Math.min(pdf.numPages, 4); pg++) {
+    var page = await pdf.getPage(pg);
+    var vp = page.getViewport({ scale: 1 });
+    var tc = await page.getTextContent();
+    for (var ti = 0; ti < tc.items.length; ti++) {
+      var item = tc.items[ti];
+      if (item.str && item.str.trim()) {
+        allItems.push({ str: item.str.trim(), x: item.transform[4], y: vp.height - item.transform[5], page: pg, pw: vp.width });
+      }
+    }
+  }
+  allItems.sort(function(a,b){
+    if (a.page !== b.page) return a.page - b.page;
+    if (Math.abs(a.y - b.y) >= 6) return a.y - b.y;
+    return a.x - b.x;
+  });
+  // Regroupement en lignes
+  var lineGroups = [];
+  for (var ii = 0; ii < allItems.length; ii++) {
+    var it = allItems[ii];
+    var last = lineGroups[lineGroups.length - 1];
+    if (last && it.page === last.page && Math.abs(it.y - last.y) < 5) last.items.push(it);
+    else lineGroups.push({ y: it.y, page: it.page, pw: it.pw, items: [it] });
+  }
+  var lines = lineGroups.map(function(g){
+    var sorted = g.items.sort(function(a,b){ return a.x - b.x; });
+    return {
+      text: sorted.map(function(i){ return i.str; }).join(" ").trim(),
+      minX: sorted[0].x, y: g.y, page: g.page, pw: g.pw
+    };
+  }).filter(function(l){ return l.text; });
+
+  var out = { commande_ref: "", manager: "", client: "", adresse: "" };
+
+  // Référence commande
+  for (var i = 0; i < lines.length; i++) {
+    var m = lines[i].text.match(/Commande\s*#?\s*(S\d+|WC[-_ ]?\w+|WG[-_ ]?\w+)/i);
+    if (m) { out.commande_ref = m[1].replace(/[_ ]/g, "-"); break; }
+  }
+
+  // Vendeur / Project Manager — match flexible sur PM_DATA
+  for (var i = 0; i < lines.length; i++) {
+    if (/^Vendeur\s*:/i.test(lines[i].text)) {
+      var same = lines[i].text.replace(/^Vendeur\s*:\s*/i, "").trim();
+      var nxt = lines[i+1] ? lines[i+1].text.trim() : "";
+      var cand = same || nxt;
+      if (cand) {
+        if (PM_DATA[cand]) { out.manager = cand; }
+        else {
+          var candLower = cand.toLowerCase();
+          var matched = Object.keys(PM_DATA).find(function(k){
+            var kl = k.toLowerCase();
+            return kl === candLower || candLower.indexOf(kl) >= 0 || kl.indexOf(candLower) >= 0;
+          });
+          if (matched) out.manager = matched;
+        }
+      }
+      break;
+    }
+  }
+
+  // En-tête : tout avant la ligne "Commande #"
+  var cmdLineIdx = -1;
+  for (var i = 0; i < lines.length; i++) {
+    if (/Commande\s*#/i.test(lines[i].text)) { cmdLineIdx = i; break; }
+  }
+  var headerLines = cmdLineIdx >= 0 ? lines.slice(0, cmdLineIdx) : lines.slice(0, 25);
+
+  // Détection bloc adresse
+  var hasAddressBlock = headerLines.some(function(l){ return /Adresse de (facturation|livraison|exp)/i.test(l.text); });
+  if (hasAddressBlock) {
+    var pw = headerLines[0] ? headerLines[0].pw : 595;
+    var rightThreshold = pw * 0.52;
+    // Bloc droit = contact client
+    var rightBlock = [];
+    for (var i = 0; i < headerLines.length; i++) {
+      var ln = headerLines[i];
+      if (ln.minX > rightThreshold && !/^(We Green|We Cover|Ikaroslaan|Zaventem|Belgium|TVA BE)/i.test(ln.text)) rightBlock.push(ln.text);
+    }
+    var filteredRight = rightBlock.filter(function(tx){ return !/^(TVA|tel|fax|\+\d|BE\d{9})/i.test(tx); });
+    if (filteredRight.length >= 1 && !/^(We Green|We Cover)/i.test(filteredRight[0])) out.client = filteredRight[0];
+
+    // Adresse livraison ou facturation
+    var shipLabelIdx = -1;
+    for (var i = 0; i < headerLines.length; i++) {
+      if (/Adresse.{1,5}exp.{1,10}dition|Adresse de livraison/i.test(headerLines[i].text)) { shipLabelIdx = i; break; }
+    }
+    if (shipLabelIdx < 0) {
+      for (var i = 0; i < headerLines.length; i++) {
+        if (/Adresse de facturation/i.test(headerLines[i].text)) { shipLabelIdx = i; break; }
+      }
+    }
+    var shipLines = [];
+    if (shipLabelIdx >= 0) {
+      for (var i = shipLabelIdx + 1; i < headerLines.length; i++) {
+        var ln2 = headerLines[i];
+        if (ln2.minX > rightThreshold) continue;
+        var t2 = ln2.text;
+        if (/^(Belgique|France|Pays-Bas|Luxembourg)$/i.test(t2)) break;
+        if (/^Adresse\s+de/i.test(t2)) break;
+        if (/^(We Green|We Cover|Ikaroslaan|Zaventem|Belgium|\+\d)/i.test(t2)) continue;
+        shipLines.push(t2);
+      }
+      if (shipLines.length) {
+        var addrLines = shipLines;
+        if (addrLines.length > 1 && !/^\d|^Rue|^Avenue|^Av\.|^Chauss|^Bd\b|^Boulevard|^Place|^Sq\b|^Drev|^All.e|^Impasse/i.test(addrLines[0])) {
+          addrLines = addrLines.slice(1);
+        }
+        out.adresse = addrLines.filter(function(t3){ return !/^(TVA|Belgi)/i.test(t3); }).join(", ");
+      }
+    }
+    if (!out.client && shipLines.length) out.client = shipLines[0];
+  } else {
+    // BDC plus simple : colonne droite = bloc client
+    var pw2 = headerLines[0] ? headerLines[0].pw : 595;
+    var rightThresh2 = pw2 * 0.50;
+    var clientBlock = [];
+    for (var i = 0; i < headerLines.length; i++) {
+      var ln = headerLines[i];
+      if (ln.minX > rightThresh2 && !/^(We Green|We Cover|TVA BE|Ikaroslaan|Zaventem|Belgium|\+\d|BE\d{9})/i.test(ln.text)) {
+        clientBlock.push(ln.text);
+      }
+    }
+    if (clientBlock.length) {
+      out.client = clientBlock[0] || "";
+      out.adresse = clientBlock.slice(1).filter(function(t){ return !/^(TVA|Belgi)/i.test(t); }).join(", ");
+    }
+  }
+
+  return out;
+}
+
+// ── Catalogues de sections We Cover ──
+const FACADE_SECTIONS = [
+  { key: "preparation", icon: "🧹", label: "Préparation de chantier & surface", hint: "Nettoyage, échafaudage en place, fixations, repérages." },
+  { key: "isolant",     icon: "🧱", label: "Pose de l'isolant + chevillage",   hint: "Profils de démarrage, profils de fenêtre, collage, chevillage, finitions entre châssis." },
+  { key: "details",     icon: "🔧", label: "Préparation de détails",            hint: "Blochets, descentes d'eau pluviale, profils servants, élongation toiture, T-zinc, solins." },
+  { key: "cimentage",   icon: "🪨", label: "Cimentage / GX montage",            hint: "Profils de coin, trame, sous-enduit." },
+  { key: "finitions",   icon: "🎨", label: "Crépissage & finitions",            hint: "Primaire, crépi, peinture si prévue." },
+];
+
+/* ── Sections toiture (selon le type) ── */
+const ROOF_SECTIONS_PENTE = [
+  { key: "depose",     icon: "📦", label: "État existant / dépose" },
+  { key: "charpente",  icon: "🪵", label: "Charpente / support" },
+  { key: "isolation",  icon: "🧊", label: "Isolation" },
+  { key: "couverture", icon: "🏠", label: "Couverture" },
+  { key: "zinguerie",  icon: "💧", label: "Zinguerie & évacuation" },
+  { key: "elements",   icon: "🪟", label: "Éléments particuliers" },
+];
+const ROOF_SECTIONS_PLATE = [
+  { key: "depose",     icon: "📦", label: "État existant / dépose" },
+  { key: "support",    icon: "🪵", label: "Support" },
+  { key: "isolation",  icon: "🧊", label: "Isolation" },
+  { key: "etancheite", icon: "💧", label: "Étanchéité" },
+  { key: "zinguerie",  icon: "🔩", label: "Zinguerie & évacuation" },
+  { key: "elements",   icon: "🪟", label: "Éléments particuliers" },
+];
+function roofSections(type) { return type === "plate" ? ROOF_SECTIONS_PLATE : ROOF_SECTIONS_PENTE; }
+
+
+// ── Helpers de structure + setIn ──
+function todayISO() {
+  var d = new Date();
+  var z = function(n){ return n < 10 ? "0" + n : "" + n; };
+  return d.getFullYear() + "-" + z(d.getMonth()+1) + "-" + z(d.getDate());
+}
+function uid(prefix) { return (prefix || "id") + "_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 7); }
+
+function makeEmptyPassage(date, intervenants) {
+  return {
+    id: uid("p"),
+    date: date || todayISO(),
+    intervenants: intervenants || "",  // équipe / personne sur place (pré-rempli depuis le login)
+    quantite: "",                       // métré du jour (libre : m², ml, nb, etc.)
+    photos: [],                         // [ {name,url,type,drawingUrl?,textObjects?} ]
+    notes: ""
+  };
+}
+
+function makeEmptyFacade() {
+  var sections = {};
+  FACADE_SECTIONS.forEach(function(s){ sections[s.key] = { passages: [], avancementPct: 0 }; });
+  return { sections: sections, notes: "" };
+}
+
+function makeEmptyRoof(type) {
+  var defs = roofSections(type || "pente");
+  var sections = {};
+  defs.forEach(function(s){ sections[s.key] = { passages: [], avancementPct: 0 }; });
+  return {
+    id: uid("t"),
+    nom: "",
+    type: type || "pente",
+    sections: sections,
+    notes: ""
+  };
+}
+
+/* ── Modèle de données vide ── */
+function makeEmptyData(ref) {
+  return {
+    schemaVersion: 1,
+    societe: "wecover",
+    ref: ref || "",
+    meta: {
+      client: "", adresseChantier: "",
+      dateDebut: "", dateFinPrevue: "",
+      pm: "", chefChantier: "",
+      commandeRef: ""
+    },
+    typeChantier: { facade: false, toiture: false },
+    facade: makeEmptyFacade(),
+    toitures: [],
+    journeesCloturees: [],
+    remarques: ""
+  };
+}
+
+/* ── Merge profond pour rétrocompatibilité ── */
+function mergeDefaults(base, loaded) {
+  if (loaded === null || loaded === undefined) return base;
+  if (Array.isArray(base) || typeof base !== "object") return loaded;
+  var out = Object.assign({}, base);
+  Object.keys(loaded).forEach(function(k) {
+    if (base[k] && typeof base[k] === "object" && !Array.isArray(base[k]) &&
+        loaded[k] && typeof loaded[k] === "object" && !Array.isArray(loaded[k])) {
+      out[k] = mergeDefaults(base[k], loaded[k]);
+    } else {
+      out[k] = loaded[k];
+    }
+  });
+  return out;
+}
+
+/* ── Migration : assure que toutes les sections existent pour la façade et les toitures
+      chargées (clé manquante = passages vides). Tolère un schéma plus ancien. ── */
+function normalize(d) {
+  if (!d) return d;
+  var out = Object.assign({}, d);
+  // Façade : garantir que chaque section connue existe
+  var fac = Object.assign({}, d.facade || {});
+  fac.sections = Object.assign({}, fac.sections || {});
+  FACADE_SECTIONS.forEach(function(s){
+    if (!fac.sections[s.key]) fac.sections[s.key] = { passages: [], avancementPct: 0 };
+    if (!Array.isArray(fac.sections[s.key].passages)) fac.sections[s.key].passages = [];
+  });
+  out.facade = fac;
+  // Toitures : garantir id, type, sections
+  out.toitures = (d.toitures || []).map(function(r){
+    var nr = Object.assign({}, r);
+    if (!nr.id) nr.id = uid("t");
+    if (nr.type !== "pente" && nr.type !== "plate") nr.type = "pente";
+    var defs = roofSections(nr.type);
+    nr.sections = Object.assign({}, nr.sections || {});
+    defs.forEach(function(s){
+      if (!nr.sections[s.key]) nr.sections[s.key] = { passages: [], avancementPct: 0 };
+      if (!Array.isArray(nr.sections[s.key].passages)) nr.sections[s.key].passages = [];
+    });
+    return nr;
+  });
+  return out;
+}
+
+/* ── Stats / avancement ── */
+function countSectionPhotos(section) {
+  if (!section || !Array.isArray(section.passages)) return 0;
+  return section.passages.reduce(function(acc, p){ return acc + ((p.photos || []).length); }, 0);
+}
+function countSectionPassages(section) { return section && Array.isArray(section.passages) ? section.passages.length : 0; }
+function avgAvancement(sections) {
+  var keys = Object.keys(sections || {});
+  if (!keys.length) return 0;
+  var sum = keys.reduce(function(acc, k){ return acc + (Number(sections[k].avancementPct) || 0); }, 0);
+  return Math.round(sum / keys.length);
+}
+
+/* ── deep immutable set ── */
+function setIn(obj, path, value) {
+  if (!path.length) return value;
+  var k = path[0];
+  var copy = Array.isArray(obj) ? obj.slice() : Object.assign({}, (obj || {}));
+  copy[k] = setIn(obj ? obj[k] : undefined, path.slice(1), value);
+  return copy;
+}
+
+
+// ── Design tokens manquants dans We Green ──
+const TEXT = "#1a1a1a";
+const CARD = {
+  background: WHITE,
+  border: "1px solid " + BORDER,
+  borderRadius: 12,
+  padding: "1rem 1.25rem",
+  boxShadow: "0 1px 4px rgba(0,0,0,0.05)"
+};
+const chipSt = function(sel){
+  return {
+    padding: "5px 11px", borderRadius: 6,
+    border: "1px solid " + (sel ? GREEN : BORDER),
+    background: sel ? GREEN_LIGHT : WHITE,
+    color: sel ? GREEN : MUTED,
+    fontSize: 13, fontWeight: sel ? 600 : 400, cursor: "pointer", whiteSpace: "nowrap"
+  };
+};
+function Chip({ label, selected, onClick }){
+  return <button onClick={onClick} style={chipSt(selected)}>{label}</button>;
+}
+function Toggle({ value, onChange }){
+  return (
+    <div style={{ display: "flex", gap: 5 }}>
+      {["OUI","NON"].map(function(o){ return <button key={o} onClick={function(){ onChange(value === o ? null : o); }} style={chipSt(value === o)}>{o}</button>; })}
+    </div>
+  );
+}
+function Field({ label, value, onChange, placeholder, type, unit }){
+  type = type || "text";
+  return (
+    <div>
+      <label style={LBL}>{label}</label>
+      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <input type={type} value={value || ""} onChange={function(e){ onChange(e.target.value); }} placeholder={placeholder || ""} style={{ flex: 1, minWidth: 0 }} />
+        {unit && <span style={{ fontSize: 12, color: MUTED, whiteSpace: "nowrap" }}>{unit}</span>}
+      </div>
+    </div>
+  );
+}
+
+// ── Composants React We Cover ──
+function ProgressBar({ pct, color }) {
+  var v = Math.max(0, Math.min(100, Number(pct) || 0));
+  var c = color || GREEN;
+  return (
+    <div style={{ background: "#eee", borderRadius: 6, height: 6, overflow: "hidden", minWidth: 80 }}>
+      <div style={{ width: v + "%", background: c, height: "100%", transition: "width 0.18s" }} />
+    </div>
+  );
+}
+
+/* ── Carte d'un passage (1 journée) ── */
+function PassageCard({ passage, sectionKey, onChange, onDelete, allMoveTargets, onMovePhotoTo, renderPhotoZone }) {
+  var [open, setOpen] = useState(true);
+  function set(path, v) { onChange(setIn(passage, path, v)); }
+  var fmt = passage.date ? passage.date : "Date à définir";
+  var nPh = (passage.photos || []).length;
+
+  return (
+    <div style={{ background: BG, border: "1px solid " + BORDER, borderRadius: 8, padding: "10px 12px", marginBottom: 8 }}>
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        <span onClick={function(){ setOpen(!open); }} style={{ cursor: "pointer", fontSize: 14, color: MUTED }}>{open ? "▾" : "▸"}</span>
+        <div style={{ flex: 1, minWidth: 140 }}>
+          <input type="date" value={passage.date} onChange={function(e){ set(["date"], e.target.value); }}
+            style={{ fontWeight: 600, color: GREEN, fontSize: 13, border: "1px solid " + BORDER, background: WHITE, padding: "4px 6px", borderRadius: 6 }} />
+        </div>
+        <span style={{ fontSize: 11, color: MUTED }}>{nPh} photo{nPh > 1 ? "s" : ""}</span>
+        <button title="Supprimer ce passage"
+          onClick={function(){ if (window.confirm("Supprimer ce passage du " + fmt + " ?\nLes photos seront perdues.")) onDelete(); }}
+          style={{ background: "#fdecea", color: "#c0392b", border: "1px solid #f5b7b1", borderRadius: 6, padding: "4px 8px", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>✕</button>
+      </div>
+      {open && (
+        <div style={{ marginTop: 10 }}>
+          <div style={G2}>
+            <Field label="Intervenants" value={passage.intervenants || ""} onChange={function(v){ set(["intervenants"], v); }} placeholder="ex : Sildjan + 2, ou Wissam (We Cover)" />
+            <Field label="Quantité du jour (optionnel)" value={passage.quantite || ""} onChange={function(v){ set(["quantite"], v); }} placeholder="ex : 40 m², 8 ml, 3 chevrons posés…" />
+          </div>
+          <div style={{ marginTop: 10 }}>
+            {renderPhotoZone(passage, sectionKey, allMoveTargets, onMovePhotoTo)}
+          </div>
+          <div style={{ marginTop: 10 }}>
+            <label style={LBL}>Notes du jour</label>
+            <textarea value={passage.notes} onChange={function(e){ set(["notes"], e.target.value); }} rows={2}
+              placeholder="ce qui a été fait, ce qui reste, point bloquant…"
+              style={{ width: "100%", resize: "vertical", boxSizing: "border-box" }} />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── Carte d'une section : liste de passages + ajout journée ── */
+function SectionCard({ section, sectionDef, scopeLabel, onUpdate, onAddPassage, accent, renderPhotoZone }) {
+  var [open, setOpen] = useState(true);
+  var passages = (section && section.passages) || [];
+  var photosCount = countSectionPhotos(section);
+  var acc = accent || GREEN;
+
+  function updPassage(i, newP) {
+    var arr = passages.slice(); arr[i] = newP;
+    onUpdate(Object.assign({}, section, { passages: arr }));
+  }
+  function delPassage(i) {
+    var arr = passages.slice(); arr.splice(i, 1);
+    onUpdate(Object.assign({}, section, { passages: arr }));
+  }
+  function movePhotoBetweenPassages(fromPassageId, photoIdx, toPassageId) {
+    if (fromPassageId === toPassageId) return;
+    var arr = passages.slice();
+    var fi = arr.findIndex(function(p){ return p.id === fromPassageId; });
+    var ti = arr.findIndex(function(p){ return p.id === toPassageId; });
+    if (fi < 0 || ti < 0) return;
+    var fp = Object.assign({}, arr[fi]);
+    var tp = Object.assign({}, arr[ti]);
+    var fpPhotos = (fp.photos || []).slice();
+    if (photoIdx < 0 || photoIdx >= fpPhotos.length) return;
+    var item = fpPhotos.splice(photoIdx, 1)[0];
+    fp.photos = fpPhotos;
+    tp.photos = (tp.photos || []).concat([item]);
+    arr[fi] = fp; arr[ti] = tp;
+    onUpdate(Object.assign({}, section, { passages: arr }));
+  }
+  function setAvancement(v) {
+    var n = Math.max(0, Math.min(100, Number(v) || 0));
+    onUpdate(Object.assign({}, section, { avancementPct: n }));
+  }
+
+  // Construit les cibles "déplacer vers…" pour chaque passage : les autres passages de la même section
+  function moveTargetsFor(currentId) {
+    return passages
+      .filter(function(p){ return p.id !== currentId; })
+      .map(function(p){ return { key: p.id, label: "Passage du " + (p.date || "—") }; });
+  }
+
+  return (
+    <div style={{ ...CARD, marginBottom: 14, padding: "0.9rem 1.1rem", borderLeft: "4px solid " + acc }}>
+      {/* Header section */}
+      <div onClick={function(){ setOpen(!open); }} style={{ ...SH, marginBottom: open ? 14 : 0, paddingBottom: open ? 10 : 0, borderBottom: open ? SH.borderBottom : "none", cursor: "pointer", color: acc, flexWrap: "wrap" }}>
+        <span style={{ fontSize: 15 }}>{sectionDef.icon}</span>
+        <span style={{ flex: 1, minWidth: 140 }}>{sectionDef.label}</span>
+        <span style={{ fontSize: 10, color: MUTED, fontWeight: 500, textTransform: "none", letterSpacing: 0, marginRight: 6 }}>
+          {passages.length} passage{passages.length > 1 ? "s" : ""} · {photosCount} photo{photosCount > 1 ? "s" : ""}
+        </span>
+        <ProgressBar pct={section.avancementPct} color={acc} />
+        <span style={{ fontSize: 11, fontWeight: 700, color: acc, minWidth: 38, textAlign: "right" }}>{Math.round(section.avancementPct || 0)}%</span>
+        <span style={{ color: MUTED, fontSize: 13 }}>{open ? "▾" : "▸"}</span>
+      </div>
+
+      {open && (
+      <div>
+        {sectionDef.hint && <div style={{ fontSize: 11, color: MUTED, marginBottom: 10, fontStyle: "italic" }}>{sectionDef.hint}</div>}
+
+        {/* Slider d'avancement */}
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
+          <label style={{ ...LBL, marginBottom: 0 }}>Avancement</label>
+          <input type="range" min="0" max="100" step="5" value={section.avancementPct || 0}
+            onChange={function(e){ setAvancement(e.target.value); }} style={{ flex: 1, minWidth: 140, accentColor: acc }} />
+          <input type="number" min="0" max="100" value={section.avancementPct || 0}
+            onChange={function(e){ setAvancement(e.target.value); }}
+            style={{ width: 64, textAlign: "right" }} />
+          <span style={{ fontSize: 12, color: MUTED }}>%</span>
+        </div>
+
+        {/* Passages */}
+        {passages.length === 0 && (
+          <div style={{ background: BG, border: "1px dashed " + BORDER, borderRadius: 8, padding: "14px 12px", textAlign: "center", color: MUTED, fontSize: 12, marginBottom: 8 }}>
+            Aucun passage enregistré pour cette section. Ajoutez une journée pour déposer les photos du jour.
+          </div>
+        )}
+        {passages.map(function(p, i){
+          return (
+            <PassageCard
+              key={p.id}
+              passage={p}
+              sectionKey={sectionDef.key}
+              onChange={function(np){ updPassage(i, np); }}
+              onDelete={function(){ delPassage(i); }}
+              allMoveTargets={moveTargetsFor(p.id)}
+              onMovePhotoTo={function(photoIdx, toPassageId){ movePhotoBetweenPassages(p.id, photoIdx, toPassageId); }}
+              renderPhotoZone={renderPhotoZone}
+            />
+          );
+        })}
+
+        {/* Boutons d'ajout */}
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 6 }}>
+          <button onClick={function(){ onAddPassage(todayISO()); }} style={{ background: acc, color: WHITE, border: "none", borderRadius: 8, padding: "10px 14px", fontWeight: 600, fontSize: 13 }}>+ Passage d'aujourd'hui</button>
+          <button onClick={function(){ onAddPassage(""); }} style={{ background: WHITE, color: acc, border: "1.5px solid " + acc, borderRadius: 8, padding: "10px 14px", fontWeight: 600, fontSize: 13 }}>+ Autre date</button>
+        </div>
+      </div>
+      )}
+    </div>
+  );
+}
+
+/* ── Bloc d'une toiture (multi sections selon son type) ── */
+function RoofProgressCard({ roof, index, onUpdateSection, onAddPassage, onRemove, onMoveUp, onMoveDown, onRename, renderPhotoZone }) {
+  var [open, setOpen] = useState(true);
+  var isPente = roof.type === "pente";
+  var defs = roofSections(roof.type);
+  var defaultNom = isPente ? "Toiture en pente" : "Toiture plate";
+  var displayNom = roof.nom && roof.nom.trim() ? roof.nom.trim() : defaultNom;
+  var accent = isPente ? "#1B6B3A" : "#2980b9";
+  var avg = avgAvancement(roof.sections);
+
+  return (
+    <div style={{ ...CARD, marginBottom: 14, padding: "0.9rem 1.1rem", borderLeft: "4px solid " + accent }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: open ? 14 : 0, paddingBottom: open ? 10 : 0, borderBottom: open ? "2px solid " + GREEN_MID : "none", flexWrap: "wrap" }}>
+        <span onClick={function(){ setOpen(!open); }} style={{ cursor: "pointer", fontSize: 15 }}>{isPente ? "🏠" : "🏢"}</span>
+        <div onClick={function(){ setOpen(!open); }} style={{ cursor: "pointer", flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: accent, textTransform: "uppercase", letterSpacing: "0.07em" }}>
+            {index + 1}. {displayNom} <span style={{ color: MUTED, fontSize: 11, fontWeight: 400, marginLeft: 6 }}>({isPente ? "en pente" : "plate"})</span>
+          </div>
+        </div>
+        <ProgressBar pct={avg} color={accent} />
+        <span style={{ fontSize: 11, fontWeight: 700, color: accent, minWidth: 38, textAlign: "right" }}>{avg}%</span>
+        {onMoveUp && <button title="Monter" onClick={onMoveUp} style={{ background: WHITE, color: MUTED, border: "1px solid " + BORDER, borderRadius: 6, padding: "4px 9px", fontSize: 13, cursor: "pointer" }}>↑</button>}
+        {onMoveDown && <button title="Descendre" onClick={onMoveDown} style={{ background: WHITE, color: MUTED, border: "1px solid " + BORDER, borderRadius: 6, padding: "4px 9px", fontSize: 13, cursor: "pointer" }}>↓</button>}
+        <button title="Supprimer cette toiture" onClick={onRemove}
+          style={{ background: "#fdecea", color: "#c0392b", border: "1px solid #f5b7b1", borderRadius: 6, padding: "4px 10px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>✕ Supprimer</button>
+        <span onClick={function(){ setOpen(!open); }} style={{ cursor: "pointer", color: MUTED, fontSize: 14 }}>{open ? "▾" : "▸"}</span>
+      </div>
+
+      {open && (
+        <div>
+          <div style={{ marginBottom: 14 }}>
+            <Field label="Nom / repère de la toiture (optionnel)" value={roof.nom} onChange={onRename}
+              placeholder={defaultNom + " (ex : versant rue, annexe arrière…)"} />
+          </div>
+          {defs.map(function(def){
+            return (
+              <SectionCard
+                key={def.key}
+                section={(roof.sections || {})[def.key] || { passages: [], avancementPct: 0 }}
+                sectionDef={def}
+                scopeLabel={displayNom}
+                accent={accent}
+                onUpdate={function(newSec){ onUpdateSection(def.key, newSec); }}
+                onAddPassage={function(date){ onAddPassage(def.key, date); }}
+                renderPhotoZone={renderPhotoZone}
+              />
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── Vue chronologique : tous les passages, triés par date décroissante ── */
+function ChronologicalView({ data, renderPhotoZone }) {
+  // Aplatit tous les passages avec leur contexte
+  var rows = [];
+  FACADE_SECTIONS.forEach(function(s){
+    var sec = (data.facade && data.facade.sections && data.facade.sections[s.key]) || { passages: [] };
+    (sec.passages || []).forEach(function(p){
+      rows.push({ scope: "Façade", scopeColor: "#1B6B3A", sectionKey: s.key, sectionLabel: s.label, sectionIcon: s.icon, passage: p, scopeIcon: "🧱" });
+    });
+  });
+  (data.toitures || []).forEach(function(rf, ri){
+    var defs = roofSections(rf.type);
+    var nom = rf.nom && rf.nom.trim() ? rf.nom.trim() : ((rf.type === "plate" ? "Toiture plate" : "Toiture en pente") + " #" + (ri+1));
+    defs.forEach(function(s){
+      var sec = (rf.sections || {})[s.key] || { passages: [] };
+      (sec.passages || []).forEach(function(p){
+        rows.push({ scope: nom, scopeColor: rf.type === "plate" ? "#2980b9" : "#1B6B3A", sectionKey: s.key, sectionLabel: s.label, sectionIcon: s.icon, passage: p, scopeIcon: rf.type === "plate" ? "🏢" : "🏠" });
+      });
+    });
+  });
+  // Tri : date décroissante (vide en dernier)
+  rows.sort(function(a,b){
+    var da = a.passage.date || ""; var db = b.passage.date || "";
+    if (!da && !db) return 0;
+    if (!da) return 1;
+    if (!db) return -1;
+    return db.localeCompare(da);
+  });
+  // Regroupement par date
+  var byDate = {};
+  rows.forEach(function(r){ var d = r.passage.date || "Sans date"; (byDate[d] = byDate[d] || []).push(r); });
+  var dates = Object.keys(byDate);
+
+  if (!rows.length) return (
+    <div style={{ ...CARD, textAlign: "center", color: MUTED, padding: "40px 20px" }}>
+      <div style={{ fontSize: 32, marginBottom: 10 }}>📅</div>
+      Aucun passage enregistré pour le moment. Passez en vue « Par section » pour ajouter le premier passage du jour.
+    </div>
+  );
+
+  return (
+    <div>
+      {dates.map(function(d){
+        return (
+          <div key={d} style={{ ...CARD, marginBottom: 14, padding: "0.9rem 1.1rem" }}>
+            <div style={{ ...SH, marginBottom: 14 }}>
+              <span style={{ fontSize: 15 }}>📅</span>
+              <span style={{ flex: 1 }}>{d === "Sans date" ? "Sans date" : d}</span>
+              <span style={{ fontSize: 11, color: MUTED, fontWeight: 500, textTransform: "none", letterSpacing: 0 }}>{byDate[d].length} passage{byDate[d].length > 1 ? "s" : ""}</span>
+            </div>
+            {byDate[d].map(function(r, i){
+              var p = r.passage;
+              var nPh = (p.photos || []).length;
+              return (
+                <div key={r.passage.id} style={{ background: BG, border: "1px solid " + BORDER, borderRadius: 8, padding: "10px 12px", marginBottom: 8 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: r.scopeColor, background: WHITE, border: "1px solid " + BORDER, borderRadius: 12, padding: "2px 8px" }}>{r.scopeIcon} {r.scope}</span>
+                    <span style={{ fontSize: 11, fontWeight: 600, color: MUTED }}>{r.sectionIcon} {r.sectionLabel}</span>
+                    <span style={{ flex: 1 }} />
+                    <span style={{ fontSize: 11, color: MUTED }}>{nPh} photo{nPh > 1 ? "s" : ""}</span>
+                  </div>
+                  {(p.intervenants || p.quantite) && <div style={{ fontSize: 12, color: MUTED, marginBottom: 6 }}>{[p.intervenants && ("Intervenants : " + p.intervenants), p.quantite && ("Quantité : " + p.quantite)].filter(Boolean).join(" · ")}</div>}
+                  {/* Aperçu photos (lecture seule) */}
+                  {nPh > 0 && (
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: p.notes ? 8 : 0 }}>
+                      {p.photos.map(function(ph, pi){ return ph.url ? <img key={pi} src={ph.url} alt={ph.name} style={{ width: 90, height: 70, objectFit: "cover", borderRadius: 6, border: "1px solid " + BORDER }} /> : null; })}
+                    </div>
+                  )}
+                  {p.notes && <div style={{ fontSize: 12, color: TEXT, whiteSpace: "pre-wrap", background: WHITE, border: "1px solid " + BORDER, borderRadius: 6, padding: "6px 8px" }}>{p.notes}</div>}
+                </div>
+              );
+            })}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ── Aperçu A4 imprimable ── */
+function PreviewDoc({ data }) {
+  var m = data.meta || {};
+  function row(k, v) { return v ? <tr><th>{k}</th><td>{v}</td></tr> : null; }
+  function PhotoStrip({ photos }) {
+    if (!photos || !photos.length) return null;
+    return (
+      <div className="photo-section photo-grid" style={{ marginTop: 6 }}>
+        {photos.map(function(p, i){ return p.url ? <img key={i} src={p.url} alt={p.name || ""} style={{ width: "100%", borderRadius: 4, border: "1px solid #ddd" }} /> : null; })}
+      </div>
+    );
+  }
+  function PassageBlock({ passage }) {
+    return (
+      <div style={{ marginTop: 10, paddingTop: 8, borderTop: "1px dashed #ddd" }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: GREEN, marginBottom: 4 }}>{passage.date || "Sans date"}{passage.intervenants ? " — Intervenants : " + passage.intervenants : ""}{passage.quantite ? " — " + passage.quantite : ""}</div>
+        {passage.notes && <div style={{ fontSize: 12, color: TEXT, whiteSpace: "pre-wrap", marginBottom: 4 }}>{passage.notes}</div>}
+        <PhotoStrip photos={passage.photos} />
+      </div>
+    );
+  }
+  function sectionTitle(def, sec, accent) {
+    var n = countSectionPassages(sec);
+    var ph = countSectionPhotos(sec);
+    var pct = Math.round((sec && sec.avancementPct) || 0);
+    return (
+      <div style={{ marginTop: 14, marginBottom: 6 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: accent }}>{def.icon} {def.label} <span style={{ color: MUTED, fontWeight: 400, fontSize: 11, marginLeft: 6 }}>· {n} passage{n>1?"s":""} · {ph} photo{ph>1?"s":""} · {pct}%</span></div>
+      </div>
+    );
+  }
+  return (
+    <div style={{ maxWidth: 800, margin: "0 auto", padding: "0 8px", color: TEXT }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 14, borderBottom: "2px solid " + GREEN, paddingBottom: 12, marginBottom: 16 }}>
+        <img src={LOGO_SRC} style={{ height: 46 }} alt="We Cover" />
+        <div>
+          <div style={{ fontWeight: 700, fontSize: 18, color: GREEN }}>We Cover</div>
+          <div style={{ fontSize: 13, color: MUTED }}>Rapport de chantier — suivi d'avancement</div>
+        </div>
+        <div style={{ marginLeft: "auto", textAlign: "right", fontSize: 12, color: MUTED }}>
+          <div style={{ fontWeight: 700, color: TEXT, fontSize: 14 }}>{data.ref || "—"}</div>
+          <div>{m.dateDebut ? "début : " + m.dateDebut : ""}</div>
+        </div>
+      </div>
+
+      <table className="preview-table"><tbody>
+        {row("Client", m.client)}
+        {row("Adresse chantier", m.adresseChantier)}
+        {row("Project Manager", m.pm)}
+        {row("Chef de chantier", m.chefChantier)}
+        {row("Date de début", m.dateDebut)}
+        {row("Fin prévue", m.dateFinPrevue)}
+        {row("Type de chantier", [data.typeChantier && data.typeChantier.facade ? "Isolation façade" : null, data.typeChantier && data.typeChantier.toiture ? ("Toiture" + (((data.toitures||[]).length>1) ? " × " + data.toitures.length : "")) : null].filter(Boolean).join(" + "))}
+      </tbody></table>
+
+      {data.typeChantier && data.typeChantier.facade && (
+        <div>
+          <h3 style={{ color: GREEN, fontSize: 14, marginTop: 18, marginBottom: 6 }}>🧱 Isolation de façade — avancement global : {avgAvancement(data.facade && data.facade.sections)}%</h3>
+          {FACADE_SECTIONS.map(function(def){
+            var sec = (data.facade && data.facade.sections && data.facade.sections[def.key]) || { passages: [] };
+            return (
+              <div key={def.key} className="photo-section" style={{ marginBottom: 10 }}>
+                {sectionTitle(def, sec, GREEN)}
+                {(sec.passages || []).map(function(p){ return <PassageBlock key={p.id} passage={p} />; })}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {data.typeChantier && data.typeChantier.toiture && (data.toitures || []).map(function(rf, ri){
+        var nom = rf.nom && rf.nom.trim() ? rf.nom.trim() : ((rf.type === "plate" ? "Toiture plate" : "Toiture en pente"));
+        var accent = rf.type === "plate" ? "#2980b9" : GREEN;
+        var avg = avgAvancement(rf.sections);
+        var defs = roofSections(rf.type);
+        return (
+          <div key={rf.id}>
+            <h3 style={{ color: accent, fontSize: 14, marginTop: 18, marginBottom: 6 }}>{rf.type === "plate" ? "🏢" : "🏠"} {ri+1}. {nom} <span style={{ color: MUTED, fontSize: 12, fontWeight: 400 }}>({rf.type === "plate" ? "plate" : "en pente"})</span> — avancement {avg}%</h3>
+            {defs.map(function(def){
+              var sec = (rf.sections || {})[def.key] || { passages: [] };
+              return (
+                <div key={def.key} className="photo-section" style={{ marginBottom: 10 }}>
+                  {sectionTitle(def, sec, accent)}
+                  {(sec.passages || []).map(function(p){ return <PassageBlock key={p.id} passage={p} />; })}
+                </div>
+              );
+            })}
+          </div>
+        );
+      })}
+
+      {Array.isArray(data.journeesCloturees) && data.journeesCloturees.length > 0 && (
+        <div style={{ marginTop: 16 }}>
+          <h3 style={{ color: GREEN, fontSize: 14, marginBottom: 6 }}>📅 Journées clôturées ({data.journeesCloturees.length})</h3>
+          {data.journeesCloturees.slice().sort(function(a,b){ var ka=(a.date||"")+" "+(a.heure||""); var kb=(b.date||"")+" "+(b.heure||""); return kb.localeCompare(ka); }).map(function(j){
+            return (
+              <div key={j.id} className="photo-section" style={{ borderLeft: "3px solid #f39c12", paddingLeft: 8, marginBottom: 8 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: "#856404", textTransform: "capitalize" }}>{j.date}{j.heure ? " — " + j.heure : ""} <span style={{ fontWeight: 400, color: MUTED }}>· {j.auteur}</span></div>
+                {j.note && <div style={{ fontSize: 12, color: TEXT, whiteSpace: "pre-wrap", marginTop: 2 }}>{j.note}</div>}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {data.remarques && <div style={{ marginTop: 16 }}><h3 style={{ color: GREEN, fontSize: 14, marginBottom: 6 }}>Remarques générales</h3><div style={{ whiteSpace: "pre-wrap", fontSize: 13 }}>{data.remarques}</div></div>}
+    </div>
+  );
+}
+
+/* ── Clôture de journée (porté de We Green Rapport) ──
+   À remplir en fin de journée. Trace dans le rapport l'avancement consolidé
+   du jour, avec auteur, date, heure et commentaire libre. */
+function CloturJourneeBlock({ journees, setJournees, currentUser, onLogged }) {
+  var [showForm, setShowForm] = useState(false);
+  var [expanded, setExpanded] = useState(null);
+  var [formDate, setFormDate] = useState(function(){ return todayISO(); });
+  var [formNote, setFormNote] = useState("");
+
+  var sortedJournees = (journees || []).slice().sort(function(a, b) {
+    var ka = (a.date || "") + " " + (a.heure || "");
+    var kb = (b.date || "") + " " + (b.heure || "");
+    return kb.localeCompare(ka);
+  });
+
+  var auteurLabel = _userTag(currentUser);
+
+  function openForm() {
+    setFormDate(todayISO());
+    setFormNote("");
+    setShowForm(true);
+    setExpanded(null);
+  }
+
+  function submitJournee() {
+    var now = new Date();
+    var entry = {
+      id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+      date: formDate,
+      heure: now.toTimeString().slice(0, 5),
+      auteur: auteurLabel,
+      note: formNote.trim()
+    };
+    setJournees(function(prev){ return (prev || []).concat([entry]); });
+    setShowForm(false);
+    if (onLogged) onLogged(entry);
+  }
+
+  function fmtDate(iso) {
+    try {
+      var d = new Date(iso + "T12:00:00");
+      return d.toLocaleDateString("fr-BE", { weekday: "long", day: "2-digit", month: "long", year: "numeric" });
+    } catch(e) { return iso; }
+  }
+
+  return (
+    <div id="no-print" style={{ marginBottom: 8 }}>
+      <div style={{ background: "#fff8e8", border: "2px solid #f39c12", borderRadius: 10, overflow: "hidden", marginBottom: 8 }}>
+
+        {/* Bandeau titre */}
+        <div style={{ background: "#f39c12", padding: "10px 14px", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+          <div style={{ fontWeight: 700, fontSize: 13, color: "#fff", display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: 18 }}>📅</span>
+            Clôture de journée
+            {sortedJournees.length > 0 && (
+              <span style={{ background: "rgba(255,255,255,0.25)", borderRadius: 12, padding: "1px 9px", fontSize: 12 }}>
+                {sortedJournees.length} journée{sortedJournees.length > 1 ? "s" : ""}
+              </span>
+            )}
+          </div>
+          {!showForm && (
+            <button onClick={openForm}
+              style={{ background: "#fff", border: "none", borderRadius: 7, padding: "6px 14px",
+                fontSize: 12, fontWeight: 700, color: "#f39c12", cursor: "pointer", whiteSpace: "nowrap" }}>
+              ➕ Clôturer la journée
+            </button>
+          )}
+        </div>
+
+        {/* Sous-titre */}
+        <div style={{ padding: "7px 14px", fontSize: 12, color: "#856404",
+          borderBottom: (sortedJournees.length > 0 || showForm) ? "1px solid #fdd98a" : "none" }}>
+          À compléter <strong>en fin de journée</strong>. La clôture est tracée dans le rapport et l'historique.
+        </div>
+
+        {/* Formulaire */}
+        {showForm && (
+          <div style={{ padding: 14, background: "#fffdf0",
+            borderBottom: sortedJournees.length > 0 ? "1px solid #fdd98a" : "none" }}>
+
+            {/* Info auto (lecture seule) */}
+            <div style={{ background: "#fff", border: "1px solid #fdd98a", borderRadius: 8,
+              padding: "9px 12px", marginBottom: 12, display: "flex", flexWrap: "wrap", gap: 16 }}>
+              <div>
+                <div style={{ fontSize: 11, color: MUTED, fontWeight: 500, marginBottom: 2 }}>Chef d'équipe / intervenant</div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: "#1a1a1a" }}>{currentUser && currentUser.type === "contractor" ? "🔧" : "👤"} {auteurLabel}</div>
+              </div>
+              <div>
+                <div style={{ fontSize: 11, color: MUTED, fontWeight: 500, marginBottom: 2 }}>Heure de clôture</div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: "#1a1a1a" }}>🕐 Enregistrée à la confirmation</div>
+              </div>
+            </div>
+
+            {/* Date (modifiable) */}
+            <div style={{ marginBottom: 12 }}>
+              <label style={{ fontSize: 12, color: MUTED, fontWeight: 500, marginBottom: 4, display: "block" }}>
+                Date de la journée
+                <span style={{ fontWeight: 400, marginLeft: 6, color: "#b8860b" }}>(aujourd'hui par défaut, modifiable)</span>
+              </label>
+              <input type="date" value={formDate} onChange={function(e){ setFormDate(e.target.value); }}
+                style={{ width: "100%", maxWidth: 240 }} />
+            </div>
+
+            {/* Commentaire */}
+            <div style={{ marginBottom: 14 }}>
+              <label style={{ fontSize: 12, color: MUTED, fontWeight: 500, marginBottom: 4, display: "block" }}>
+                Commentaire de fin de journée <span style={{ fontWeight: 400 }}>(optionnel)</span>
+              </label>
+              <textarea value={formNote} onChange={function(e){ setFormNote(e.target.value); }}
+                placeholder="Avancement global de la journée, points en suspens, remarques particulières…"
+                style={{ width: "100%", minHeight: 80, resize: "vertical", boxSizing: "border-box" }} />
+            </div>
+
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <button onClick={submitJournee}
+                style={{ background: "#f39c12", color: "#fff", border: "none", borderRadius: 8,
+                  padding: "11px 22px", fontSize: 13, fontWeight: 700, cursor: "pointer",
+                  display: "inline-flex", alignItems: "center", gap: 7 }}>
+                ✅ Confirmer la clôture
+              </button>
+              <button onClick={function(){ setShowForm(false); }}
+                style={{ background: "none", color: MUTED, border: "1px solid " + BORDER, borderRadius: 8,
+                  padding: "11px 16px", fontSize: 13, cursor: "pointer" }}>
+                Annuler
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Liste des journées */}
+        {sortedJournees.length > 0 && (
+          <div style={{ padding: "8px 14px 12px" }}>
+            {sortedJournees.map(function(j) {
+              var isOpen = expanded === j.id;
+              return (
+                <div key={j.id} style={{ background: "#fff", border: "1px solid #fdd98a",
+                  borderRadius: 8, marginBottom: 6, overflow: "hidden" }}>
+                  <div onClick={function(){ setExpanded(isOpen ? null : j.id); }}
+                    style={{ padding: "9px 12px", cursor: "pointer", display: "flex",
+                      alignItems: "center", justifyContent: "space-between",
+                      background: isOpen ? "#fffbf0" : "#fff", userSelect: "none" }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 700, fontSize: 12, color: "#856404", textTransform: "capitalize" }}>
+                        📅 {fmtDate(j.date)} {j.heure ? "— " + j.heure : ""}
+                      </div>
+                      <div style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>
+                        👤 {j.auteur}
+                        {j.note && <span style={{ marginLeft: 10, fontStyle: "italic" }}>
+                          "{j.note.slice(0, 50)}{j.note.length > 50 ? "…" : ""}"
+                        </span>}
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                      <button onClick={function(e){ e.stopPropagation();
+                        if (!window.confirm("Supprimer cette clôture de journée ?")) return;
+                        setJournees(function(prev){ return (prev || []).filter(function(x){ return x.id !== j.id; }); }); }}
+                        style={{ background: "#fdecea", border: "1px solid #f1948a", color: "#c0392b",
+                          borderRadius: 5, padding: "3px 8px", fontSize: 11, cursor: "pointer", minHeight: 0 }}>
+                        🗑
+                      </button>
+                      <span style={{ color: MUTED, fontSize: 11,
+                        transform: isOpen ? "rotate(180deg)" : "none", transition: "transform 0.2s" }}>▼</span>
+                    </div>
+                  </div>
+                  {isOpen && (
+                    <div style={{ padding: "10px 12px", borderTop: "1px solid #fdd98a", background: "#fffdf8" }}>
+                      {j.note ? (
+                        <div style={{ fontSize: 12, color: "#1a1a1a", lineHeight: 1.6,
+                          background: "#fff8e8", borderRadius: 6, padding: "8px 10px",
+                          borderLeft: "3px solid #f39c12", whiteSpace: "pre-wrap" }}>
+                          {j.note}
+                        </div>
+                      ) : (
+                        <div style={{ fontSize: 12, color: MUTED, fontStyle: "italic" }}>Aucun commentaire.</div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {sortedJournees.length === 0 && !showForm && (
+          <div style={{ padding: "12px 14px", fontSize: 12, color: MUTED, fontStyle: "italic", textAlign: "center" }}>
+            Aucune journée clôturée pour l'instant
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ── Panneau historique : versions (snapshots) + audit log ── */
+function HistoryPanel({ refChantier, onRestore, onClose, currentUser }) {
+  var [tab, setTab] = useState("versions");
+  var [versions, setVersions] = useState([]);
+  var [audit, setAudit] = useState([]);
+  var [loading, setLoading] = useState(true);
+
+  useEffect(function(){
+    var alive = true;
+    async function load(){
+      setLoading(true);
+      var [v, a] = await Promise.all([wcLoadSnapshots(refChantier), wcLoadAudit(refChantier)]);
+      if (!alive) return;
+      setVersions(v || []); setAudit(a || []); setLoading(false);
+    }
+    load();
+    return function(){ alive = false; };
+  }, [refChantier]);
+
+  async function restore(versionId) {
+    if (!window.confirm("Restaurer cette version ?\n\nLes données actuelles seront remplacées (un nouveau snapshot sera créé automatiquement avant restauration).")) return;
+    var snap = await wcLoadSnapshotById(versionId);
+    if (!snap || !snap.data) { window.alert("Impossible de charger cette version."); return; }
+    onRestore(snap.data);
+    if (refChantier && currentUser) wcLogAudit(refChantier, currentUser, "restore", "v du " + snap.created_at);
+    onClose();
+  }
+
+  function fmtDate(iso) {
+    if (!iso) return "—";
+    try {
+      var d = new Date(iso);
+      return d.toLocaleString("fr-BE", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+    } catch(e){ return iso; }
+  }
+
+  return (
+    <div onClick={function(e){ if (e.target === e.currentTarget) onClose(); }}
+      style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 9999, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "30px 12px", overflowY: "auto" }}>
+      <div style={{ background: WHITE, borderRadius: 12, width: "100%", maxWidth: 720, boxShadow: "0 8px 40px rgba(0,0,0,0.25)", overflow: "hidden" }}>
+        <div style={{ padding: "12px 16px", borderBottom: "1px solid " + BORDER, display: "flex", alignItems: "center", gap: 10 }}>
+          <span style={{ fontSize: 16 }}>🕓</span>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 700, color: GREEN, fontSize: 14 }}>Historique du rapport</div>
+            <div style={{ fontSize: 11, color: MUTED }}>Référence : {refChantier}</div>
+          </div>
+          <button onClick={onClose} style={{ background: "none", border: "none", fontSize: 20, color: MUTED, cursor: "pointer" }}>✕</button>
+        </div>
+        <div style={{ display: "flex", borderBottom: "1px solid " + BORDER }}>
+          <button onClick={function(){ setTab("versions"); }}
+            style={{ flex: 1, padding: "10px 12px", border: "none", background: tab === "versions" ? GREEN_LIGHT : WHITE, color: tab === "versions" ? GREEN : MUTED, fontWeight: tab === "versions" ? 700 : 500, fontSize: 13, borderBottom: tab === "versions" ? "2.5px solid " + GREEN : "2.5px solid transparent", cursor: "pointer", fontFamily: "inherit" }}>💾 Versions sauvegardées</button>
+          <button onClick={function(){ setTab("audit"); }}
+            style={{ flex: 1, padding: "10px 12px", border: "none", background: tab === "audit" ? GREEN_LIGHT : WHITE, color: tab === "audit" ? GREEN : MUTED, fontWeight: tab === "audit" ? 700 : 500, fontSize: 13, borderBottom: tab === "audit" ? "2.5px solid " + GREEN : "2.5px solid transparent", cursor: "pointer", fontFamily: "inherit" }}>📜 Journal d'activité</button>
+        </div>
+
+        <div style={{ padding: 16, maxHeight: "70vh", overflowY: "auto" }}>
+          {loading && <div style={{ textAlign: "center", color: MUTED, padding: "20px 0", fontSize: 13 }}>⏳ Chargement…</div>}
+          {!loading && tab === "versions" && (
+            <div>
+              {versions.length === 0 && <div style={{ textAlign: "center", color: MUTED, padding: "20px 0", fontSize: 13 }}>Aucune version sauvegardée pour le moment. Une sauvegarde est créée automatiquement toutes les 15 minutes après modification, ou manuellement via le bouton 💾.</div>}
+              {versions.map(function(v){
+                return (
+                  <div key={v.id} style={{ background: BG, border: "1px solid " + BORDER, borderRadius: 8, padding: "10px 12px", marginBottom: 8, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                    <div style={{ flex: 1, minWidth: 200 }}>
+                      <div style={{ fontWeight: 600, fontSize: 13 }}>{fmtDate(v.created_at)}</div>
+                      <div style={{ fontSize: 11, color: MUTED }}>{v.author || "—"} {v.label ? "· " + v.label : ""}</div>
+                      <div style={{ fontSize: 11, color: MUTED }}>{v.passages_count || 0} passage{(v.passages_count||0)>1?"s":""} · {v.photos_count || 0} photo{(v.photos_count||0)>1?"s":""}</div>
+                    </div>
+                    <button onClick={function(){ restore(v.id); }} style={{ background: GREEN, color: WHITE, border: "none", borderRadius: 6, padding: "6px 12px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>↺ Restaurer</button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          {!loading && tab === "audit" && (
+            <div>
+              {audit.length === 0 && <div style={{ textAlign: "center", color: MUTED, padding: "20px 0", fontSize: 13 }}>Aucune activité enregistrée pour cette référence.</div>}
+              {audit.map(function(a, i){
+                return (
+                  <div key={i} style={{ background: BG, border: "1px solid " + BORDER, borderRadius: 8, padding: "8px 12px", marginBottom: 6, fontSize: 12 }}>
+                    <div style={{ display: "flex", gap: 10, alignItems: "baseline", flexWrap: "wrap" }}>
+                      <span style={{ color: MUTED, fontSize: 11 }}>{fmtDate(a.created_at)}</span>
+                      <span style={{ fontWeight: 600, color: GREEN }}>{a.action}</span>
+                      <span style={{ color: TEXT }}>{a.detail}</span>
+                      <span style={{ flex: 1 }} />
+                      <span style={{ color: MUTED, fontSize: 11 }}>{a.author}</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================================ */
+function App() {
+  var [user, setUser] = useState(function(){ try { return JSON.parse(localStorage.getItem("wge_user") || "null"); } catch(e){ return null; } });
+  var [refInput, setRefInput] = useState("");
+  var [ref, setRef] = useState("");
+  var [data, setData] = useState(function(){ return makeEmptyData(""); });
+  var [loaded, setLoaded] = useState(false);
+  var [saveStatus, setSaveStatus] = useState("");
+  var [showPreview, setShowPreview] = useState(false);
+  var [view, setView] = useState("section"); // "section" | "chrono"
+  var [briefingInfo, setBriefingInfo] = useState(null);
+  var [showHistory, setShowHistory] = useState(false);
+  var [lastSnapshotAt, setLastSnapshotAt] = useState(0); // pour throttle auto-snapshot
+  var [pdfMsg, setPdfMsg] = useState("");
+  var [pdfLoading, setPdfLoading] = useState(false);
+  var firstLoad = useRef(true);
+  var pdfInputRef = useRef();
+
+  // Sync user via events (login Google ou sous-traitant)
+  useEffect(function(){
+    function onChange(e){
+      try { var u = (e && e.detail) ? e.detail : JSON.parse(localStorage.getItem("wge_user") || "null"); setUser(u); } catch(_){}
+    }
+    window.addEventListener("wge-login-changed", onChange);
+    window.addEventListener("storage", onChange);
+    return function(){
+      window.removeEventListener("wge-login-changed", onChange);
+      window.removeEventListener("storage", onChange);
+    };
+  }, []);
+
+  function upd(path, value) { setData(function(d){ return setIn(d, path, value); }); }
+
+  async function loadRef(r) {
+    r = (r || "").trim();
+    if (!r) return;
+    firstLoad.current = true;
+    setLoaded(false);
+    setSaveStatus("loading");
+    setBriefingInfo(null);
+
+    var resu = await wcLoad(r);
+    var base = makeEmptyData(r);
+    var found = false;
+    if (resu.row && resu.row.data) {
+      base = mergeDefaults(base, resu.row.data);
+      base = normalize(base);
+      base.ref = r;
+      found = true;
+      setSaveStatus("saved");
+    } else {
+      try { var ls = localStorage.getItem("wc_rapport_" + r); if (ls) { base = mergeDefaults(base, JSON.parse(ls)); base = normalize(base); base.ref = r; found = true; } } catch(e){}
+      setSaveStatus(resu.ok ? "new" : "local");
+    }
+
+    // Si on n'a pas encore de rapport, on tente une pré-remplissage léger depuis le briefing
+    if (!found) {
+      try {
+        var br = await wcLoadBriefing(r);
+        if (br) {
+          // pré-remplissage de la méta + type de chantier + structure des toitures
+          if (br.meta) {
+            base.meta.client = br.meta.client || "";
+            base.meta.adresseChantier = br.meta.adresseChantier || br.meta.adresseClient || "";
+            base.meta.pm = br.meta.pm || "";
+          }
+          if (br.typeChantier) {
+            base.typeChantier.facade  = !!br.typeChantier.facade;
+            base.typeChantier.toiture = !!br.typeChantier.toiture;
+          }
+          if (Array.isArray(br.toitures) && br.toitures.length) {
+            base.toitures = br.toitures.map(function(r){
+              var t = makeEmptyRoof(r.type === "plate" ? "plate" : "pente");
+              t.nom = r.nom || "";
+              return t;
+            });
+          }
+          setBriefingInfo({ client: br.meta && br.meta.client, nbToitures: (br.toitures || []).length });
+        }
+      } catch(e){}
+    }
+
+    setData(base);
+    setRef(r);
+    setRefInput(r);
+    try { localStorage.setItem("wc_rapport_last_ref", r); } catch(e){}
+    setLoaded(true);
+  }
+
+  useEffect(function(){
+    var urlRef = "";
+    try { urlRef = new URLSearchParams(window.location.search).get("ref") || ""; } catch(e){}
+    var last = ""; try { last = localStorage.getItem("wc_rapport_last_ref") || ""; } catch(e){}
+    var r = urlRef || last;
+    if (r) loadRef(r);
+  }, []);
+
+  /* Autosave debounce 2s + snapshot horodaté toutes les 15 minutes après une modification */
+  useEffect(function(){
+    if (!ref || !loaded) return;
+    if (firstLoad.current) { firstLoad.current = false; return; }
+    setSaveStatus("saving");
+    var t = setTimeout(async function(){
+      var up = await wcUploadAllPhotos(ref, data);
+      var toSave = data;
+      if (up.changed) { toSave = up.data; setData(up.data); }
+      try { localStorage.setItem("wc_rapport_" + ref, JSON.stringify(toSave)); } catch(e){}
+      var ok = await wcSave(ref, toSave);
+      setSaveStatus(ok ? "saved" : "local");
+
+      // Auto-snapshot : au max un toutes les 15 minutes
+      var now = Date.now();
+      if (ok && (now - lastSnapshotAt) > 15*60*1000) {
+        var snapOk = await wcSaveSnapshot(ref, toSave, user, "auto");
+        if (snapOk) setLastSnapshotAt(now);
+      }
+    }, 2000);
+    return function(){ clearTimeout(t); };
+  }, [data, ref, loaded]);
+
+  async function saveSnapshotNow(label) {
+    if (!ref) return;
+    setSaveStatus("saving");
+    var ok = await wcSaveSnapshot(ref, data, user, label || "manuel");
+    setLastSnapshotAt(Date.now());
+    if (ok) { setSaveStatus("saved"); wcLogAudit(ref, user, "snapshot", label || "manuel"); }
+    else setSaveStatus("local");
+  }
+
+  async function handleBdcFile(file) {
+    if (!file) return;
+    setPdfMsg(""); setPdfLoading(true);
+    try {
+      var parsed = await parseBonDeCommande(file);
+      setData(function(d){
+        var nd = Object.assign({}, d);
+        nd.meta = Object.assign({}, d.meta);
+        var msgs = [];
+        if (parsed.client && !nd.meta.client)              { nd.meta.client = parsed.client; msgs.push("client"); }
+        if (parsed.adresse && !nd.meta.adresseChantier)    { nd.meta.adresseChantier = parsed.adresse; msgs.push("adresse"); }
+        if (parsed.manager && !nd.meta.pm)                 { nd.meta.pm = parsed.manager; msgs.push("PM"); }
+        if (parsed.commande_ref && !nd.meta.commandeRef)   { nd.meta.commandeRef = parsed.commande_ref; msgs.push("ref commande"); }
+        if (!msgs.length) {
+          setPdfMsg("Aucune donnée nouvelle détectée (champs déjà remplis ?).");
+        } else {
+          setPdfMsg("Détecté : " + msgs.join(", ") + ".");
+        }
+        return nd;
+      });
+      if (ref && user) wcLogAudit(ref, user, "bdc_import", file.name);
+    } catch(e) {
+      setPdfMsg("Erreur lecture PDF : " + (e.message || e));
+    }
+    setPdfLoading(false);
+  }
+
+  /* ── Handlers façade ── */
+  function updateFacadeSection(secKey, newSec) {
+    setData(function(d){ return setIn(d, ["facade","sections",secKey], newSec); });
+  }
+  function addFacadePassage(secKey, date) {
+    var intervenants = user ? (_userTag(user)) : "";
+    setData(function(d){
+      var sec = (d.facade && d.facade.sections && d.facade.sections[secKey]) || { passages: [] };
+      var pass = makeEmptyPassage(date, intervenants);
+      var newSec = Object.assign({}, sec, { passages: (sec.passages || []).concat([pass]) });
+      return setIn(d, ["facade","sections",secKey], newSec);
+    });
+    if (ref && user) wcLogAudit(ref, user, "passage_ajout", "façade · " + secKey + " · " + (date || "auj"));
+  }
+
+  /* ── Handlers toitures ── */
+  function addRoof(type) {
+    setData(function(d){ var arr = (d.toitures || []).slice(); arr.push(makeEmptyRoof(type)); return setIn(d, ["toitures"], arr); });
+  }
+  function removeRoof(i) {
+    var roof = (data.toitures || [])[i]; if (!roof) return;
+    var nom = roof.nom && roof.nom.trim() ? roof.nom.trim() : "toiture " + (i+1);
+    if (!window.confirm("Supprimer " + nom + " et toutes ses données (passages + photos) ?\nCette action est irréversible.")) return;
+    setData(function(d){ var arr = (d.toitures || []).slice(); arr.splice(i,1); return setIn(d, ["toitures"], arr); });
+  }
+  function renameRoof(i, val) { setData(function(d){ return setIn(d, ["toitures", i, "nom"], val); }); }
+  function moveRoof(from, to) {
+    setData(function(d){
+      var arr = (d.toitures || []).slice();
+      if (from<0||from>=arr.length||to<0||to>=arr.length||from===to) return d;
+      var it = arr.splice(from,1)[0]; arr.splice(to,0,it);
+      return setIn(d, ["toitures"], arr);
+    });
+  }
+  function updateRoofSection(roofIdx, secKey, newSec) {
+    setData(function(d){ return setIn(d, ["toitures", roofIdx, "sections", secKey], newSec); });
+  }
+  function addRoofPassage(roofIdx, secKey, date) {
+    var intervenants = user ? (_userTag(user)) : "";
+    setData(function(d){
+      var sec = ((d.toitures[roofIdx] && d.toitures[roofIdx].sections) || {})[secKey] || { passages: [] };
+      var pass = makeEmptyPassage(date, intervenants);
+      var newSec = Object.assign({}, sec, { passages: (sec.passages || []).concat([pass]) });
+      return setIn(d, ["toitures", roofIdx, "sections", secKey], newSec);
+    });
+    if (ref && user) wcLogAudit(ref, user, "passage_ajout", "toiture #" + (roofIdx+1) + " · " + secKey + " · " + (date || "auj"));
+  }
+
+  /* ── Rendu d'une PhotoZone pour un passage donné ──
+     Les photos sont stockées sur le passage. On expose un setter qui met à jour le passage. */
+  function renderPhotoZone(passage, sectionKey, allMoveTargets, onMovePhotoTo) {
+    function update(newPhotos) { /* used via onAdd / onDelete / onUpdate / onReorder below */ }
+    var items = passage.photos || [];
+    return (
+      <PhotoZone
+        catKey={"pass_" + passage.id}
+        label={"Photos du " + (passage.date || "passage")}
+        hiRes={false}
+        items={items}
+        allSections={allMoveTargets || []}
+        hasNote={false}
+        onAdd={function(arr){
+          // ajouter à la fin du passage
+          // déclenche un set sur data : il faut remonter par le chemin du passage
+          setData(function(d){
+            // Trouver le passage par son id : on cherche dans facade puis toitures
+            // Approche : on parcourt et reconstruit
+            function patchPassages(passages){
+              return passages.map(function(p){ return p.id === passage.id ? Object.assign({}, p, { photos: (p.photos||[]).concat(arr) }) : p; });
+            }
+            return patchData(d, patchPassages);
+          });
+        }}
+        onDelete={function(i){
+          setData(function(d){
+            function patchPassages(passages){
+              return passages.map(function(p){
+                if (p.id !== passage.id) return p;
+                var np = (p.photos||[]).slice(); np.splice(i,1);
+                return Object.assign({}, p, { photos: np });
+              });
+            }
+            return patchData(d, patchPassages);
+          });
+        }}
+        onUpdate={function(i, url, drawingUrl, textObjs){
+          setData(function(d){
+            function patchPassages(passages){
+              return passages.map(function(p){
+                if (p.id !== passage.id) return p;
+                var np = (p.photos||[]).slice();
+                if (!np[i]) return p;
+                np[i] = Object.assign({}, np[i], { url: url, drawingUrl: drawingUrl, textObjects: textObjs });
+                return Object.assign({}, p, { photos: np });
+              });
+            }
+            return patchData(d, patchPassages);
+          });
+        }}
+        onReorder={function(from, to){
+          setData(function(d){
+            function patchPassages(passages){
+              return passages.map(function(p){
+                if (p.id !== passage.id) return p;
+                var np = (p.photos||[]).slice();
+                if (from<0||from>=np.length) return p;
+                var it = np.splice(from,1)[0]; np.splice(to,0,it);
+                return Object.assign({}, p, { photos: np });
+              });
+            }
+            return patchData(d, patchPassages);
+          });
+        }}
+        onMoveTo={function(i, targetPassageId){
+          if (onMovePhotoTo) onMovePhotoTo(i, targetPassageId);
+        }}
+        onReceiveCross={function(){ /* cross-zone disabled at this level */ }}
+      />
+    );
+  }
+
+  /* Helper qui applique un mapping sur les passages de TOUTES les sections (façade + toitures). */
+  function patchData(d, patchFn) {
+    var newFac = d.facade ? Object.assign({}, d.facade) : { sections: {} };
+    newFac.sections = Object.assign({}, newFac.sections || {});
+    Object.keys(newFac.sections).forEach(function(k){
+      var sec = newFac.sections[k];
+      newFac.sections[k] = Object.assign({}, sec, { passages: patchFn(sec.passages || []) });
+    });
+    var newToit = (d.toitures || []).map(function(rf){
+      var nrf = Object.assign({}, rf);
+      nrf.sections = Object.assign({}, nrf.sections || {});
+      Object.keys(nrf.sections).forEach(function(k){
+        var sec = nrf.sections[k];
+        nrf.sections[k] = Object.assign({}, sec, { passages: patchFn(sec.passages || []) });
+      });
+      return nrf;
+    });
+    var nd = Object.assign({}, d, { facade: newFac, toitures: newToit });
+    return nd;
+  }
+
+  var pm = PM_DATA[data.meta.pm] || {};
+  var statusLabel = { loading: "⏳ Chargement…", saving: "💾 Sauvegarde…", saved: "✓ Sauvegardé", new: "● Nouveau rapport", local: "⚠ Sauvegarde locale", "": "" }[saveStatus] || "";
+  var statusColor = { saved: GREEN, saving: MUTED, loading: MUTED, new: "#2980b9", local: "#c0392b", "": MUTED }[saveStatus] || MUTED;
+
+  function doPrint() { setShowPreview(true); setTimeout(function(){ window.print(); }, 150); }
+
+  var facadeAvg = avgAvancement(data.facade && data.facade.sections);
+  var globalAvg = (function(){
+    var vals = [];
+    if (data.typeChantier && data.typeChantier.facade) vals.push(facadeAvg);
+    if (data.typeChantier && data.typeChantier.toiture) (data.toitures||[]).forEach(function(r){ vals.push(avgAvancement(r.sections)); });
+    if (!vals.length) return 0;
+    return Math.round(vals.reduce(function(a,b){ return a+b; },0)/vals.length);
+  })();
+
+  return (
+    <div style={{ minHeight: "100vh", background: BG }}>
+      <div id="preview-doc" style={{ display: showPreview ? "block" : "none", background: WHITE, padding: "24px 0", minHeight: "100vh" }}>
+        <div id="no-print" style={{ maxWidth: 800, margin: "0 auto 14px", padding: "0 8px", display: "flex", gap: 8 }}>
+          <button onClick={function(){ setShowPreview(false); }} style={{ background: WHITE, color: GREEN, border: "1.5px solid " + GREEN, borderRadius: 8, padding: "8px 14px", fontWeight: 600 }}>← Retour à l'édition</button>
+          <button onClick={function(){ window.print(); }} style={{ background: GREEN, color: WHITE, border: "none", borderRadius: 8, padding: "8px 14px", fontWeight: 600 }}>🖨 Imprimer / PDF</button>
+        </div>
+        <PreviewDoc data={data} />
+      </div>
+
+      {!showPreview && (
+      <div id="no-print">
+        {/* Header sticky */}
+        <div style={{ position: "sticky", top: 0, zIndex: 100, background: WHITE, borderBottom: "1px solid " + BORDER, boxShadow: "0 1px 6px rgba(0,0,0,0.04)" }}>
+          <div style={{ maxWidth: 920, margin: "0 auto", padding: "10px 14px", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+            <img src={LOGO_SRC} style={{ height: 34 }} alt="We Cover" />
+            <div style={{ lineHeight: 1.1 }}>
+              <div style={{ fontWeight: 700, color: GREEN, fontSize: 15 }}>We Cover</div>
+              <div style={{ fontSize: 11, color: MUTED }}>Rapport de chantier</div>
+            </div>
+            <span style={{ fontSize: 11, fontWeight: 700, color: "#2980b9", background: "#eaf4fb", border: "1px solid #cfe6f7", padding: "2px 8px", borderRadius: 20 }}>📋 Suivi d'avancement</span>
+            <div style={{ flex: 1 }} />
+            {ref && (
+              <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: MUTED }}>
+                <ProgressBar pct={globalAvg} color={GREEN} />
+                <span style={{ fontWeight: 700, color: GREEN }}>{globalAvg}%</span>
+              </span>
+            )}
+            {ref && <span style={{ fontSize: 12, fontWeight: 600, color: statusColor }}>{statusLabel}</span>}
+            {ref && <button onClick={function(){ saveSnapshotNow("manuel"); }} title="Créer une sauvegarde de l'état actuel"
+              style={{ background: WHITE, color: GREEN, border: "1.5px solid " + GREEN, borderRadius: 8, padding: "8px 12px", fontWeight: 600, fontSize: 13 }}>💾 Sauvegarde</button>}
+            {ref && <button onClick={function(){ setShowHistory(true); }} title="Voir l'historique"
+              style={{ background: WHITE, color: MUTED, border: "1px solid " + BORDER, borderRadius: 8, padding: "8px 10px", fontSize: 13 }}>🕓</button>}
+            <button onClick={doPrint} style={{ background: GREEN, color: WHITE, border: "none", borderRadius: 8, padding: "8px 12px", fontWeight: 600, fontSize: 13 }}>🖨 Aperçu / PDF</button>
+            {user && (
+              <span title={user.email || user.name} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: TEXT, background: BG, border: "1px solid " + BORDER, borderRadius: 20, padding: "4px 10px" }}>
+                {user.type === "contractor" ? "🔧" : "👤"} <span style={{ maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{user.name || user.email}</span>
+              </span>
+            )}
+            {user && <button onClick={function(){ if (window.wgeSignOut) window.wgeSignOut(); }} title="Se déconnecter" style={{ background: WHITE, color: MUTED, border: "1px solid " + BORDER, borderRadius: 8, padding: "8px 10px", fontSize: 12 }}>⏻</button>}
+          </div>
+        </div>
+
+        <div style={{ maxWidth: 920, margin: "0 auto", padding: "16px 14px 80px" }}>
+
+          {/* Référence chantier */}
+          <div style={{ ...CARD, marginBottom: 14, display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap" }}>
+            <div style={{ flex: 1, minWidth: 200 }}>
+              <label style={LBL}>Référence chantier (Odoo)</label>
+              <input value={refInput} onChange={function(e){ setRefInput(e.target.value); }}
+                onKeyDown={function(e){ if (e.key === "Enter") loadRef(refInput); }}
+                placeholder="ex : WC-S05041" style={{ width: "100%" }} />
+            </div>
+            <button onClick={function(){ loadRef(refInput); }} style={{ background: GREEN, color: WHITE, border: "none", borderRadius: 8, padding: "10px 16px", fontWeight: 600 }}>Charger / Créer</button>
+          </div>
+
+          {!ref ? (
+            <div style={{ ...CARD, textAlign: "center", color: MUTED, padding: "40px 20px" }}>
+              <div style={{ fontSize: 32, marginBottom: 10 }}>📋</div>
+              Saisissez la référence du chantier pour commencer le rapport d'avancement.
+            </div>
+          ) : (
+          <div>
+            {briefingInfo && (
+              <div style={{ background: "#eaf4fb", border: "1px solid #cfe6f7", borderRadius: 8, padding: "10px 12px", marginBottom: 14, fontSize: 13, color: "#1a4a6e" }}>
+                ✨ Briefing trouvé pour ce chantier{briefingInfo.client ? " (client : " + briefingInfo.client + ")" : ""}{briefingInfo.nbToitures ? " · " + briefingInfo.nbToitures + " toiture" + (briefingInfo.nbToitures>1?"s":"") + " pré-remplie" + (briefingInfo.nbToitures>1?"s":"") : ""}. Les sections sont initialisées en conséquence — vous pouvez ajouter, renommer ou supprimer librement.
+              </div>
+            )}
+
+            {/* Identification */}
+            <Card icon="📋" title="Identification du chantier">
+              {/* Import bon de commande */}
+              <div style={{ background: GREEN_LIGHT, border: "1px solid " + GREEN_MID, borderRadius: 8, padding: "10px 12px", marginBottom: 14 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                  <span style={{ fontSize: 18 }}>📄</span>
+                  <div style={{ flex: 1, minWidth: 180 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: GREEN }}>Importer le bon de commande (PDF)</div>
+                    <div style={{ fontSize: 11, color: MUTED }}>Détecte automatiquement le client, l'adresse de chantier, le PM et la ref de commande.</div>
+                  </div>
+                  <input ref={pdfInputRef} type="file" accept="application/pdf,.pdf" style={{ display: "none" }}
+                    onChange={function(e){ if (e.target.files && e.target.files[0]) handleBdcFile(e.target.files[0]); e.target.value = ""; }} />
+                  <button onClick={function(){ pdfInputRef.current && pdfInputRef.current.click(); }} disabled={pdfLoading}
+                    style={{ background: GREEN, color: WHITE, border: "none", borderRadius: 8, padding: "8px 14px", fontWeight: 600, fontSize: 13, opacity: pdfLoading ? 0.5 : 1 }}>
+                    {pdfLoading ? "⏳ Analyse…" : "📄 Choisir un PDF"}
+                  </button>
+                </div>
+                {pdfMsg && <div style={{ marginTop: 8, fontSize: 12, color: pdfMsg.indexOf("Erreur") === 0 ? "#c0392b" : MUTED }}>{pdfMsg}</div>}
+              </div>
+
+              <div style={G2}>
+                <Field label="Nom du client" value={data.meta.client} onChange={function(v){ upd(["meta","client"], v); }} />
+                <Field label="Adresse chantier" value={data.meta.adresseChantier} onChange={function(v){ upd(["meta","adresseChantier"], v); }} />
+                <Field label="Date de début" value={data.meta.dateDebut} onChange={function(v){ upd(["meta","dateDebut"], v); }} type="date" />
+                <Field label="Fin prévue" value={data.meta.dateFinPrevue} onChange={function(v){ upd(["meta","dateFinPrevue"], v); }} type="date" />
+              </div>
+              <div style={{ ...G2, marginTop: 12 }}>
+                <div>
+                  <label style={LBL}>Project Manager</label>
+                  <select value={data.meta.pm} onChange={function(e){ upd(["meta","pm"], e.target.value); }} style={{ width: "100%" }}>
+                    <option value="">— Sélectionner —</option>
+                    {Object.keys(PM_DATA).map(function(n){ return <option key={n} value={n}>{n}</option>; })}
+                  </select>
+                  {(pm.tel || pm.email) && <div style={{ fontSize: 11, color: MUTED, marginTop: 4 }}>{[pm.tel, pm.email].filter(Boolean).join(" · ")}</div>}
+                </div>
+                <Field label="Chef de chantier" value={data.meta.chefChantier} onChange={function(v){ upd(["meta","chefChantier"], v); }} />
+              </div>
+              {data.meta.commandeRef && <div style={{ marginTop: 12, fontSize: 12, color: MUTED }}>Ref bon de commande : <strong style={{ color: TEXT }}>{data.meta.commandeRef}</strong></div>}
+            </Card>
+
+            {/* Type de chantier */}
+            <Card icon="🧱" title="Type de chantier">
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <Chip label="🧱 Isolation de façade" selected={data.typeChantier.facade} onClick={function(){ upd(["typeChantier","facade"], !data.typeChantier.facade); }} />
+                <Chip label="🏠 Toiture" selected={data.typeChantier.toiture} onClick={function(){ upd(["typeChantier","toiture"], !data.typeChantier.toiture); }} />
+              </div>
+              {!data.typeChantier.facade && !data.typeChantier.toiture && <div style={{ fontSize: 12, color: MUTED, marginTop: 10 }}>Sélectionnez au moins un type pour afficher les sections de suivi.</div>}
+            </Card>
+
+            {/* Onglets vue */}
+            {(data.typeChantier.facade || data.typeChantier.toiture) && (
+              <div style={{ ...CARD, marginBottom: 14, padding: 0, overflow: "hidden" }}>
+                <div style={{ display: "flex" }}>
+                  <button onClick={function(){ setView("section"); }} style={{ flex: 1, padding: "12px 14px", border: "none", background: view === "section" ? GREEN_LIGHT : WHITE, color: view === "section" ? GREEN : MUTED, fontWeight: view === "section" ? 700 : 500, fontSize: 13, borderBottom: view === "section" ? "2.5px solid " + GREEN : "2.5px solid transparent", cursor: "pointer", fontFamily: "inherit" }}>📂 Par section</button>
+                  <button onClick={function(){ setView("chrono"); }} style={{ flex: 1, padding: "12px 14px", border: "none", background: view === "chrono" ? GREEN_LIGHT : WHITE, color: view === "chrono" ? GREEN : MUTED, fontWeight: view === "chrono" ? 700 : 500, fontSize: 13, borderBottom: view === "chrono" ? "2.5px solid " + GREEN : "2.5px solid transparent", cursor: "pointer", fontFamily: "inherit" }}>📅 Par jour (chronologique)</button>
+                </div>
+              </div>
+            )}
+
+            {view === "section" && (
+              <div>
+                {/* Façade : sections d'avancement */}
+                {data.typeChantier.facade && (
+                  <div style={{ marginBottom: 8 }}>
+                    <div style={{ ...SH, marginBottom: 10, color: GREEN }}><span>🧱</span><span style={{ flex: 1 }}>Isolation de façade (ETICS)</span><ProgressBar pct={facadeAvg} color={GREEN} /><span style={{ fontSize: 11, fontWeight: 700, color: GREEN, minWidth: 38, textAlign: "right" }}>{facadeAvg}%</span></div>
+                    {FACADE_SECTIONS.map(function(def){
+                      var sec = (data.facade && data.facade.sections && data.facade.sections[def.key]) || { passages: [], avancementPct: 0 };
+                      return (
+                        <SectionCard
+                          key={def.key}
+                          section={sec}
+                          sectionDef={def}
+                          scopeLabel="Façade"
+                          accent={GREEN}
+                          onUpdate={function(newSec){ updateFacadeSection(def.key, newSec); }}
+                          onAddPassage={function(date){ addFacadePassage(def.key, date); }}
+                          renderPhotoZone={renderPhotoZone}
+                        />
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Toitures (multi) */}
+                {data.typeChantier.toiture && (
+                  <div>
+                    {(data.toitures || []).map(function(rf, ri){
+                      return (
+                        <RoofProgressCard
+                          key={rf.id}
+                          roof={rf}
+                          index={ri}
+                          onUpdateSection={function(secKey, newSec){ updateRoofSection(ri, secKey, newSec); }}
+                          onAddPassage={function(secKey, date){ addRoofPassage(ri, secKey, date); }}
+                          onRemove={function(){ removeRoof(ri); }}
+                          onMoveUp={ri > 0 ? function(){ moveRoof(ri, ri-1); } : null}
+                          onMoveDown={ri < (data.toitures||[]).length-1 ? function(){ moveRoof(ri, ri+1); } : null}
+                          onRename={function(v){ renameRoof(ri, v); }}
+                          renderPhotoZone={renderPhotoZone}
+                        />
+                      );
+                    })}
+                    <div style={{ ...CARD, marginBottom: 14, padding: "0.9rem 1.1rem", display: "flex", flexDirection: "column", gap: 8 }}>
+                      <div style={{ ...SH, marginBottom: 8 }}><span>🏠</span><span>Ajouter une toiture</span></div>
+                      <div style={{ fontSize: 12, color: MUTED, marginBottom: 6 }}>Un bâtiment peut combiner plusieurs toitures (pente et plate). Chaque toiture aura son propre suivi par section.</div>
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                        <button onClick={function(){ addRoof("pente"); }} style={{ background: GREEN, color: WHITE, border: "none", borderRadius: 8, padding: "10px 14px", fontWeight: 600, fontSize: 13 }}>+ Toiture en pente</button>
+                        <button onClick={function(){ addRoof("plate"); }} style={{ background: WHITE, color: GREEN, border: "1.5px solid " + GREEN, borderRadius: 8, padding: "10px 14px", fontWeight: 600, fontSize: 13 }}>+ Toiture plate</button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {view === "chrono" && <ChronologicalView data={data} renderPhotoZone={renderPhotoZone} />}
+
+            {/* Clôture de journée (équivalent We Green Rapport) */}
+            <CloturJourneeBlock
+              journees={data.journeesCloturees || []}
+              setJournees={function(updater){
+                setData(function(prev){
+                  var next = typeof updater === "function" ? updater(prev.journeesCloturees || []) : updater;
+                  return setIn(prev, ["journeesCloturees"], next);
+                });
+              }}
+              currentUser={user}
+              onLogged={function(entry){
+                if (ref && user) wcLogAudit(ref, user, "cloture_journee", entry.date + (entry.note ? " · " + entry.note.slice(0,60) : ""));
+              }}
+            />
+
+            {/* Remarques générales */}
+            <Card icon="📝" title="Remarques générales" defaultOpen={false}>
+              <textarea value={data.remarques} onChange={function(e){ upd(["remarques"], e.target.value); }} rows={4}
+                placeholder="Points en suspens, particularités, demandes client, points à signaler en réunion…"
+                style={{ width: "100%", resize: "vertical", boxSizing: "border-box" }} />
+            </Card>
+          </div>
+          )}
+        </div>
+      </div>
+      )}
+
+      {/* Historique (versions + audit) */}
+      {showHistory && ref && (
+        <HistoryPanel
+          refChantier={ref}
+          currentUser={user}
+          onRestore={function(restoredData){
+            setData(function(d){ return mergeDefaults(makeEmptyData(ref), restoredData); });
+          }}
+          onClose={function(){ setShowHistory(false); }}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ── Petite carte repliable (réutilisée pour identification et remarques) ── */
+function Card({ icon, title, children, defaultOpen = true, accent }) {
+  var [open, setOpen] = useState(defaultOpen);
+  return (
+    <div style={{ ...CARD, marginBottom: 14, padding: "0.9rem 1.1rem" }}>
+      <div onClick={function(){ setOpen(!open); }}
+        style={{ ...SH, marginBottom: open ? 16 : 0, cursor: "pointer", borderBottom: open ? SH.borderBottom : "none", paddingBottom: open ? 10 : 0, color: accent || GREEN }}>
+        <span style={{ fontSize: 15 }}>{icon}</span>
+        <span style={{ flex: 1 }}>{title}</span>
+        <span style={{ color: MUTED, fontSize: 13 }}>{open ? "▾" : "▸"}</span>
+      </div>
+      {open && children}
+    </div>
+  );
+}
+
+
+WCApp = App;
+
+})();
+
+
 function App() {
   var [user, setUser] = useState(null);
   var [data, setData] = useState(makeDefaultData);
@@ -8280,7 +10147,34 @@ function App() {
   );
 }
 
-ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+/* ─────────────────────────────────────────────────────────────────────────
+   ROUTER : détecte l'entité (We Green par défaut, We Cover si la référence
+   commence par WC-) et monte l'App appropriée. We Green prod reste l'app
+   par défaut — aucun chemin existant ne change pour les utilisateurs WG.
+   ─────────────────────────────────────────────────────────────────────── */
+function detectEntity() {
+  try {
+    var p = new URLSearchParams(window.location.search);
+    var refQ = p.get("ref") || "";
+    if (/^WC[-_]/i.test(refQ)) return "wcover";
+    var appQ = p.get("app");
+    if (appQ === "wcover") return "wcover";
+    if (appQ === "wgreen" || appQ === "wge") return "wgreen";
+  } catch(e){}
+  return "wgreen";
+}
+
+function WCRouter() {
+  var [entity, setEntity] = React.useState(detectEntity);
+  React.useEffect(function(){
+    function onSwitch(e){ if (e && e.detail) setEntity(e.detail); }
+    window.addEventListener("wge-entity-switch", onSwitch);
+    return function(){ window.removeEventListener("wge-entity-switch", onSwitch); };
+  }, []);
+  return entity === "wcover" ? <WCApp/> : <App/>;
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<WCRouter/>);
 </script>
 </body>
 </html>
