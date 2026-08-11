@@ -9075,7 +9075,7 @@ function App() {
         <div style={{ maxWidth: 920, margin: "0 auto", padding: "16px 14px 80px" }}>
 
           {/* Référence chantier */}
-          <div style={{ ...CARD, marginBottom: isMobileView ? 10 : 14, padding: isMobileView ? "0.6rem 0.75rem" : undefined }}>
+          <div style={{ ...CARD, marginBottom: isMobileView ? 10 : 14, padding: isMobileView ? "0.6rem 0.75rem" : CARD.padding }}>
             {ref && data.meta.nom_tache && (
               <div style={{ marginBottom: isMobileView ? 6 : 10 }}>
                 <label style={LBL}>Tâche Odoo</label>
@@ -9149,14 +9149,6 @@ function App() {
                 <Field label="Chef de chantier" value={data.meta.chefChantier} onChange={function(v){ upd(["meta","chefChantier"], v); }} />
               </div>
               {data.meta.commandeRef && <div style={{ marginTop: 12, fontSize: 12, color: MUTED }}>Ref bon de commande : <strong style={{ color: TEXT }}>{data.meta.commandeRef}</strong></div>}
-              {data.meta.nom_tache && (
-                <div style={{ marginTop: 12 }}>
-                  <label style={LBL}>Tâche Odoo</label>
-                  <input type="text" value={data.meta.nom_tache} readOnly
-                    style={{ width: "100%", background: "#f4f4f0", color: "#555", cursor: "default" }}
-                    placeholder="Nom de la tâche" />
-                </div>
-              )}
             </Card>
 
             {/* Type de chantier */}
