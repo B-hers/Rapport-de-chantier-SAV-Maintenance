@@ -7425,9 +7425,6 @@ const PM_DATA = {
   "Yohan Poullain":          { tel: "+33 6 42 96 82 63", email: "yohan.poullain@we-green.be" },
 };
 
-/* ── Supabase (même projet que le briefing, TABLE séparée pour le rapport) ── */
-const WC_TABLE = "rapports_wecover";
-
 // ── Storage upload (bucket We Green prod + préfixe wecover-rapport/) ──
 async function uploadPhotoToStorage(ref, catKey, base64DataUrl, fileName) {
   if (!base64DataUrl || !base64DataUrl.startsWith("data:")) return base64DataUrl;
@@ -7494,10 +7491,14 @@ async function wcUploadAllPhotos(ref, data) {
   return { data: Object.assign({}, data, { facade: newFacade, toitures: newToitures }), changed: true };
 }
 
-/* ── Chargement / sauvegarde (upsert sur ref) ── */
+/* ── Chargement / sauvegarde — réutilise "feuilles_controle", la table déjà
+      existante et éprouvée en production pour We Green. Les lignes We Cover sont
+      distinguées par label="wecover" ; une seule ligne active par référence
+      (identifiée par son id Supabase, suivi côté App). ── */
 async function wcLoad(ref) {
   try {
-    var res = await fetch(SUPA_URL + "/rest/v1/" + WC_TABLE + "?ref=eq." + encodeURIComponent(ref) + "&select=data,updated_at", {
+    var res = await fetch(SUPA_URL + "/rest/v1/feuilles_controle?ref=eq." + encodeURIComponent(ref) +
+      "&label=eq.wecover&select=id,ref,label,data,updated_at&order=updated_at.desc&limit=1", {
       headers: { "apikey": SUPA_KEY, "Authorization": "Bearer " + SUPA_KEY }
     });
     if (!res.ok) return { ok: false, row: null };
@@ -7505,18 +7506,36 @@ async function wcLoad(ref) {
     return { ok: true, row: (rows && rows[0]) ? rows[0] : null };
   } catch(e) { return { ok: false, row: null }; }
 }
-async function wcSave(ref, data) {
+
+/* rowId : id Supabase de la ligne We Cover déjà créée pour ce ref (null si c'est
+   le tout premier enregistrement). Retourne { ok, id } — l'id doit être conservé
+   côté App (state) et repassé aux sauvegardes suivantes, sinon une nouvelle ligne
+   serait créée à chaque fois au lieu de mettre à jour la même. */
+async function wcSave(ref, data, rowId) {
   try {
-    var res = await fetch(SUPA_URL + "/rest/v1/" + WC_TABLE + "?on_conflict=ref", {
+    if (rowId) {
+      var res = await fetch(SUPA_URL + "/rest/v1/feuilles_controle?id=eq." + rowId, {
+        method: "PATCH",
+        headers: {
+          "apikey": SUPA_KEY, "Authorization": "Bearer " + SUPA_KEY,
+          "Content-Type": "application/json", "Prefer": "return=minimal"
+        },
+        body: JSON.stringify({ data: data, updated_at: new Date().toISOString() })
+      });
+      return { ok: res.ok, id: rowId };
+    }
+    var res2 = await fetch(SUPA_URL + "/rest/v1/feuilles_controle", {
       method: "POST",
       headers: {
         "apikey": SUPA_KEY, "Authorization": "Bearer " + SUPA_KEY,
-        "Content-Type": "application/json", "Prefer": "resolution=merge-duplicates,return=minimal"
+        "Content-Type": "application/json", "Prefer": "return=representation"
       },
-      body: JSON.stringify({ ref: ref, data: data, updated_at: new Date().toISOString() })
+      body: JSON.stringify({ ref: ref, label: "wecover", data: data, updated_at: new Date().toISOString() })
     });
-    return res.ok;
-  } catch(e) { return false; }
+    if (!res2.ok) return { ok: false, id: null };
+    var rows2 = await res2.json();
+    return { ok: true, id: (rows2 && rows2[0]) ? rows2[0].id : null };
+  } catch(e) { return { ok: false, id: null }; }
 }
 
 /* Lecture du briefing associé (cross-ref) pour pré-remplir certaines méta. Optionnel. */
@@ -7536,10 +7555,6 @@ async function wcLoadBriefing(ref) {
   } catch(e) { return null; }
 }
 
-// ── Snapshots, audit, parser bon de commande ──
-const WC_VERSIONS_TABLE = "rapports_wecover_versions";
-const WC_AUDIT_TABLE = "rapports_wecover_audit";
-
 function _userTag(user) {
   if (!user) return "anonyme";
   if (user.type === "wge") return user.name || user.email || "WGE";
@@ -7547,11 +7562,11 @@ function _userTag(user) {
   return user.name || user.email || "utilisateur";
 }
 
-/* Lit la signature courte (avancement global, nb passages, nb photos) pour résumer un snapshot */
 /* Lit la signature courte (jours actifs, nb photos) pour résumer un snapshot.
-   'passages' est conservé comme nom de clé pour la compatibilité avec la colonne
-   Supabase existante (passages_count) ; il représente désormais le nombre de
-   jours distincts où des photos ont été ajoutées (déduit de leur addedAt). */
+   'passages' est conservé comme nom de clé pour la compatibilité avec les
+   champs déjà lus par HistoryPanel (passages_count) ; il représente désormais
+   le nombre de jours distincts où des photos ont été ajoutées (déduit de leur
+   addedAt), calculé à la volée plutôt que stocké en colonne dédiée. */
 function snapshotSignature(data) {
   var photos = 0;
   var days = {};
@@ -7576,25 +7591,24 @@ function snapshotSignature(data) {
   return { passages: Object.keys(days).length, photos: photos };
 }
 
+/* ── Snapshots (historique) — réutilise la table générique "versions" de We Green.
+      ref distinctif "<ref>_wc" pour ne jamais entrer en collision avec les
+      versions du contrôle-qualité We Green sur la même référence chantier. ── */
+function wcVersionRef(ref) { return ref + "_wc"; }
+
 async function wcSaveSnapshot(ref, data, user, label) {
   try {
-    var sig = snapshotSignature(data);
-    var body = {
-      ref: ref,
-      label: label || "",
-      author: _userTag(user),
-      data: data,
-      passages_count: sig.passages,
-      photos_count: sig.photos,
-      created_at: new Date().toISOString()
-    };
-    var res = await fetch(SUPA_URL + "/rest/v1/" + WC_VERSIONS_TABLE, {
+    var res = await fetch(SUPA_URL + "/rest/v1/versions", {
       method: "POST",
       headers: {
         "apikey": SUPA_KEY, "Authorization": "Bearer " + SUPA_KEY,
         "Content-Type": "application/json", "Prefer": "return=minimal"
       },
-      body: JSON.stringify(body)
+      body: JSON.stringify({
+        ref: wcVersionRef(ref), data: data,
+        user_email: user && user.email ? user.email : "", user_name: _userTag(user),
+        label: label || "", created_at: new Date().toISOString()
+      })
     });
     return res.ok;
   } catch(e) { return false; }
@@ -7602,40 +7616,46 @@ async function wcSaveSnapshot(ref, data, user, label) {
 
 async function wcLoadSnapshots(ref) {
   try {
-    var res = await fetch(SUPA_URL + "/rest/v1/" + WC_VERSIONS_TABLE +
-      "?ref=eq." + encodeURIComponent(ref) +
-      "&select=id,label,author,passages_count,photos_count,created_at" +
-      "&order=created_at.desc&limit=50", {
+    var res = await fetch(SUPA_URL + "/rest/v1/versions?ref=eq." + encodeURIComponent(wcVersionRef(ref)) +
+      "&select=id,user_name,label,created_at,data&order=created_at.desc&limit=50", {
       headers: { "apikey": SUPA_KEY, "Authorization": "Bearer " + SUPA_KEY }
     });
     if (!res.ok) return [];
-    return await res.json();
+    var rows = await res.json();
+    return (rows || []).map(function(r){
+      var sig = snapshotSignature(r.data);
+      return { id: r.id, label: r.label, author: r.user_name, passages_count: sig.passages, photos_count: sig.photos, created_at: r.created_at };
+    });
   } catch(e) { return []; }
 }
 
 async function wcLoadSnapshotById(id) {
   try {
-    var res = await fetch(SUPA_URL + "/rest/v1/" + WC_VERSIONS_TABLE +
-      "?id=eq." + encodeURIComponent(id) + "&select=data,created_at,label,author", {
+    var res = await fetch(SUPA_URL + "/rest/v1/versions?id=eq." + encodeURIComponent(id) + "&select=data,created_at,label,user_name", {
       headers: { "apikey": SUPA_KEY, "Authorization": "Bearer " + SUPA_KEY }
     });
     if (!res.ok) return null;
     var rows = await res.json();
-    return rows && rows[0] ? rows[0] : null;
+    if (!rows || !rows[0]) return null;
+    return { data: rows[0].data, created_at: rows[0].created_at, label: rows[0].label, author: rows[0].user_name };
   } catch(e) { return null; }
 }
 
+/* ── Journal d'activité — réutilise la table générique "audit_log" de We Green.
+      Même convention de ref distinctif "<ref>_wc". ── */
+function wcAuditRef(ref) { return ref + "_wc"; }
+
 async function wcLogAudit(ref, user, action, detail) {
   try {
-    await fetch(SUPA_URL + "/rest/v1/" + WC_AUDIT_TABLE, {
+    await fetch(SUPA_URL + "/rest/v1/audit_log", {
       method: "POST",
       headers: {
         "apikey": SUPA_KEY, "Authorization": "Bearer " + SUPA_KEY,
         "Content-Type": "application/json", "Prefer": "return=minimal"
       },
       body: JSON.stringify({
-        ref: ref, author: _userTag(user), action: action, detail: detail || "",
-        created_at: new Date().toISOString()
+        ref: wcAuditRef(ref), user_name: _userTag(user), user_email: user && user.email ? user.email : "",
+        action: action, detail: detail || "", created_at: new Date().toISOString()
       })
     });
   } catch(e) { /* silencieux */ }
@@ -7643,14 +7663,13 @@ async function wcLogAudit(ref, user, action, detail) {
 
 async function wcLoadAudit(ref) {
   try {
-    var res = await fetch(SUPA_URL + "/rest/v1/" + WC_AUDIT_TABLE +
-      "?ref=eq." + encodeURIComponent(ref) +
-      "&select=author,action,detail,created_at" +
-      "&order=created_at.desc&limit=100", {
+    var res = await fetch(SUPA_URL + "/rest/v1/audit_log?ref=eq." + encodeURIComponent(wcAuditRef(ref)) +
+      "&select=user_name,action,detail,created_at&order=created_at.desc&limit=100", {
       headers: { "apikey": SUPA_KEY, "Authorization": "Bearer " + SUPA_KEY }
     });
     if (!res.ok) return [];
-    return await res.json();
+    var rows = await res.json();
+    return (rows || []).map(function(r){ return { author: r.user_name, action: r.action, detail: r.detail, created_at: r.created_at }; });
   } catch(e) { return []; }
 }
 
@@ -8749,6 +8768,7 @@ function App() {
   var [pdfMsg, setPdfMsg] = useState("");
   var [pdfLoading, setPdfLoading] = useState(false);
   var firstLoad = useRef(true);
+  var rowIdRef = useRef(null); // id Supabase (feuilles_controle) de la ligne We Cover active
   var pdfInputRef = useRef();
 
   // Sync user via events (login Google ou sous-traitant)
@@ -8782,8 +8802,10 @@ function App() {
       base = normalize(base);
       base.ref = r;
       found = true;
+      rowIdRef.current = resu.row.id || null;
       setSaveStatus("saved");
     } else {
+      rowIdRef.current = null;
       try { var ls = localStorage.getItem("wc_rapport_" + r); if (ls) { base = mergeDefaults(base, JSON.parse(ls)); base = normalize(base); base.ref = r; found = true; } } catch(e){}
       setSaveStatus(resu.ok ? "new" : "local");
     }
@@ -8848,12 +8870,13 @@ function App() {
       var toSave = data;
       if (up.changed) { toSave = up.data; setData(up.data); }
       try { localStorage.setItem("wc_rapport_" + ref, JSON.stringify(toSave)); } catch(e){}
-      var ok = await wcSave(ref, toSave);
-      setSaveStatus(ok ? "saved" : "local");
+      var saveRes = await wcSave(ref, toSave, rowIdRef.current);
+      if (saveRes.ok && saveRes.id) rowIdRef.current = saveRes.id;
+      setSaveStatus(saveRes.ok ? "saved" : "local");
 
       // Auto-snapshot : au max un toutes les 15 minutes
       var now = Date.now();
-      if (ok && (now - lastSnapshotAt) > 15*60*1000) {
+      if (saveRes.ok && (now - lastSnapshotAt) > 15*60*1000) {
         var snapOk = await wcSaveSnapshot(ref, toSave, user, "auto");
         if (snapOk) setLastSnapshotAt(now);
       }
