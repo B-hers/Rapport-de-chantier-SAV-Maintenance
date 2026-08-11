@@ -9053,14 +9053,27 @@ function App() {
         <div style={{ maxWidth: 920, margin: "0 auto", padding: "16px 14px 80px" }}>
 
           {/* Référence chantier */}
-          <div style={{ ...CARD, marginBottom: 14, display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap" }}>
-            <div style={{ flex: 1, minWidth: 200 }}>
-              <label style={LBL}>Référence chantier (Odoo)</label>
-              <input value={refInput} onChange={function(e){ setRefInput(e.target.value); }}
-                onKeyDown={function(e){ if (e.key === "Enter") loadRef(refInput); }}
-                placeholder="ex : WC-S05041" style={{ width: "100%" }} />
+          <div style={{ ...CARD, marginBottom: 14 }}>
+            {ref && data.meta.nom_tache && (
+              <div style={{ marginBottom: 10 }}>
+                <label style={LBL}>Tâche Odoo</label>
+                <div style={{ fontSize: 15, fontWeight: 700, color: GREEN }}>{data.meta.nom_tache}</div>
+              </div>
+            )}
+            <div style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap" }}>
+              <div style={{ flex: 1, minWidth: 200 }}>
+                <label style={LBL}>Référence chantier (Odoo)</label>
+                {ref ? (
+                  <input value={ref} readOnly title="Référence du bon de commande — fixe, non modifiable dans le rapport"
+                    style={{ width: "100%", background: "#f4f4f0", color: "#555", cursor: "default" }} />
+                ) : (
+                  <input value={refInput} onChange={function(e){ setRefInput(e.target.value); }}
+                    onKeyDown={function(e){ if (e.key === "Enter") loadRef(refInput); }}
+                    placeholder="ex : WC-S05041" style={{ width: "100%" }} />
+                )}
+              </div>
+              {!ref && <button onClick={function(){ loadRef(refInput); }} style={{ background: GREEN, color: WHITE, border: "none", borderRadius: 8, padding: "10px 16px", fontWeight: 600 }}>Charger / Créer</button>}
             </div>
-            <button onClick={function(){ loadRef(refInput); }} style={{ background: GREEN, color: WHITE, border: "none", borderRadius: 8, padding: "10px 16px", fontWeight: 600 }}>Charger / Créer</button>
           </div>
 
           {!ref ? (
