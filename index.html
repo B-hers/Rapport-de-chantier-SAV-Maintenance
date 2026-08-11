@@ -122,6 +122,8 @@ button { font-family: inherit; cursor: pointer; }
           <option value="Leimir">Leimir</option>
           <option value="Konrad">Konrad</option>
           <option value="Lohan">Lohan</option>
+          <option value="L&amp;V Renovation">L&amp;V Renovation</option>
+          <option value="Éco Gevel">Éco Gevel</option>
           <option value="__autre__">Autre — saisir le nom</option>
         </select>
         <input id="st-name-input" type="text" placeholder="Votre nom ou société…" style="width:100%; padding:9px 12px; border:1px solid #d0d0c8; border-radius:8px; font-size:14px; font-family:inherit; margin-top:8px; display:none; box-sizing:border-box;" />
@@ -7407,6 +7409,7 @@ const PM_DATA = {
   "Olivier Herz":            { tel: "", email: "" },
   "Alexander Vos":           { tel: "+32 475 86 92 76", email: "alexander.vos@we-green.be" },
   "Benjamin Hers":           { tel: "+32 479 62 75 11", email: "benjamin.hers@we-green.be" },
+  "Cédric":                  { tel: "", email: "" },
   "Dominic Rousselle":       { tel: "+32 495 81 16 70", email: "dominic.rousselle@we-green.be" },
   "Enguerrand de Formanoir": { tel: "+32 495 87 09 86", email: "enguerrand.deformanoir@we-green.be" },
   "Hugues Léglise":          { tel: "0496 57 68 66",   email: "hugues.leglise@gmail.com" },
@@ -7423,6 +7426,7 @@ const PM_DATA = {
 };
 
 /* ── Supabase (même projet que le briefing, TABLE séparée pour le rapport) ── */
+const WC_TABLE = "rapports_wecover";
 
 // ── Storage upload (bucket We Green prod + préfixe wecover-rapport/) ──
 async function uploadPhotoToStorage(ref, catKey, base64DataUrl, fileName) {
@@ -7467,13 +7471,7 @@ async function wcUploadAllPhotos(ref, data) {
   for (var i = 0; i < facKeys.length; i++) {
     var k = facKeys[i];
     var sec = Object.assign({}, newFacSections[k]);
-    var newPassages = [];
-    for (var p = 0; p < (sec.passages || []).length; p++) {
-      var pass = Object.assign({}, sec.passages[p]);
-      pass.photos = await uploadList(pass.photos, "fac_" + k + "_" + pass.id);
-      newPassages.push(pass);
-    }
-    sec.passages = newPassages;
+    sec.photos = await uploadList(sec.photos, "fac_" + k);
     newFacSections[k] = sec;
   }
   newFacade.sections = newFacSections;
@@ -7486,13 +7484,7 @@ async function wcUploadAllPhotos(ref, data) {
     for (var rk = 0; rk < rfKeys.length; rk++) {
       var rsk = rfKeys[rk];
       var rsec = Object.assign({}, newRfSections[rsk]);
-      var newRPassages = [];
-      for (var rp = 0; rp < (rsec.passages || []).length; rp++) {
-        var rpass = Object.assign({}, rsec.passages[rp]);
-        rpass.photos = await uploadList(rpass.photos, "toit_" + rf.id + "_" + rsk + "_" + rpass.id);
-        newRPassages.push(rpass);
-      }
-      rsec.passages = newRPassages;
+      rsec.photos = await uploadList(rsec.photos, "toit_" + rf.id + "_" + rsk);
       newRfSections[rsk] = rsec;
     }
     rf.sections = newRfSections;
@@ -7556,25 +7548,32 @@ function _userTag(user) {
 }
 
 /* Lit la signature courte (avancement global, nb passages, nb photos) pour résumer un snapshot */
+/* Lit la signature courte (jours actifs, nb photos) pour résumer un snapshot.
+   'passages' est conservé comme nom de clé pour la compatibilité avec la colonne
+   Supabase existante (passages_count) ; il représente désormais le nombre de
+   jours distincts où des photos ont été ajoutées (déduit de leur addedAt). */
 function snapshotSignature(data) {
-  var pass = 0, photos = 0;
-  if (data && data.facade && data.facade.sections) {
-    Object.keys(data.facade.sections).forEach(function(k){
-      var sec = data.facade.sections[k];
-      pass += (sec.passages || []).length;
-      (sec.passages || []).forEach(function(p){ photos += (p.photos || []).length; });
+  var photos = 0;
+  var days = {};
+  function scan(sec) {
+    if (!sec) return;
+    (sec.photos || []).forEach(function(p){
+      photos++;
+      if (p && p.addedAt) {
+        var d = String(p.addedAt).slice(0, 10);
+        days[d] = true;
+      }
     });
+  }
+  if (data && data.facade && data.facade.sections) {
+    Object.keys(data.facade.sections).forEach(function(k){ scan(data.facade.sections[k]); });
   }
   if (data && Array.isArray(data.toitures)) {
     data.toitures.forEach(function(r){
-      Object.keys(r.sections || {}).forEach(function(k){
-        var sec = r.sections[k];
-        pass += (sec.passages || []).length;
-        (sec.passages || []).forEach(function(p){ photos += (p.photos || []).length; });
-      });
+      Object.keys(r.sections || {}).forEach(function(k){ scan(r.sections[k]); });
     });
   }
-  return { passages: pass, photos: photos };
+  return { passages: Object.keys(days).length, photos: photos };
 }
 
 async function wcSaveSnapshot(ref, data, user, label) {
@@ -7841,27 +7840,27 @@ function todayISO() {
 }
 function uid(prefix) { return (prefix || "id") + "_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 7); }
 
-function makeEmptyPassage(date, intervenants) {
+/* ── Section vide (modèle simplifié) : plus de passages datés, plus d'avancement %.
+      Une section = quantité courante (optionnelle) + photos + notes.
+      La date de chaque photo est capturée automatiquement à l'ajout (comme We Green). ── */
+function makeEmptySection() {
   return {
-    id: uid("p"),
-    date: date || todayISO(),
-    intervenants: intervenants || "",  // équipe / personne sur place (pré-rempli depuis le login)
-    quantite: "",                       // métré du jour (libre : m², ml, nb, etc.)
-    photos: [],                         // [ {name,url,type,drawingUrl?,textObjects?} ]
-    notes: ""
+    quantite: "",  // valeur courante, libre : m², ml, nb, etc. (optionnel)
+    notes: "",     // notes libres (optionnel)
+    photos: []     // [ {name,url,type,addedAt,uploadedBy,drawingUrl?,textObjects?} ]
   };
 }
 
 function makeEmptyFacade() {
   var sections = {};
-  FACADE_SECTIONS.forEach(function(s){ sections[s.key] = { passages: [], avancementPct: 0 }; });
+  FACADE_SECTIONS.forEach(function(s){ sections[s.key] = makeEmptySection(); });
   return { sections: sections, notes: "" };
 }
 
 function makeEmptyRoof(type) {
   var defs = roofSections(type || "pente");
   var sections = {};
-  defs.forEach(function(s){ sections[s.key] = { passages: [], avancementPct: 0 }; });
+  defs.forEach(function(s){ sections[s.key] = makeEmptySection(); });
   return {
     id: uid("t"),
     nom: "",
@@ -7874,14 +7873,14 @@ function makeEmptyRoof(type) {
 /* ── Modèle de données vide ── */
 function makeEmptyData(ref) {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     societe: "wecover",
     ref: ref || "",
     meta: {
       client: "", adresseChantier: "",
       dateDebut: "", dateFinPrevue: "",
       pm: "", chefChantier: "",
-      commandeRef: ""
+      commandeRef: "", nom_tache: ""
     },
     typeChantier: { facade: false, toiture: false },
     facade: makeEmptyFacade(),
@@ -7907,20 +7906,61 @@ function mergeDefaults(base, loaded) {
   return out;
 }
 
-/* ── Migration : assure que toutes les sections existent pour la façade et les toitures
-      chargées (clé manquante = passages vides). Tolère un schéma plus ancien. ── */
+/* ── Migration : une ancienne section au format { passages:[...], avancementPct } est
+      convertie vers le nouveau format { quantite, notes, photos }. Rien n'est perdu :
+      - toutes les photos de tous les anciens passages sont regroupées (ordre chronologique,
+        addedAt/uploadedBy conservés tels quels) ;
+      - le détail de chaque ancien passage (date, intervenants, quantité, notes) est replié
+        dans un historique lisible ajouté en tête des notes, préservant l'information passée. ── */
+function migrateSectionData(sec) {
+  if (!sec) return makeEmptySection();
+  // Déjà au nouveau format (pas de tableau 'passages') → rien à faire
+  if (!Array.isArray(sec.passages)) {
+    return {
+      quantite: sec.quantite || "",
+      notes: sec.notes || "",
+      photos: Array.isArray(sec.photos) ? sec.photos : []
+    };
+  }
+  // Ancien format détecté → migration
+  var allPhotos = [];
+  var historyLines = [];
+  sec.passages.forEach(function(p){
+    if (!p) return;
+    (p.photos || []).forEach(function(ph){ allPhotos.push(ph); });
+    var head = [p.date || "date inconnue", p.intervenants ? "— " + p.intervenants : ""].filter(Boolean).join(" ");
+    var bodyParts = [];
+    if (p.quantite) bodyParts.push("Quantité : " + p.quantite);
+    if (p.notes) bodyParts.push(p.notes);
+    if (bodyParts.length) historyLines.push(head + "\n" + bodyParts.join("\n"));
+    else if (head.trim()) historyLines.push(head);
+  });
+  // Tri chronologique des photos par addedAt si disponible
+  allPhotos.sort(function(a, b){
+    var ta = a && a.addedAt ? Date.parse(a.addedAt) : 0;
+    var tb = b && b.addedAt ? Date.parse(b.addedAt) : 0;
+    return ta - tb;
+  });
+  var migratedNotes = "";
+  if (historyLines.length) {
+    migratedNotes = "── Historique migré (anciens passages datés) ──\n\n" + historyLines.join("\n\n");
+  }
+  return { quantite: "", notes: migratedNotes, photos: allPhotos };
+}
+
+/* ── Assure que toutes les sections existent pour la façade et les toitures chargées,
+      et migre automatiquement tout ancien format rencontré. ── */
 function normalize(d) {
   if (!d) return d;
   var out = Object.assign({}, d);
-  // Façade : garantir que chaque section connue existe
+  // Façade : garantir que chaque section connue existe, migrer si besoin
   var fac = Object.assign({}, d.facade || {});
   fac.sections = Object.assign({}, fac.sections || {});
   FACADE_SECTIONS.forEach(function(s){
-    if (!fac.sections[s.key]) fac.sections[s.key] = { passages: [], avancementPct: 0 };
-    if (!Array.isArray(fac.sections[s.key].passages)) fac.sections[s.key].passages = [];
+    fac.sections[s.key] = migrateSectionData(fac.sections[s.key]);
   });
   out.facade = fac;
-  // Toitures : garantir id, type, sections
+  // Toitures : garantir id, type, sections, migrer si besoin
   out.toitures = (d.toitures || []).map(function(r){
     var nr = Object.assign({}, r);
     if (!nr.id) nr.id = uid("t");
@@ -7928,25 +7968,16 @@ function normalize(d) {
     var defs = roofSections(nr.type);
     nr.sections = Object.assign({}, nr.sections || {});
     defs.forEach(function(s){
-      if (!nr.sections[s.key]) nr.sections[s.key] = { passages: [], avancementPct: 0 };
-      if (!Array.isArray(nr.sections[s.key].passages)) nr.sections[s.key].passages = [];
+      nr.sections[s.key] = migrateSectionData(nr.sections[s.key]);
     });
     return nr;
   });
   return out;
 }
 
-/* ── Stats / avancement ── */
+/* ── Stats ── */
 function countSectionPhotos(section) {
-  if (!section || !Array.isArray(section.passages)) return 0;
-  return section.passages.reduce(function(acc, p){ return acc + ((p.photos || []).length); }, 0);
-}
-function countSectionPassages(section) { return section && Array.isArray(section.passages) ? section.passages.length : 0; }
-function avgAvancement(sections) {
-  var keys = Object.keys(sections || {});
-  if (!keys.length) return 0;
-  var sum = keys.reduce(function(acc, k){ return acc + (Number(sections[k].avancementPct) || 0); }, 0);
-  return Math.round(sum / keys.length);
+  return (section && Array.isArray(section.photos)) ? section.photos.length : 0;
 }
 
 /* ── deep immutable set ── */
@@ -8001,100 +8032,16 @@ function Field({ label, value, onChange, placeholder, type, unit }){
 }
 
 // ── Composants React We Cover ──
-function ProgressBar({ pct, color }) {
-  var v = Math.max(0, Math.min(100, Number(pct) || 0));
-  var c = color || GREEN;
-  return (
-    <div style={{ background: "#eee", borderRadius: 6, height: 6, overflow: "hidden", minWidth: 80 }}>
-      <div style={{ width: v + "%", background: c, height: "100%", transition: "width 0.18s" }} />
-    </div>
-  );
-}
-
-/* ── Carte d'un passage (1 journée) ── */
-function PassageCard({ passage, sectionKey, onChange, onDelete, allMoveTargets, onMovePhotoTo, renderPhotoZone }) {
+/* ── Carte d'une section : quantité + photos + notes, sans notion de passage/date/% ──
+      La date de chaque photo est capturée automatiquement à l'ajout (comme We Green) ;
+      il n'y a donc plus besoin de choisir une date ou de créer un "passage". ── */
+function SectionCard({ section, sectionDef, scopeLabel, onUpdate, accent, renderPhotoZone, photoScopeKey }) {
   var [open, setOpen] = useState(true);
-  function set(path, v) { onChange(setIn(passage, path, v)); }
-  var fmt = passage.date ? passage.date : "Date à définir";
-  var nPh = (passage.photos || []).length;
-
-  return (
-    <div style={{ background: BG, border: "1px solid " + BORDER, borderRadius: 8, padding: "10px 12px", marginBottom: 8 }}>
-      {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-        <span onClick={function(){ setOpen(!open); }} style={{ cursor: "pointer", fontSize: 14, color: MUTED }}>{open ? "▾" : "▸"}</span>
-        <div style={{ flex: 1, minWidth: 140 }}>
-          <input type="date" value={passage.date} onChange={function(e){ set(["date"], e.target.value); }}
-            style={{ fontWeight: 600, color: GREEN, fontSize: 13, border: "1px solid " + BORDER, background: WHITE, padding: "4px 6px", borderRadius: 6 }} />
-        </div>
-        <span style={{ fontSize: 11, color: MUTED }}>{nPh} photo{nPh > 1 ? "s" : ""}</span>
-        <button title="Supprimer ce passage"
-          onClick={function(){ if (window.confirm("Supprimer ce passage du " + fmt + " ?\nLes photos seront perdues.")) onDelete(); }}
-          style={{ background: "#fdecea", color: "#c0392b", border: "1px solid #f5b7b1", borderRadius: 6, padding: "4px 8px", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>✕</button>
-      </div>
-      {open && (
-        <div style={{ marginTop: 10 }}>
-          <div style={G2}>
-            <Field label="Intervenants" value={passage.intervenants || ""} onChange={function(v){ set(["intervenants"], v); }} placeholder="ex : Sildjan + 2, ou Wissam (We Cover)" />
-            <Field label="Quantité du jour (optionnel)" value={passage.quantite || ""} onChange={function(v){ set(["quantite"], v); }} placeholder="ex : 40 m², 8 ml, 3 chevrons posés…" />
-          </div>
-          <div style={{ marginTop: 10 }}>
-            {renderPhotoZone(passage, sectionKey, allMoveTargets, onMovePhotoTo)}
-          </div>
-          <div style={{ marginTop: 10 }}>
-            <label style={LBL}>Notes du jour</label>
-            <textarea value={passage.notes} onChange={function(e){ set(["notes"], e.target.value); }} rows={2}
-              placeholder="ce qui a été fait, ce qui reste, point bloquant…"
-              style={{ width: "100%", resize: "vertical", boxSizing: "border-box" }} />
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ── Carte d'une section : liste de passages + ajout journée ── */
-function SectionCard({ section, sectionDef, scopeLabel, onUpdate, onAddPassage, accent, renderPhotoZone }) {
-  var [open, setOpen] = useState(true);
-  var passages = (section && section.passages) || [];
-  var photosCount = countSectionPhotos(section);
+  var sec = section || makeEmptySection();
+  var photosCount = countSectionPhotos(sec);
   var acc = accent || GREEN;
 
-  function updPassage(i, newP) {
-    var arr = passages.slice(); arr[i] = newP;
-    onUpdate(Object.assign({}, section, { passages: arr }));
-  }
-  function delPassage(i) {
-    var arr = passages.slice(); arr.splice(i, 1);
-    onUpdate(Object.assign({}, section, { passages: arr }));
-  }
-  function movePhotoBetweenPassages(fromPassageId, photoIdx, toPassageId) {
-    if (fromPassageId === toPassageId) return;
-    var arr = passages.slice();
-    var fi = arr.findIndex(function(p){ return p.id === fromPassageId; });
-    var ti = arr.findIndex(function(p){ return p.id === toPassageId; });
-    if (fi < 0 || ti < 0) return;
-    var fp = Object.assign({}, arr[fi]);
-    var tp = Object.assign({}, arr[ti]);
-    var fpPhotos = (fp.photos || []).slice();
-    if (photoIdx < 0 || photoIdx >= fpPhotos.length) return;
-    var item = fpPhotos.splice(photoIdx, 1)[0];
-    fp.photos = fpPhotos;
-    tp.photos = (tp.photos || []).concat([item]);
-    arr[fi] = fp; arr[ti] = tp;
-    onUpdate(Object.assign({}, section, { passages: arr }));
-  }
-  function setAvancement(v) {
-    var n = Math.max(0, Math.min(100, Number(v) || 0));
-    onUpdate(Object.assign({}, section, { avancementPct: n }));
-  }
-
-  // Construit les cibles "déplacer vers…" pour chaque passage : les autres passages de la même section
-  function moveTargetsFor(currentId) {
-    return passages
-      .filter(function(p){ return p.id !== currentId; })
-      .map(function(p){ return { key: p.id, label: "Passage du " + (p.date || "—") }; });
-  }
+  function set(path, v) { onUpdate(setIn(sec, path, v)); }
 
   return (
     <div style={{ ...CARD, marginBottom: 14, padding: "0.9rem 1.1rem", borderLeft: "4px solid " + acc }}>
@@ -8103,10 +8050,8 @@ function SectionCard({ section, sectionDef, scopeLabel, onUpdate, onAddPassage, 
         <span style={{ fontSize: 15 }}>{sectionDef.icon}</span>
         <span style={{ flex: 1, minWidth: 140 }}>{sectionDef.label}</span>
         <span style={{ fontSize: 10, color: MUTED, fontWeight: 500, textTransform: "none", letterSpacing: 0, marginRight: 6 }}>
-          {passages.length} passage{passages.length > 1 ? "s" : ""} · {photosCount} photo{photosCount > 1 ? "s" : ""}
+          {photosCount} photo{photosCount > 1 ? "s" : ""}
         </span>
-        <ProgressBar pct={section.avancementPct} color={acc} />
-        <span style={{ fontSize: 11, fontWeight: 700, color: acc, minWidth: 38, textAlign: "right" }}>{Math.round(section.avancementPct || 0)}%</span>
         <span style={{ color: MUTED, fontSize: 13 }}>{open ? "▾" : "▸"}</span>
       </div>
 
@@ -8114,42 +8059,17 @@ function SectionCard({ section, sectionDef, scopeLabel, onUpdate, onAddPassage, 
       <div>
         {sectionDef.hint && <div style={{ fontSize: 11, color: MUTED, marginBottom: 10, fontStyle: "italic" }}>{sectionDef.hint}</div>}
 
-        {/* Slider d'avancement */}
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
-          <label style={{ ...LBL, marginBottom: 0 }}>Avancement</label>
-          <input type="range" min="0" max="100" step="5" value={section.avancementPct || 0}
-            onChange={function(e){ setAvancement(e.target.value); }} style={{ flex: 1, minWidth: 140, accentColor: acc }} />
-          <input type="number" min="0" max="100" value={section.avancementPct || 0}
-            onChange={function(e){ setAvancement(e.target.value); }}
-            style={{ width: 64, textAlign: "right" }} />
-          <span style={{ fontSize: 12, color: MUTED }}>%</span>
+        <Field label="Quantité du jour (optionnel)" value={sec.quantite || ""} onChange={function(v){ set(["quantite"], v); }} placeholder="ex : 40 m², 8 ml, 3 chevrons posés…" />
+
+        <div style={{ marginTop: 10 }}>
+          {renderPhotoZone(sec, photoScopeKey, onUpdate)}
         </div>
 
-        {/* Passages */}
-        {passages.length === 0 && (
-          <div style={{ background: BG, border: "1px dashed " + BORDER, borderRadius: 8, padding: "14px 12px", textAlign: "center", color: MUTED, fontSize: 12, marginBottom: 8 }}>
-            Aucun passage enregistré pour cette section. Ajoutez une journée pour déposer les photos du jour.
-          </div>
-        )}
-        {passages.map(function(p, i){
-          return (
-            <PassageCard
-              key={p.id}
-              passage={p}
-              sectionKey={sectionDef.key}
-              onChange={function(np){ updPassage(i, np); }}
-              onDelete={function(){ delPassage(i); }}
-              allMoveTargets={moveTargetsFor(p.id)}
-              onMovePhotoTo={function(photoIdx, toPassageId){ movePhotoBetweenPassages(p.id, photoIdx, toPassageId); }}
-              renderPhotoZone={renderPhotoZone}
-            />
-          );
-        })}
-
-        {/* Boutons d'ajout */}
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 6 }}>
-          <button onClick={function(){ onAddPassage(todayISO()); }} style={{ background: acc, color: WHITE, border: "none", borderRadius: 8, padding: "10px 14px", fontWeight: 600, fontSize: 13 }}>+ Passage d'aujourd'hui</button>
-          <button onClick={function(){ onAddPassage(""); }} style={{ background: WHITE, color: acc, border: "1.5px solid " + acc, borderRadius: 8, padding: "10px 14px", fontWeight: 600, fontSize: 13 }}>+ Autre date</button>
+        <div style={{ marginTop: 10 }}>
+          <label style={LBL}>Notes (optionnel)</label>
+          <textarea value={sec.notes || ""} onChange={function(e){ set(["notes"], e.target.value); }} rows={2}
+            placeholder="ce qui a été fait, ce qui reste, point bloquant…"
+            style={{ width: "100%", resize: "vertical", boxSizing: "border-box" }} />
         </div>
       </div>
       )}
@@ -8158,14 +8078,14 @@ function SectionCard({ section, sectionDef, scopeLabel, onUpdate, onAddPassage, 
 }
 
 /* ── Bloc d'une toiture (multi sections selon son type) ── */
-function RoofProgressCard({ roof, index, onUpdateSection, onAddPassage, onRemove, onMoveUp, onMoveDown, onRename, renderPhotoZone }) {
+function RoofProgressCard({ roof, index, onUpdateSection, onRemove, onMoveUp, onMoveDown, onRename, renderPhotoZone }) {
   var [open, setOpen] = useState(true);
   var isPente = roof.type === "pente";
   var defs = roofSections(roof.type);
   var defaultNom = isPente ? "Toiture en pente" : "Toiture plate";
   var displayNom = roof.nom && roof.nom.trim() ? roof.nom.trim() : defaultNom;
   var accent = isPente ? "#1B6B3A" : "#2980b9";
-  var avg = avgAvancement(roof.sections);
+  var totalPhotos = defs.reduce(function(acc, def){ return acc + countSectionPhotos((roof.sections || {})[def.key]); }, 0);
 
   return (
     <div style={{ ...CARD, marginBottom: 14, padding: "0.9rem 1.1rem", borderLeft: "4px solid " + accent }}>
@@ -8176,8 +8096,7 @@ function RoofProgressCard({ roof, index, onUpdateSection, onAddPassage, onRemove
             {index + 1}. {displayNom} <span style={{ color: MUTED, fontSize: 11, fontWeight: 400, marginLeft: 6 }}>({isPente ? "en pente" : "plate"})</span>
           </div>
         </div>
-        <ProgressBar pct={avg} color={accent} />
-        <span style={{ fontSize: 11, fontWeight: 700, color: accent, minWidth: 38, textAlign: "right" }}>{avg}%</span>
+        <span style={{ fontSize: 11, color: MUTED, fontWeight: 500 }}>{totalPhotos} photo{totalPhotos > 1 ? "s" : ""}</span>
         {onMoveUp && <button title="Monter" onClick={onMoveUp} style={{ background: WHITE, color: MUTED, border: "1px solid " + BORDER, borderRadius: 6, padding: "4px 9px", fontSize: 13, cursor: "pointer" }}>↑</button>}
         {onMoveDown && <button title="Descendre" onClick={onMoveDown} style={{ background: WHITE, color: MUTED, border: "1px solid " + BORDER, borderRadius: 6, padding: "4px 9px", fontSize: 13, cursor: "pointer" }}>↓</button>}
         <button title="Supprimer cette toiture" onClick={onRemove}
@@ -8195,97 +8114,18 @@ function RoofProgressCard({ roof, index, onUpdateSection, onAddPassage, onRemove
             return (
               <SectionCard
                 key={def.key}
-                section={(roof.sections || {})[def.key] || { passages: [], avancementPct: 0 }}
+                section={(roof.sections || {})[def.key] || makeEmptySection()}
                 sectionDef={def}
                 scopeLabel={displayNom}
                 accent={accent}
                 onUpdate={function(newSec){ onUpdateSection(def.key, newSec); }}
-                onAddPassage={function(date){ onAddPassage(def.key, date); }}
                 renderPhotoZone={renderPhotoZone}
+                photoScopeKey={"toit_" + roof.id + "_" + def.key}
               />
             );
           })}
         </div>
       )}
-    </div>
-  );
-}
-
-/* ── Vue chronologique : tous les passages, triés par date décroissante ── */
-function ChronologicalView({ data, renderPhotoZone }) {
-  // Aplatit tous les passages avec leur contexte
-  var rows = [];
-  FACADE_SECTIONS.forEach(function(s){
-    var sec = (data.facade && data.facade.sections && data.facade.sections[s.key]) || { passages: [] };
-    (sec.passages || []).forEach(function(p){
-      rows.push({ scope: "Façade", scopeColor: "#1B6B3A", sectionKey: s.key, sectionLabel: s.label, sectionIcon: s.icon, passage: p, scopeIcon: "🧱" });
-    });
-  });
-  (data.toitures || []).forEach(function(rf, ri){
-    var defs = roofSections(rf.type);
-    var nom = rf.nom && rf.nom.trim() ? rf.nom.trim() : ((rf.type === "plate" ? "Toiture plate" : "Toiture en pente") + " #" + (ri+1));
-    defs.forEach(function(s){
-      var sec = (rf.sections || {})[s.key] || { passages: [] };
-      (sec.passages || []).forEach(function(p){
-        rows.push({ scope: nom, scopeColor: rf.type === "plate" ? "#2980b9" : "#1B6B3A", sectionKey: s.key, sectionLabel: s.label, sectionIcon: s.icon, passage: p, scopeIcon: rf.type === "plate" ? "🏢" : "🏠" });
-      });
-    });
-  });
-  // Tri : date décroissante (vide en dernier)
-  rows.sort(function(a,b){
-    var da = a.passage.date || ""; var db = b.passage.date || "";
-    if (!da && !db) return 0;
-    if (!da) return 1;
-    if (!db) return -1;
-    return db.localeCompare(da);
-  });
-  // Regroupement par date
-  var byDate = {};
-  rows.forEach(function(r){ var d = r.passage.date || "Sans date"; (byDate[d] = byDate[d] || []).push(r); });
-  var dates = Object.keys(byDate);
-
-  if (!rows.length) return (
-    <div style={{ ...CARD, textAlign: "center", color: MUTED, padding: "40px 20px" }}>
-      <div style={{ fontSize: 32, marginBottom: 10 }}>📅</div>
-      Aucun passage enregistré pour le moment. Passez en vue « Par section » pour ajouter le premier passage du jour.
-    </div>
-  );
-
-  return (
-    <div>
-      {dates.map(function(d){
-        return (
-          <div key={d} style={{ ...CARD, marginBottom: 14, padding: "0.9rem 1.1rem" }}>
-            <div style={{ ...SH, marginBottom: 14 }}>
-              <span style={{ fontSize: 15 }}>📅</span>
-              <span style={{ flex: 1 }}>{d === "Sans date" ? "Sans date" : d}</span>
-              <span style={{ fontSize: 11, color: MUTED, fontWeight: 500, textTransform: "none", letterSpacing: 0 }}>{byDate[d].length} passage{byDate[d].length > 1 ? "s" : ""}</span>
-            </div>
-            {byDate[d].map(function(r, i){
-              var p = r.passage;
-              var nPh = (p.photos || []).length;
-              return (
-                <div key={r.passage.id} style={{ background: BG, border: "1px solid " + BORDER, borderRadius: 8, padding: "10px 12px", marginBottom: 8 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
-                    <span style={{ fontSize: 11, fontWeight: 700, color: r.scopeColor, background: WHITE, border: "1px solid " + BORDER, borderRadius: 12, padding: "2px 8px" }}>{r.scopeIcon} {r.scope}</span>
-                    <span style={{ fontSize: 11, fontWeight: 600, color: MUTED }}>{r.sectionIcon} {r.sectionLabel}</span>
-                    <span style={{ flex: 1 }} />
-                    <span style={{ fontSize: 11, color: MUTED }}>{nPh} photo{nPh > 1 ? "s" : ""}</span>
-                  </div>
-                  {(p.intervenants || p.quantite) && <div style={{ fontSize: 12, color: MUTED, marginBottom: 6 }}>{[p.intervenants && ("Intervenants : " + p.intervenants), p.quantite && ("Quantité : " + p.quantite)].filter(Boolean).join(" · ")}</div>}
-                  {/* Aperçu photos (lecture seule) */}
-                  {nPh > 0 && (
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: p.notes ? 8 : 0 }}>
-                      {p.photos.map(function(ph, pi){ return ph.url ? <img key={pi} src={ph.url} alt={ph.name} style={{ width: 90, height: 70, objectFit: "cover", borderRadius: 6, border: "1px solid " + BORDER }} /> : null; })}
-                    </div>
-                  )}
-                  {p.notes && <div style={{ fontSize: 12, color: TEXT, whiteSpace: "pre-wrap", background: WHITE, border: "1px solid " + BORDER, borderRadius: 6, padding: "6px 8px" }}>{p.notes}</div>}
-                </div>
-              );
-            })}
-          </div>
-        );
-      })}
     </div>
   );
 }
@@ -8302,22 +8142,16 @@ function PreviewDoc({ data }) {
       </div>
     );
   }
-  function PassageBlock({ passage }) {
-    return (
-      <div style={{ marginTop: 10, paddingTop: 8, borderTop: "1px dashed #ddd" }}>
-        <div style={{ fontSize: 12, fontWeight: 700, color: GREEN, marginBottom: 4 }}>{passage.date || "Sans date"}{passage.intervenants ? " — Intervenants : " + passage.intervenants : ""}{passage.quantite ? " — " + passage.quantite : ""}</div>
-        {passage.notes && <div style={{ fontSize: 12, color: TEXT, whiteSpace: "pre-wrap", marginBottom: 4 }}>{passage.notes}</div>}
-        <PhotoStrip photos={passage.photos} />
-      </div>
-    );
-  }
-  function sectionTitle(def, sec, accent) {
-    var n = countSectionPassages(sec);
+  function sectionBlock(def, sec, accent) {
     var ph = countSectionPhotos(sec);
-    var pct = Math.round((sec && sec.avancementPct) || 0);
     return (
-      <div style={{ marginTop: 14, marginBottom: 6 }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: accent }}>{def.icon} {def.label} <span style={{ color: MUTED, fontWeight: 400, fontSize: 11, marginLeft: 6 }}>· {n} passage{n>1?"s":""} · {ph} photo{ph>1?"s":""} · {pct}%</span></div>
+      <div key={def.key} className="photo-section" style={{ marginBottom: 14 }}>
+        <div style={{ marginTop: 14, marginBottom: 6 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: accent }}>{def.icon} {def.label} <span style={{ color: MUTED, fontWeight: 400, fontSize: 11, marginLeft: 6 }}>· {ph} photo{ph>1?"s":""}</span></div>
+        </div>
+        {sec.quantite && <div style={{ fontSize: 12, color: TEXT, marginBottom: 4 }}>Quantité : {sec.quantite}</div>}
+        {sec.notes && <div style={{ fontSize: 12, color: TEXT, whiteSpace: "pre-wrap", marginBottom: 4 }}>{sec.notes}</div>}
+        <PhotoStrip photos={sec.photos} />
       </div>
     );
   }
@@ -8338,6 +8172,7 @@ function PreviewDoc({ data }) {
       <table className="preview-table"><tbody>
         {row("Client", m.client)}
         {row("Adresse chantier", m.adresseChantier)}
+        {row("Tâche Odoo", m.nom_tache)}
         {row("Project Manager", m.pm)}
         {row("Chef de chantier", m.chefChantier)}
         {row("Date de début", m.dateDebut)}
@@ -8347,15 +8182,10 @@ function PreviewDoc({ data }) {
 
       {data.typeChantier && data.typeChantier.facade && (
         <div>
-          <h3 style={{ color: GREEN, fontSize: 14, marginTop: 18, marginBottom: 6 }}>🧱 Isolation de façade — avancement global : {avgAvancement(data.facade && data.facade.sections)}%</h3>
+          <h3 style={{ color: GREEN, fontSize: 14, marginTop: 18, marginBottom: 6 }}>🧱 Isolation de façade</h3>
           {FACADE_SECTIONS.map(function(def){
-            var sec = (data.facade && data.facade.sections && data.facade.sections[def.key]) || { passages: [] };
-            return (
-              <div key={def.key} className="photo-section" style={{ marginBottom: 10 }}>
-                {sectionTitle(def, sec, GREEN)}
-                {(sec.passages || []).map(function(p){ return <PassageBlock key={p.id} passage={p} />; })}
-              </div>
-            );
+            var sec = (data.facade && data.facade.sections && data.facade.sections[def.key]) || makeEmptySection();
+            return sectionBlock(def, sec, GREEN);
           })}
         </div>
       )}
@@ -8363,19 +8193,13 @@ function PreviewDoc({ data }) {
       {data.typeChantier && data.typeChantier.toiture && (data.toitures || []).map(function(rf, ri){
         var nom = rf.nom && rf.nom.trim() ? rf.nom.trim() : ((rf.type === "plate" ? "Toiture plate" : "Toiture en pente"));
         var accent = rf.type === "plate" ? "#2980b9" : GREEN;
-        var avg = avgAvancement(rf.sections);
         var defs = roofSections(rf.type);
         return (
           <div key={rf.id}>
-            <h3 style={{ color: accent, fontSize: 14, marginTop: 18, marginBottom: 6 }}>{rf.type === "plate" ? "🏢" : "🏠"} {ri+1}. {nom} <span style={{ color: MUTED, fontSize: 12, fontWeight: 400 }}>({rf.type === "plate" ? "plate" : "en pente"})</span> — avancement {avg}%</h3>
+            <h3 style={{ color: accent, fontSize: 14, marginTop: 18, marginBottom: 6 }}>{rf.type === "plate" ? "🏢" : "🏠"} {ri+1}. {nom} <span style={{ color: MUTED, fontSize: 12, fontWeight: 400 }}>({rf.type === "plate" ? "plate" : "en pente"})</span></h3>
             {defs.map(function(def){
-              var sec = (rf.sections || {})[def.key] || { passages: [] };
-              return (
-                <div key={def.key} className="photo-section" style={{ marginBottom: 10 }}>
-                  {sectionTitle(def, sec, accent)}
-                  {(sec.passages || []).map(function(p){ return <PassageBlock key={p.id} passage={p} />; })}
-                </div>
-              );
+              var sec = (rf.sections || {})[def.key] || makeEmptySection();
+              return sectionBlock(def, sec, accent);
             })}
           </div>
         );
@@ -8396,6 +8220,224 @@ function PreviewDoc({ data }) {
       )}
 
       {data.remarques && <div style={{ marginTop: 16 }}><h3 style={{ color: GREEN, fontSize: 14, marginBottom: 6 }}>Remarques générales</h3><div style={{ whiteSpace: "pre-wrap", fontSize: 13 }}>{data.remarques}</div></div>}
+    </div>
+  );
+}
+
+/* ── WCProgressPanel : avancement par jour / par intervenant, à la We Green ──
+      Parcourt directement facade.sections + toitures[].sections (pas de catalogue
+      statique à maintenir) et regroupe les photos par jour (addedAt) ou par
+      intervenant (uploadedBy), exactement comme le fait We Green. ── */
+function WCProgressPanel({ data, onClose }) {
+  var [viewMode, setViewMode] = useState("byDay"); // "byDay" | "byPerson"
+  var [expandedDay, setExpandedDay] = useState(null);
+  var [expandedPerson, setExpandedPerson] = useState(null);
+  var [expandedGroup, setExpandedGroup] = useState(null);
+  var [zoomPhoto, setZoomPhoto] = useState(null);
+
+  // ── Collecte de toutes les photos, avec contexte (scope + section) ──
+  var allPhotos = [];
+  if (data.facade && data.facade.sections) {
+    FACADE_SECTIONS.forEach(function(def){
+      var sec = data.facade.sections[def.key];
+      (sec && sec.photos || []).forEach(function(p){
+        allPhotos.push({
+          url: p.url, name: p.name, addedAt: p.addedAt, uploadedBy: p.uploadedBy,
+          scope: "Façade", scopeIcon: "🧱", scopeColor: GREEN,
+          sectionLabel: def.label, sectionIcon: def.icon
+        });
+      });
+    });
+  }
+  (data.toitures || []).forEach(function(rf, ri){
+    var isPente = rf.type === "pente";
+    var nom = rf.nom && rf.nom.trim() ? rf.nom.trim() : ((isPente ? "Toiture en pente" : "Toiture plate") + " #" + (ri+1));
+    var accent = isPente ? GREEN : "#2980b9";
+    var defs = roofSections(rf.type);
+    defs.forEach(function(def){
+      var sec = (rf.sections || {})[def.key];
+      (sec && sec.photos || []).forEach(function(p){
+        allPhotos.push({
+          url: p.url, name: p.name, addedAt: p.addedAt, uploadedBy: p.uploadedBy,
+          scope: nom, scopeIcon: isPente ? "🏠" : "🏢", scopeColor: accent,
+          sectionLabel: def.label, sectionIcon: def.icon
+        });
+      });
+    });
+  });
+
+  var totalPhotos = allPhotos.length;
+
+  // ── Groupement par jour ──
+  function dayKey(addedAt) {
+    if (!addedAt) return "Date inconnue";
+    try { return new Date(addedAt).toLocaleDateString("fr-BE", { weekday: "long", day: "numeric", month: "long", year: "numeric" }); }
+    catch(e) { return "Date inconnue"; }
+  }
+  var byDayMap = {}; var dayOrder = [];
+  allPhotos.slice().sort(function(a,b){
+    var ta = a.addedAt ? Date.parse(a.addedAt) : 0, tb = b.addedAt ? Date.parse(b.addedAt) : 0;
+    return tb - ta; // plus récent en premier
+  }).forEach(function(p){
+    var k = dayKey(p.addedAt);
+    if (!byDayMap[k]) { byDayMap[k] = []; dayOrder.push(k); }
+    byDayMap[k].push(p);
+  });
+
+  // ── Groupement par intervenant ──
+  var byPersonMap = {}; var personOrder = [];
+  allPhotos.forEach(function(p){
+    var k = p.uploadedBy && p.uploadedBy.trim() ? p.uploadedBy.trim() : "Intervenant inconnu";
+    if (!byPersonMap[k]) { byPersonMap[k] = []; personOrder.push(k); }
+    byPersonMap[k].push(p);
+  });
+  personOrder.sort(function(a,b){ return byPersonMap[b].length - byPersonMap[a].length; });
+
+  // ── Sous-groupement par scope + section (utilisé dans les deux vues) ──
+  function groupByScopeSection(photos) {
+    var map = {}, order = [];
+    photos.forEach(function(p){
+      var k = p.scope + " · " + p.sectionLabel;
+      if (!map[k]) { map[k] = { scope: p.scope, scopeIcon: p.scopeIcon, scopeColor: p.scopeColor, sectionLabel: p.sectionLabel, sectionIcon: p.sectionIcon, photos: [] }; order.push(k); }
+      map[k].photos.push(p);
+    });
+    return order.map(function(k){ return map[k]; });
+  }
+
+  function PhotoThumb(p, i) {
+    return (
+      <div key={i} onClick={function(){ setZoomPhoto(p); }}
+        style={{ width: 74, height: 58, borderRadius: 6, overflow: "hidden", cursor: "zoom-in", border: "1px solid " + BORDER, flexShrink: 0 }}>
+        {p.url ? <img src={p.url} alt={p.name||""} style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : null}
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 500, background: "rgba(0,0,0,0.4)", display: "flex", justifyContent: "flex-end" }}
+      onClick={function(e){ if (e.target === e.currentTarget) onClose(); }}>
+      <div style={{ width: "min(560px, 100vw)", background: BG, height: "100%", overflowY: "auto", boxShadow: "-4px 0 24px rgba(0,0,0,0.15)" }}>
+        {/* Header */}
+        <div style={{ position: "sticky", top: 0, zIndex: 5, background: GREEN, color: WHITE, padding: "14px 16px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <span style={{ fontSize: 18 }}>📊</span>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontWeight: 700, fontSize: 15 }}>Avancement</div>
+              <div style={{ fontSize: 11, opacity: 0.85 }}>{data.ref || "—"} · {totalPhotos} photo{totalPhotos > 1 ? "s" : ""}</div>
+            </div>
+            <button onClick={onClose} style={{ background: "rgba(255,255,255,0.2)", color: WHITE, border: "none", borderRadius: 8, padding: "6px 10px", fontSize: 16, cursor: "pointer" }}>✕</button>
+          </div>
+          <div style={{ display: "flex", gap: 6, marginTop: 12 }}>
+            <button onClick={function(){ setViewMode("byDay"); }} style={{ flex: 1, padding: "8px 10px", border: "none", borderRadius: 8, background: viewMode === "byDay" ? WHITE : "rgba(255,255,255,0.15)", color: viewMode === "byDay" ? GREEN : WHITE, fontWeight: 600, fontSize: 12, cursor: "pointer" }}>📅 Par jour</button>
+            <button onClick={function(){ setViewMode("byPerson"); }} style={{ flex: 1, padding: "8px 10px", border: "none", borderRadius: 8, background: viewMode === "byPerson" ? WHITE : "rgba(255,255,255,0.15)", color: viewMode === "byPerson" ? GREEN : WHITE, fontWeight: 600, fontSize: 12, cursor: "pointer" }}>👤 Par intervenant</button>
+          </div>
+        </div>
+
+        <div style={{ padding: 14 }}>
+          {totalPhotos === 0 && (
+            <div style={{ ...CARD, textAlign: "center", color: MUTED, padding: "40px 20px" }}>
+              <div style={{ fontSize: 32, marginBottom: 10 }}>📭</div>
+              Aucune photo enregistrée pour le moment.
+            </div>
+          )}
+
+          {/* ── Vue par jour ── */}
+          {viewMode === "byDay" && dayOrder.map(function(d){
+            var photos = byDayMap[d];
+            var open = expandedDay === d;
+            var groups = groupByScopeSection(photos);
+            return (
+              <div key={d} style={{ ...CARD, marginBottom: 10, padding: "0.8rem 1rem" }}>
+                <div onClick={function(){ setExpandedDay(open ? null : d); }} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", textTransform: "capitalize" }}>
+                  <span style={{ fontSize: 14 }}>📅</span>
+                  <span style={{ flex: 1, fontWeight: 700, color: GREEN, fontSize: 13 }}>{d}</span>
+                  <span style={{ fontSize: 11, color: MUTED, fontWeight: 500 }}>{photos.length} photo{photos.length > 1 ? "s" : ""}</span>
+                  <span style={{ color: MUTED, fontSize: 12 }}>{open ? "▾" : "▸"}</span>
+                </div>
+                {open && (
+                  <div style={{ marginTop: 10 }}>
+                    {groups.map(function(g, gi){
+                      var gKey = d + "|" + gi;
+                      var gOpen = expandedGroup === gKey;
+                      return (
+                        <div key={gi} style={{ marginBottom: 6 }}>
+                          <div onClick={function(){ setExpandedGroup(gOpen ? null : gKey); }}
+                            style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", padding: "6px 8px", background: WHITE, borderRadius: 6, border: "1px solid " + BORDER }}>
+                            <span style={{ fontSize: 11, fontWeight: 700, color: g.scopeColor }}>{g.scopeIcon} {g.scope}</span>
+                            <span style={{ fontSize: 11, color: MUTED }}>{g.sectionIcon} {g.sectionLabel}</span>
+                            <span style={{ flex: 1 }} />
+                            <span style={{ fontSize: 11, color: MUTED }}>{g.photos.length}</span>
+                          </div>
+                          {gOpen && (
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6, paddingLeft: 4 }}>
+                              {g.photos.map(PhotoThumb)}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+
+          {/* ── Vue par intervenant ── */}
+          {viewMode === "byPerson" && personOrder.map(function(person){
+            var photos = byPersonMap[person];
+            var open = expandedPerson === person;
+            var groups = groupByScopeSection(photos);
+            return (
+              <div key={person} style={{ ...CARD, marginBottom: 10, padding: "0.8rem 1rem" }}>
+                <div onClick={function(){ setExpandedPerson(open ? null : person); }} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+                  <span style={{ fontSize: 14 }}>{person === "Intervenant inconnu" ? "❔" : "👤"}</span>
+                  <span style={{ flex: 1, fontWeight: 700, color: GREEN, fontSize: 13 }}>{person}</span>
+                  <span style={{ fontSize: 11, color: MUTED, fontWeight: 500 }}>{photos.length} photo{photos.length > 1 ? "s" : ""}</span>
+                  <span style={{ color: MUTED, fontSize: 12 }}>{open ? "▾" : "▸"}</span>
+                </div>
+                {open && (
+                  <div style={{ marginTop: 10 }}>
+                    {groups.map(function(g, gi){
+                      var gKey = person + "|" + gi;
+                      var gOpen = expandedGroup === gKey;
+                      return (
+                        <div key={gi} style={{ marginBottom: 6 }}>
+                          <div onClick={function(){ setExpandedGroup(gOpen ? null : gKey); }}
+                            style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", padding: "6px 8px", background: WHITE, borderRadius: 6, border: "1px solid " + BORDER }}>
+                            <span style={{ fontSize: 11, fontWeight: 700, color: g.scopeColor }}>{g.scopeIcon} {g.scope}</span>
+                            <span style={{ fontSize: 11, color: MUTED }}>{g.sectionIcon} {g.sectionLabel}</span>
+                            <span style={{ flex: 1 }} />
+                            <span style={{ fontSize: 11, color: MUTED }}>{g.photos.length}</span>
+                          </div>
+                          {gOpen && (
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6, paddingLeft: 4 }}>
+                              {g.photos.map(PhotoThumb)}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Lightbox simple */}
+      {zoomPhoto && (
+        <div onClick={function(){ setZoomPhoto(null); }}
+          style={{ position: "fixed", inset: 0, zIndex: 600, background: "rgba(0,0,0,0.88)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 20 }}>
+          <img src={zoomPhoto.url} alt={zoomPhoto.name||""} style={{ maxWidth: "92vw", maxHeight: "78vh", objectFit: "contain", borderRadius: 6 }} />
+          <div style={{ color: WHITE, fontSize: 12, marginTop: 12, textAlign: "center" }}>
+            {zoomPhoto.uploadedBy && <div>👤 {zoomPhoto.uploadedBy}</div>}
+            {zoomPhoto.addedAt && <div style={{ opacity: 0.7 }}>{new Date(zoomPhoto.addedAt).toLocaleString("fr-BE")}</div>}
+          </div>
+          <button onClick={function(){ setZoomPhoto(null); }}
+            style={{ marginTop: 16, background: "#e74c3c", color: WHITE, border: "none", borderRadius: 8, padding: "10px 32px", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>✕ Fermer</button>
+        </div>
+      )}
     </div>
   );
 }
@@ -8659,7 +8701,7 @@ function HistoryPanel({ refChantier, onRestore, onClose, currentUser }) {
                     <div style={{ flex: 1, minWidth: 200 }}>
                       <div style={{ fontWeight: 600, fontSize: 13 }}>{fmtDate(v.created_at)}</div>
                       <div style={{ fontSize: 11, color: MUTED }}>{v.author || "—"} {v.label ? "· " + v.label : ""}</div>
-                      <div style={{ fontSize: 11, color: MUTED }}>{v.passages_count || 0} passage{(v.passages_count||0)>1?"s":""} · {v.photos_count || 0} photo{(v.photos_count||0)>1?"s":""}</div>
+                      <div style={{ fontSize: 11, color: MUTED }}>{v.passages_count || 0} jour{(v.passages_count||0)>1?"s":""} actif{(v.passages_count||0)>1?"s":""} · {v.photos_count || 0} photo{(v.photos_count||0)>1?"s":""}</div>
                     </div>
                     <button onClick={function(){ restore(v.id); }} style={{ background: GREEN, color: WHITE, border: "none", borderRadius: 6, padding: "6px 12px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>↺ Restaurer</button>
                   </div>
@@ -8700,7 +8742,7 @@ function App() {
   var [loaded, setLoaded] = useState(false);
   var [saveStatus, setSaveStatus] = useState("");
   var [showPreview, setShowPreview] = useState(false);
-  var [view, setView] = useState("section"); // "section" | "chrono"
+  var [showAvancement, setShowAvancement] = useState(false);
   var [briefingInfo, setBriefingInfo] = useState(null);
   var [showHistory, setShowHistory] = useState(false);
   var [lastSnapshotAt, setLastSnapshotAt] = useState(0); // pour throttle auto-snapshot
@@ -8724,7 +8766,7 @@ function App() {
 
   function upd(path, value) { setData(function(d){ return setIn(d, path, value); }); }
 
-  async function loadRef(r) {
+  async function loadRef(r, urlTask) {
     r = (r || "").trim();
     if (!r) return;
     firstLoad.current = true;
@@ -8773,6 +8815,10 @@ function App() {
       } catch(e){}
     }
 
+    // Tâche Odoo : si présente dans l'URL, elle prime (nouveau lien partagé) ;
+    // sinon on conserve celle déjà enregistrée dans le rapport.
+    base.meta.nom_tache = (urlTask && urlTask.trim()) || base.meta.nom_tache || "";
+
     setData(base);
     setRef(r);
     setRefInput(r);
@@ -8781,11 +8827,15 @@ function App() {
   }
 
   useEffect(function(){
-    var urlRef = "";
-    try { urlRef = new URLSearchParams(window.location.search).get("ref") || ""; } catch(e){}
+    var urlRef = "", urlTask = "";
+    try {
+      var p = new URLSearchParams(window.location.search);
+      urlRef = p.get("ref") || "";
+      urlTask = p.get("task") || "";
+    } catch(e){}
     var last = ""; try { last = localStorage.getItem("wc_rapport_last_ref") || ""; } catch(e){}
     var r = urlRef || last;
-    if (r) loadRef(r);
+    if (r) loadRef(r, urlTask);
   }, []);
 
   /* Autosave debounce 2s + snapshot horodaté toutes les 15 minutes après une modification */
@@ -8851,16 +8901,6 @@ function App() {
   function updateFacadeSection(secKey, newSec) {
     setData(function(d){ return setIn(d, ["facade","sections",secKey], newSec); });
   }
-  function addFacadePassage(secKey, date) {
-    var intervenants = user ? (_userTag(user)) : "";
-    setData(function(d){
-      var sec = (d.facade && d.facade.sections && d.facade.sections[secKey]) || { passages: [] };
-      var pass = makeEmptyPassage(date, intervenants);
-      var newSec = Object.assign({}, sec, { passages: (sec.passages || []).concat([pass]) });
-      return setIn(d, ["facade","sections",secKey], newSec);
-    });
-    if (ref && user) wcLogAudit(ref, user, "passage_ajout", "façade · " + secKey + " · " + (date || "auj"));
-  }
 
   /* ── Handlers toitures ── */
   function addRoof(type) {
@@ -8869,7 +8909,7 @@ function App() {
   function removeRoof(i) {
     var roof = (data.toitures || [])[i]; if (!roof) return;
     var nom = roof.nom && roof.nom.trim() ? roof.nom.trim() : "toiture " + (i+1);
-    if (!window.confirm("Supprimer " + nom + " et toutes ses données (passages + photos) ?\nCette action est irréversible.")) return;
+    if (!window.confirm("Supprimer " + nom + " et toutes ses données (quantités, notes, photos) ?\nCette action est irréversible.")) return;
     setData(function(d){ var arr = (d.toitures || []).slice(); arr.splice(i,1); return setIn(d, ["toitures"], arr); });
   }
   function renameRoof(i, val) { setData(function(d){ return setIn(d, ["toitures", i, "nom"], val); }); }
@@ -8884,109 +8924,46 @@ function App() {
   function updateRoofSection(roofIdx, secKey, newSec) {
     setData(function(d){ return setIn(d, ["toitures", roofIdx, "sections", secKey], newSec); });
   }
-  function addRoofPassage(roofIdx, secKey, date) {
-    var intervenants = user ? (_userTag(user)) : "";
-    setData(function(d){
-      var sec = ((d.toitures[roofIdx] && d.toitures[roofIdx].sections) || {})[secKey] || { passages: [] };
-      var pass = makeEmptyPassage(date, intervenants);
-      var newSec = Object.assign({}, sec, { passages: (sec.passages || []).concat([pass]) });
-      return setIn(d, ["toitures", roofIdx, "sections", secKey], newSec);
-    });
-    if (ref && user) wcLogAudit(ref, user, "passage_ajout", "toiture #" + (roofIdx+1) + " · " + secKey + " · " + (date || "auj"));
-  }
 
   /* ── Rendu d'une PhotoZone pour un passage donné ──
      Les photos sont stockées sur le passage. On expose un setter qui met à jour le passage. */
-  function renderPhotoZone(passage, sectionKey, allMoveTargets, onMovePhotoTo) {
-    function update(newPhotos) { /* used via onAdd / onDelete / onUpdate / onReorder below */ }
-    var items = passage.photos || [];
+  /* ── Rendu d'une PhotoZone pour une section donnée ──
+     Les photos sont stockées directement sur la section (plus de passage intermédiaire).
+     'scopeKey' doit être pleinement qualifié par l'appelant (ex: "fac_isolant" ou
+     "toit_<roofId>_isolation") pour éviter toute collision entre toitures de même type. */
+  function renderPhotoZone(section, scopeKey, onUpdateSection) {
+    var items = section.photos || [];
+    function withPhotos(newPhotos) {
+      onUpdateSection(Object.assign({}, section, { photos: newPhotos }));
+    }
     return (
       <PhotoZone
-        catKey={"pass_" + passage.id}
-        label={"Photos du " + (passage.date || "passage")}
+        catKey={scopeKey}
+        label={scopeKey}
         hiRes={false}
         items={items}
-        allSections={allMoveTargets || []}
+        allSections={[]}
         hasNote={false}
-        onAdd={function(arr){
-          // ajouter à la fin du passage
-          // déclenche un set sur data : il faut remonter par le chemin du passage
-          setData(function(d){
-            // Trouver le passage par son id : on cherche dans facade puis toitures
-            // Approche : on parcourt et reconstruit
-            function patchPassages(passages){
-              return passages.map(function(p){ return p.id === passage.id ? Object.assign({}, p, { photos: (p.photos||[]).concat(arr) }) : p; });
-            }
-            return patchData(d, patchPassages);
-          });
-        }}
+        onAdd={function(arr){ withPhotos(items.concat(arr)); }}
         onDelete={function(i){
-          setData(function(d){
-            function patchPassages(passages){
-              return passages.map(function(p){
-                if (p.id !== passage.id) return p;
-                var np = (p.photos||[]).slice(); np.splice(i,1);
-                return Object.assign({}, p, { photos: np });
-              });
-            }
-            return patchData(d, patchPassages);
-          });
+          var np = items.slice(); np.splice(i,1); withPhotos(np);
         }}
         onUpdate={function(i, url, drawingUrl, textObjs){
-          setData(function(d){
-            function patchPassages(passages){
-              return passages.map(function(p){
-                if (p.id !== passage.id) return p;
-                var np = (p.photos||[]).slice();
-                if (!np[i]) return p;
-                np[i] = Object.assign({}, np[i], { url: url, drawingUrl: drawingUrl, textObjects: textObjs });
-                return Object.assign({}, p, { photos: np });
-              });
-            }
-            return patchData(d, patchPassages);
-          });
+          var np = items.slice();
+          if (!np[i]) return;
+          np[i] = Object.assign({}, np[i], { url: url, drawingUrl: drawingUrl, textObjects: textObjs });
+          withPhotos(np);
         }}
         onReorder={function(from, to){
-          setData(function(d){
-            function patchPassages(passages){
-              return passages.map(function(p){
-                if (p.id !== passage.id) return p;
-                var np = (p.photos||[]).slice();
-                if (from<0||from>=np.length) return p;
-                var it = np.splice(from,1)[0]; np.splice(to,0,it);
-                return Object.assign({}, p, { photos: np });
-              });
-            }
-            return patchData(d, patchPassages);
-          });
+          var np = items.slice();
+          if (from<0||from>=np.length) return;
+          var it = np.splice(from,1)[0]; np.splice(to,0,it);
+          withPhotos(np);
         }}
-        onMoveTo={function(i, targetPassageId){
-          if (onMovePhotoTo) onMovePhotoTo(i, targetPassageId);
-        }}
-        onReceiveCross={function(){ /* cross-zone disabled at this level */ }}
+        onMoveTo={function(){ /* pas de déplacement inter-sections dans We Cover */ }}
+        onReceiveCross={function(){ /* cross-zone désactivé à ce niveau */ }}
       />
     );
-  }
-
-  /* Helper qui applique un mapping sur les passages de TOUTES les sections (façade + toitures). */
-  function patchData(d, patchFn) {
-    var newFac = d.facade ? Object.assign({}, d.facade) : { sections: {} };
-    newFac.sections = Object.assign({}, newFac.sections || {});
-    Object.keys(newFac.sections).forEach(function(k){
-      var sec = newFac.sections[k];
-      newFac.sections[k] = Object.assign({}, sec, { passages: patchFn(sec.passages || []) });
-    });
-    var newToit = (d.toitures || []).map(function(rf){
-      var nrf = Object.assign({}, rf);
-      nrf.sections = Object.assign({}, nrf.sections || {});
-      Object.keys(nrf.sections).forEach(function(k){
-        var sec = nrf.sections[k];
-        nrf.sections[k] = Object.assign({}, sec, { passages: patchFn(sec.passages || []) });
-      });
-      return nrf;
-    });
-    var nd = Object.assign({}, d, { facade: newFac, toitures: newToit });
-    return nd;
   }
 
   var pm = PM_DATA[data.meta.pm] || {};
@@ -8995,13 +8972,15 @@ function App() {
 
   function doPrint() { setShowPreview(true); setTimeout(function(){ window.print(); }, 150); }
 
-  var facadeAvg = avgAvancement(data.facade && data.facade.sections);
-  var globalAvg = (function(){
-    var vals = [];
-    if (data.typeChantier && data.typeChantier.facade) vals.push(facadeAvg);
-    if (data.typeChantier && data.typeChantier.toiture) (data.toitures||[]).forEach(function(r){ vals.push(avgAvancement(r.sections)); });
-    if (!vals.length) return 0;
-    return Math.round(vals.reduce(function(a,b){ return a+b; },0)/vals.length);
+  var totalPhotosCount = (function(){
+    var n = 0;
+    if (data.facade && data.facade.sections) {
+      Object.keys(data.facade.sections).forEach(function(k){ n += countSectionPhotos(data.facade.sections[k]); });
+    }
+    (data.toitures || []).forEach(function(rf){
+      Object.keys(rf.sections || {}).forEach(function(k){ n += countSectionPhotos(rf.sections[k]); });
+    });
+    return n;
   })();
 
   return (
@@ -9027,12 +9006,13 @@ function App() {
             <span style={{ fontSize: 11, fontWeight: 700, color: "#2980b9", background: "#eaf4fb", border: "1px solid #cfe6f7", padding: "2px 8px", borderRadius: 20 }}>📋 Suivi d'avancement</span>
             <div style={{ flex: 1 }} />
             {ref && (
-              <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: MUTED }}>
-                <ProgressBar pct={globalAvg} color={GREEN} />
-                <span style={{ fontWeight: 700, color: GREEN }}>{globalAvg}%</span>
+              <span style={{ fontSize: 12, fontWeight: 600, color: GREEN, background: GREEN_LIGHT, border: "1px solid " + GREEN_MID, borderRadius: 20, padding: "3px 10px" }}>
+                📷 {totalPhotosCount} photo{totalPhotosCount > 1 ? "s" : ""}
               </span>
             )}
             {ref && <span style={{ fontSize: 12, fontWeight: 600, color: statusColor }}>{statusLabel}</span>}
+            {ref && <button onClick={function(){ setShowAvancement(true); }} title="Voir l'avancement par jour / par intervenant"
+              style={{ background: "#eaf4fb", color: "#2980b9", border: "1px solid #cfe6f7", borderRadius: 8, padding: "8px 12px", fontWeight: 600, fontSize: 13 }}>📊 Avancement</button>}
             {ref && <button onClick={function(){ saveSnapshotNow("manuel"); }} title="Créer une sauvegarde de l'état actuel"
               style={{ background: WHITE, color: GREEN, border: "1.5px solid " + GREEN, borderRadius: 8, padding: "8px 12px", fontWeight: 600, fontSize: 13 }}>💾 Sauvegarde</button>}
             {ref && <button onClick={function(){ setShowHistory(true); }} title="Voir l'historique"
@@ -9111,6 +9091,14 @@ function App() {
                 <Field label="Chef de chantier" value={data.meta.chefChantier} onChange={function(v){ upd(["meta","chefChantier"], v); }} />
               </div>
               {data.meta.commandeRef && <div style={{ marginTop: 12, fontSize: 12, color: MUTED }}>Ref bon de commande : <strong style={{ color: TEXT }}>{data.meta.commandeRef}</strong></div>}
+              {data.meta.nom_tache && (
+                <div style={{ marginTop: 12 }}>
+                  <label style={LBL}>Tâche Odoo</label>
+                  <input type="text" value={data.meta.nom_tache} readOnly
+                    style={{ width: "100%", background: "#f4f4f0", color: "#555", cursor: "default" }}
+                    placeholder="Nom de la tâche" />
+                </div>
+              )}
             </Card>
 
             {/* Type de chantier */}
@@ -9122,24 +9110,13 @@ function App() {
               {!data.typeChantier.facade && !data.typeChantier.toiture && <div style={{ fontSize: 12, color: MUTED, marginTop: 10 }}>Sélectionnez au moins un type pour afficher les sections de suivi.</div>}
             </Card>
 
-            {/* Onglets vue */}
-            {(data.typeChantier.facade || data.typeChantier.toiture) && (
-              <div style={{ ...CARD, marginBottom: 14, padding: 0, overflow: "hidden" }}>
-                <div style={{ display: "flex" }}>
-                  <button onClick={function(){ setView("section"); }} style={{ flex: 1, padding: "12px 14px", border: "none", background: view === "section" ? GREEN_LIGHT : WHITE, color: view === "section" ? GREEN : MUTED, fontWeight: view === "section" ? 700 : 500, fontSize: 13, borderBottom: view === "section" ? "2.5px solid " + GREEN : "2.5px solid transparent", cursor: "pointer", fontFamily: "inherit" }}>📂 Par section</button>
-                  <button onClick={function(){ setView("chrono"); }} style={{ flex: 1, padding: "12px 14px", border: "none", background: view === "chrono" ? GREEN_LIGHT : WHITE, color: view === "chrono" ? GREEN : MUTED, fontWeight: view === "chrono" ? 700 : 500, fontSize: 13, borderBottom: view === "chrono" ? "2.5px solid " + GREEN : "2.5px solid transparent", cursor: "pointer", fontFamily: "inherit" }}>📅 Par jour (chronologique)</button>
-                </div>
-              </div>
-            )}
-
-            {view === "section" && (
-              <div>
-                {/* Façade : sections d'avancement */}
+            <div>
+                {/* Façade : sections */}
                 {data.typeChantier.facade && (
                   <div style={{ marginBottom: 8 }}>
-                    <div style={{ ...SH, marginBottom: 10, color: GREEN }}><span>🧱</span><span style={{ flex: 1 }}>Isolation de façade (ETICS)</span><ProgressBar pct={facadeAvg} color={GREEN} /><span style={{ fontSize: 11, fontWeight: 700, color: GREEN, minWidth: 38, textAlign: "right" }}>{facadeAvg}%</span></div>
+                    <div style={{ ...SH, marginBottom: 10, color: GREEN }}><span>🧱</span><span style={{ flex: 1 }}>Isolation de façade (ETICS)</span></div>
                     {FACADE_SECTIONS.map(function(def){
-                      var sec = (data.facade && data.facade.sections && data.facade.sections[def.key]) || { passages: [], avancementPct: 0 };
+                      var sec = (data.facade && data.facade.sections && data.facade.sections[def.key]) || makeEmptySection();
                       return (
                         <SectionCard
                           key={def.key}
@@ -9148,8 +9125,8 @@ function App() {
                           scopeLabel="Façade"
                           accent={GREEN}
                           onUpdate={function(newSec){ updateFacadeSection(def.key, newSec); }}
-                          onAddPassage={function(date){ addFacadePassage(def.key, date); }}
                           renderPhotoZone={renderPhotoZone}
+                          photoScopeKey={"fac_" + def.key}
                         />
                       );
                     })}
@@ -9166,7 +9143,6 @@ function App() {
                           roof={rf}
                           index={ri}
                           onUpdateSection={function(secKey, newSec){ updateRoofSection(ri, secKey, newSec); }}
-                          onAddPassage={function(secKey, date){ addRoofPassage(ri, secKey, date); }}
                           onRemove={function(){ removeRoof(ri); }}
                           onMoveUp={ri > 0 ? function(){ moveRoof(ri, ri-1); } : null}
                           onMoveDown={ri < (data.toitures||[]).length-1 ? function(){ moveRoof(ri, ri+1); } : null}
@@ -9185,10 +9161,7 @@ function App() {
                     </div>
                   </div>
                 )}
-              </div>
-            )}
-
-            {view === "chrono" && <ChronologicalView data={data} renderPhotoZone={renderPhotoZone} />}
+            </div>
 
             {/* Clôture de journée (équivalent We Green Rapport) */}
             <CloturJourneeBlock
@@ -9227,6 +9200,11 @@ function App() {
           }}
           onClose={function(){ setShowHistory(false); }}
         />
+      )}
+
+      {/* Avancement (par jour / par intervenant) */}
+      {showAvancement && ref && (
+        <WCProgressPanel data={data} onClose={function(){ setShowAvancement(false); }} />
       )}
     </div>
   );
