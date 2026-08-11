@@ -8027,9 +8027,6 @@ const chipSt = function(sel){
     fontSize: 13, fontWeight: sel ? 600 : 400, cursor: "pointer", whiteSpace: "nowrap"
   };
 };
-function Chip({ label, selected, onClick }){
-  return <button onClick={onClick} style={chipSt(selected)}>{label}</button>;
-}
 function Toggle({ value, onChange }){
   return (
     <div style={{ display: "flex", gap: 5 }}>
@@ -8769,6 +8766,23 @@ function App() {
   var [pdfLoading, setPdfLoading] = useState(false);
   var firstLoad = useRef(true);
   var rowIdRef = useRef(null); // id Supabase (feuilles_controle) de la ligne We Cover active
+  var [isMobileView, setIsMobileView] = useState(function(){
+    try { return window.innerWidth <= 680; } catch(e) { return false; }
+  });
+  var [scrolled, setScrolled] = useState(false);
+  var [lastSavedAt, setLastSavedAt] = useState(null);
+
+  useEffect(function(){
+    function onResize(){ setIsMobileView(window.innerWidth <= 680); }
+    window.addEventListener("resize", onResize);
+    return function(){ window.removeEventListener("resize", onResize); };
+  }, []);
+
+  useEffect(function(){
+    function onScroll(){ setScrolled(window.scrollY > 70); }
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return function(){ window.removeEventListener("scroll", onScroll); };
+  }, []);
   var pdfInputRef = useRef();
 
   // Sync user via events (login Google ou sous-traitant)
@@ -8873,6 +8887,7 @@ function App() {
       var saveRes = await wcSave(ref, toSave, rowIdRef.current);
       if (saveRes.ok && saveRes.id) rowIdRef.current = saveRes.id;
       setSaveStatus(saveRes.ok ? "saved" : "local");
+      if (saveRes.ok) setLastSavedAt(new Date());
 
       // Auto-snapshot : au max un toutes les 15 minutes
       var now = Date.now();
@@ -8927,13 +8942,24 @@ function App() {
 
   /* ── Handlers toitures ── */
   function addRoof(type) {
-    setData(function(d){ var arr = (d.toitures || []).slice(); arr.push(makeEmptyRoof(type)); return setIn(d, ["toitures"], arr); });
+    setData(function(d){
+      var arr = (d.toitures || []).slice(); arr.push(makeEmptyRoof(type));
+      var nd = setIn(d, ["toitures"], arr);
+      nd = setIn(nd, ["typeChantier","toiture"], true);
+      return nd;
+    });
   }
   function removeRoof(i) {
     var roof = (data.toitures || [])[i]; if (!roof) return;
     var nom = roof.nom && roof.nom.trim() ? roof.nom.trim() : "toiture " + (i+1);
     if (!window.confirm("Supprimer " + nom + " et toutes ses données (quantités, notes, photos) ?\nCette action est irréversible.")) return;
-    setData(function(d){ var arr = (d.toitures || []).slice(); arr.splice(i,1); return setIn(d, ["toitures"], arr); });
+    if (!window.confirm("⚠️ CONFIRMATION FINALE\n\nSupprimer définitivement :\n\"" + nom + "\"\n\nToutes les données seront perdues. Continuer ?")) return;
+    setData(function(d){
+      var arr = (d.toitures || []).slice(); arr.splice(i,1);
+      var nd = setIn(d, ["toitures"], arr);
+      if (arr.length === 0) nd = setIn(nd, ["typeChantier","toiture"], false);
+      return nd;
+    });
   }
   function renameRoof(i, val) { setData(function(d){ return setIn(d, ["toitures", i, "nom"], val); }); }
   function moveRoof(from, to) {
@@ -8995,17 +9021,6 @@ function App() {
 
   function doPrint() { setShowPreview(true); setTimeout(function(){ window.print(); }, 150); }
 
-  var totalPhotosCount = (function(){
-    var n = 0;
-    if (data.facade && data.facade.sections) {
-      Object.keys(data.facade.sections).forEach(function(k){ n += countSectionPhotos(data.facade.sections[k]); });
-    }
-    (data.toitures || []).forEach(function(rf){
-      Object.keys(rf.sections || {}).forEach(function(k){ n += countSectionPhotos(rf.sections[k]); });
-    });
-    return n;
-  })();
-
   return (
     <div style={{ minHeight: "100vh", background: BG }}>
       <div id="preview-doc" style={{ display: showPreview ? "block" : "none", background: WHITE, padding: "24px 0", minHeight: "100vh" }}>
@@ -9020,44 +9035,51 @@ function App() {
       <div id="no-print">
         {/* Header sticky */}
         <div style={{ position: "sticky", top: 0, zIndex: 100, background: WHITE, borderBottom: "1px solid " + BORDER, boxShadow: "0 1px 6px rgba(0,0,0,0.04)" }}>
-          <div style={{ maxWidth: 920, margin: "0 auto", padding: "10px 14px", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-            <img src={LOGO_SRC} style={{ height: 34 }} alt="We Cover" />
-            <div style={{ lineHeight: 1.1 }}>
-              <div style={{ fontWeight: 700, color: GREEN, fontSize: 15 }}>We Cover</div>
-              <div style={{ fontSize: 11, color: MUTED }}>Rapport de chantier</div>
+          {/* Ligne complète : masquée sur mobile une fois qu'on a scrollé, pour laisser la place aux sections */}
+          {!(isMobileView && scrolled) && (
+            <div style={{ maxWidth: 920, margin: "0 auto", padding: isMobileView ? "8px 10px" : "10px 14px", display: "flex", alignItems: "center", gap: isMobileView ? 8 : 12, flexWrap: "wrap" }}>
+              <img src={LOGO_SRC} style={{ height: isMobileView ? 24 : 34 }} alt="We Cover" />
+              <div style={{ lineHeight: 1.1 }}>
+                <div style={{ fontWeight: 700, color: GREEN, fontSize: isMobileView ? 13 : 15 }}>We Cover</div>
+                {!isMobileView && <div style={{ fontSize: 11, color: MUTED }}>Rapport de chantier</div>}
+              </div>
+              {!isMobileView && <span style={{ fontSize: 11, fontWeight: 700, color: "#2980b9", background: "#eaf4fb", border: "1px solid #cfe6f7", padding: "2px 8px", borderRadius: 20 }}>📋 Suivi d'avancement</span>}
+              <div style={{ flex: 1 }} />
+              {ref && <button onClick={function(){ setShowAvancement(true); }} title="Voir l'avancement par jour / par intervenant"
+                style={{ background: "#eaf4fb", color: "#2980b9", border: "1px solid #cfe6f7", borderRadius: 8, padding: isMobileView ? "6px 10px" : "8px 12px", fontWeight: 600, fontSize: isMobileView ? 12 : 13 }}>📊 Avancement</button>}
+              {ref && <button onClick={function(){ setShowHistory(true); }} title="Voir l'historique"
+                style={{ background: WHITE, color: MUTED, border: "1px solid " + BORDER, borderRadius: 8, padding: isMobileView ? "6px 9px" : "8px 10px", fontSize: 13 }}>🕓</button>}
+              <button onClick={doPrint} style={{ background: GREEN, color: WHITE, border: "none", borderRadius: 8, padding: isMobileView ? "6px 10px" : "8px 12px", fontWeight: 600, fontSize: isMobileView ? 12 : 13 }}>🖨 {isMobileView ? "PDF" : "Aperçu / PDF"}</button>
+              {user && !isMobileView && (
+                <span title={user.email || user.name} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: TEXT, background: BG, border: "1px solid " + BORDER, borderRadius: 20, padding: "4px 10px" }}>
+                  {user.type === "contractor" ? "🔧" : "👤"} <span style={{ maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{user.name || user.email}</span>
+                </span>
+              )}
+              {user && <button onClick={function(){ if (window.wgeSignOut) window.wgeSignOut(); }} title="Se déconnecter" style={{ background: WHITE, color: MUTED, border: "1px solid " + BORDER, borderRadius: 8, padding: isMobileView ? "6px 9px" : "8px 10px", fontSize: 12 }}>⏻</button>}
             </div>
-            <span style={{ fontSize: 11, fontWeight: 700, color: "#2980b9", background: "#eaf4fb", border: "1px solid #cfe6f7", padding: "2px 8px", borderRadius: 20 }}>📋 Suivi d'avancement</span>
-            <div style={{ flex: 1 }} />
-            {ref && (
-              <span style={{ fontSize: 12, fontWeight: 600, color: GREEN, background: GREEN_LIGHT, border: "1px solid " + GREEN_MID, borderRadius: 20, padding: "3px 10px" }}>
-                📷 {totalPhotosCount} photo{totalPhotosCount > 1 ? "s" : ""}
+          )}
+
+          {/* Bouton Sauvegarde + statut (avec heure) — toujours visible, même en mode compact mobile */}
+          {ref && (
+            <div style={{ maxWidth: 920, margin: "0 auto", padding: isMobileView && scrolled ? "8px 10px" : "0 14px 10px",
+              display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 2 }}>
+              <button onClick={function(){ saveSnapshotNow("manuel"); }} title="Créer une sauvegarde de l'état actuel"
+                style={{ background: WHITE, color: GREEN, border: "1.5px solid " + GREEN, borderRadius: 8, padding: isMobileView ? "6px 12px" : "8px 12px", fontWeight: 600, fontSize: isMobileView ? 12 : 13 }}>💾 Sauvegarde</button>
+              <span style={{ fontSize: 10, fontWeight: 600, color: statusColor, paddingLeft: 2 }}>
+                {statusLabel}{lastSavedAt ? " · " + lastSavedAt.toLocaleTimeString("fr-BE", { hour: "2-digit", minute: "2-digit" }) : ""}
               </span>
-            )}
-            {ref && <span style={{ fontSize: 12, fontWeight: 600, color: statusColor }}>{statusLabel}</span>}
-            {ref && <button onClick={function(){ setShowAvancement(true); }} title="Voir l'avancement par jour / par intervenant"
-              style={{ background: "#eaf4fb", color: "#2980b9", border: "1px solid #cfe6f7", borderRadius: 8, padding: "8px 12px", fontWeight: 600, fontSize: 13 }}>📊 Avancement</button>}
-            {ref && <button onClick={function(){ saveSnapshotNow("manuel"); }} title="Créer une sauvegarde de l'état actuel"
-              style={{ background: WHITE, color: GREEN, border: "1.5px solid " + GREEN, borderRadius: 8, padding: "8px 12px", fontWeight: 600, fontSize: 13 }}>💾 Sauvegarde</button>}
-            {ref && <button onClick={function(){ setShowHistory(true); }} title="Voir l'historique"
-              style={{ background: WHITE, color: MUTED, border: "1px solid " + BORDER, borderRadius: 8, padding: "8px 10px", fontSize: 13 }}>🕓</button>}
-            <button onClick={doPrint} style={{ background: GREEN, color: WHITE, border: "none", borderRadius: 8, padding: "8px 12px", fontWeight: 600, fontSize: 13 }}>🖨 Aperçu / PDF</button>
-            {user && (
-              <span title={user.email || user.name} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: TEXT, background: BG, border: "1px solid " + BORDER, borderRadius: 20, padding: "4px 10px" }}>
-                {user.type === "contractor" ? "🔧" : "👤"} <span style={{ maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{user.name || user.email}</span>
-              </span>
-            )}
-            {user && <button onClick={function(){ if (window.wgeSignOut) window.wgeSignOut(); }} title="Se déconnecter" style={{ background: WHITE, color: MUTED, border: "1px solid " + BORDER, borderRadius: 8, padding: "8px 10px", fontSize: 12 }}>⏻</button>}
-          </div>
+            </div>
+          )}
         </div>
 
         <div style={{ maxWidth: 920, margin: "0 auto", padding: "16px 14px 80px" }}>
 
           {/* Référence chantier */}
-          <div style={{ ...CARD, marginBottom: 14 }}>
+          <div style={{ ...CARD, marginBottom: isMobileView ? 10 : 14, padding: isMobileView ? "0.6rem 0.75rem" : undefined }}>
             {ref && data.meta.nom_tache && (
-              <div style={{ marginBottom: 10 }}>
+              <div style={{ marginBottom: isMobileView ? 6 : 10 }}>
                 <label style={LBL}>Tâche Odoo</label>
-                <div style={{ fontSize: 15, fontWeight: 700, color: GREEN }}>{data.meta.nom_tache}</div>
+                <div style={{ fontSize: isMobileView ? 13 : 15, fontWeight: 700, color: GREEN }}>{data.meta.nom_tache}</div>
               </div>
             )}
             <div style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap" }}>
@@ -9090,7 +9112,7 @@ function App() {
             )}
 
             {/* Identification */}
-            <Card icon="📋" title="Identification du chantier">
+            <Card icon="📋" title="Identification du chantier" compact={isMobileView}>
               {/* Import bon de commande */}
               <div style={{ background: GREEN_LIGHT, border: "1px solid " + GREEN_MID, borderRadius: 8, padding: "10px 12px", marginBottom: 14 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
@@ -9139,11 +9161,48 @@ function App() {
 
             {/* Type de chantier */}
             <Card icon="🧱" title="Type de chantier">
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <Chip label="🧱 Isolation de façade" selected={data.typeChantier.facade} onClick={function(){ upd(["typeChantier","facade"], !data.typeChantier.facade); }} />
-                <Chip label="🏠 Toiture" selected={data.typeChantier.toiture} onClick={function(){ upd(["typeChantier","toiture"], !data.typeChantier.toiture); }} />
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                {/* Façade */}
+                {!data.typeChantier.facade ? (
+                  <button onClick={function(){ upd(["typeChantier","facade"], true); }}
+                    style={{ background: WHITE, color: GREEN, border: "1.5px solid " + GREEN, borderRadius: 20, padding: "7px 14px", fontWeight: 600, fontSize: 13, cursor: "pointer" }}>
+                    + 🧱 Isolation de façade
+                  </button>
+                ) : (
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, background: GREEN_LIGHT, border: "1.5px solid " + GREEN, borderRadius: 20, padding: "6px 6px 6px 14px" }}>
+                    <span style={{ fontWeight: 600, fontSize: 13, color: GREEN }}>🧱 Isolation de façade</span>
+                    <button title="Supprimer ce type et toutes ses données"
+                      onClick={function(){
+                        if (!window.confirm("Supprimer le type \"Isolation de façade\" et toutes ses données (quantités, notes, photos) ?\nCette action est irréversible.")) return;
+                        if (!window.confirm("⚠️ CONFIRMATION FINALE\n\nSupprimer définitivement l'isolation de façade et toutes les données associées ?\nContinuer ?")) return;
+                        setData(function(d){
+                          var nd = setIn(d, ["typeChantier","facade"], false);
+                          nd = setIn(nd, ["facade"], makeEmptyFacade());
+                          return nd;
+                        });
+                      }}
+                      style={{ background: WHITE, color: "#c0392b", border: "1px solid #f5b7b1", borderRadius: 14, width: 24, height: 24, fontSize: 12, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>🗑</button>
+                  </div>
+                )}
+
+                {/* Toiture inclinée / plate — l'ajout crée directement une première toiture de ce type */}
+                <button onClick={function(){ addRoof("pente"); }}
+                  style={{ background: WHITE, color: GREEN, border: "1.5px solid " + GREEN, borderRadius: 20, padding: "7px 14px", fontWeight: 600, fontSize: 13, cursor: "pointer" }}>
+                  + 🏠 Toiture inclinée
+                </button>
+                <button onClick={function(){ addRoof("plate"); }}
+                  style={{ background: WHITE, color: "#2980b9", border: "1.5px solid #2980b9", borderRadius: 20, padding: "7px 14px", fontWeight: 600, fontSize: 13, cursor: "pointer" }}>
+                  + 🏢 Toiture plate
+                </button>
               </div>
-              {!data.typeChantier.facade && !data.typeChantier.toiture && <div style={{ fontSize: 12, color: MUTED, marginTop: 10 }}>Sélectionnez au moins un type pour afficher les sections de suivi.</div>}
+
+              {data.typeChantier.toiture && (data.toitures || []).length > 0 && (
+                <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  <span style={{ fontSize: 12, color: MUTED }}>{(data.toitures || []).length} toiture{(data.toitures||[]).length>1?"s":""} active{(data.toitures||[]).length>1?"s":""} — chaque toiture se supprime individuellement ci-dessous.</span>
+                </div>
+              )}
+
+              {!data.typeChantier.facade && !data.typeChantier.toiture && <div style={{ fontSize: 12, color: MUTED, marginTop: 10 }}>Ajoutez au moins un type pour commencer le suivi.</div>}
             </Card>
 
             <div>
@@ -9247,14 +9306,14 @@ function App() {
 }
 
 /* ── Petite carte repliable (réutilisée pour identification et remarques) ── */
-function Card({ icon, title, children, defaultOpen = true, accent }) {
+function Card({ icon, title, children, defaultOpen = true, accent, compact }) {
   var [open, setOpen] = useState(defaultOpen);
   return (
-    <div style={{ ...CARD, marginBottom: 14, padding: "0.9rem 1.1rem" }}>
+    <div style={{ ...CARD, marginBottom: compact ? 10 : 14, padding: compact ? "0.6rem 0.75rem" : "0.9rem 1.1rem" }}>
       <div onClick={function(){ setOpen(!open); }}
-        style={{ ...SH, marginBottom: open ? 16 : 0, cursor: "pointer", borderBottom: open ? SH.borderBottom : "none", paddingBottom: open ? 10 : 0, color: accent || GREEN }}>
-        <span style={{ fontSize: 15 }}>{icon}</span>
-        <span style={{ flex: 1 }}>{title}</span>
+        style={{ ...SH, marginBottom: open ? (compact ? 10 : 16) : 0, cursor: "pointer", borderBottom: open ? SH.borderBottom : "none", paddingBottom: open ? (compact ? 6 : 10) : 0, color: accent || GREEN }}>
+        <span style={{ fontSize: compact ? 13 : 15 }}>{icon}</span>
+        <span style={{ flex: 1, fontSize: compact ? 12 : undefined }}>{title}</span>
         <span style={{ color: MUTED, fontSize: 13 }}>{open ? "▾" : "▸"}</span>
       </div>
       {open && children}
