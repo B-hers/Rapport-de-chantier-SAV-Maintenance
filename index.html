@@ -2781,7 +2781,7 @@ function DCTab({ data, setData, locked, isWGE, onUnlock }) {
           </div>
         </div>
       )}
-      <WhatsAppNotify data={data} tab="dc" dcComp={comp} acComp={null} />
+      <WhatsAppNotify data={data} tab="dc" />
     </div>
   );
 }
@@ -3306,7 +3306,7 @@ function ACTab({ data, setData, locked, isWGE, onUnlock }) {
           </div>
         </div>
       )}
-      <WhatsAppNotify data={data} tab="ac" dcComp={null} acComp={comp} />
+      <WhatsAppNotify data={data} tab="ac" />
     </div>
   );
 }
@@ -3772,7 +3772,7 @@ function makeDefaultSAV() {
   };
 }
 
-function SAVCard({ sav, idx, onChange, onDelete, photos, setPhotos }) {
+function SAVCard({ sav, idx, onChange, onDelete, photos, setPhotos, refChantier }) {
   var [open, setOpen] = useState(true);
 
   var statutColors = {
@@ -3856,17 +3856,15 @@ function SAVCard({ sav, idx, onChange, onDelete, photos, setPhotos }) {
           {/* Description */}
           <div style={{ marginBottom: 10 }}>
             <label style={{ fontSize: 12, color: MUTED, fontWeight: 500, marginBottom: 4, display: "block" }}>Description du problème</label>
-            <textarea value={sav.description||""} onChange={function(e){ onChange({...sav, description: e.target.value}); }}
-              placeholder="Décrire le problème observé…"
-              rows={3} style={{ width: "100%", fontSize: 13, resize: "vertical", boxSizing: "border-box" }} />
+            <VoiceOrTextField value={sav.description} onChange={function(v){ onChange({...sav, description: v}); }}
+              placeholder="Décrire le problème observé…" rows={3} refChantier={refChantier} />
           </div>
 
           {/* Actions */}
           <div style={{ marginBottom: 10 }}>
             <label style={{ fontSize: 12, color: MUTED, fontWeight: 500, marginBottom: 4, display: "block" }}>Actions effectuées</label>
-            <textarea value={sav.actionsEffectuees||""} onChange={function(e){ onChange({...sav, actionsEffectuees: e.target.value}); }}
-              placeholder="Décrire les actions réalisées pour résoudre le problème…"
-              rows={3} style={{ width: "100%", fontSize: 13, resize: "vertical", boxSizing: "border-box" }} />
+            <VoiceOrTextField value={sav.actionsEffectuees} onChange={function(v){ onChange({...sav, actionsEffectuees: v}); }}
+              placeholder="Décrire les actions réalisées pour résoudre le problème…" rows={3} refChantier={refChantier} />
           </div>
 
           {/* Pièces */}
@@ -3907,6 +3905,7 @@ var ADMIN_SECTIONS_DEF = [
   { key: "grd",       label: "🔌 Documents GRD",               color: "#16a085" },
   { key: "stabilite", label: "🏗️ Rapport de stabilité",       color: "#c0392b" },
   { key: "fiches",    label: "📄 Fiches techniques",           color: "#e67e22" },
+  { key: "schemas",   label: "📐 Schéma unifilaire et/ou de position (+ facteurs d'influence)", color: "#2c3e50" },
 ];
 
 var CUSTOM_SECTION_COLORS = ["#e67e22","#1abc9c","#3498db","#e91e63","#607d8b","#795548","#ff5722","#9c27b0"];
@@ -4282,6 +4281,7 @@ function SAVTab({ data, setData }) {
             onChange={function(updated){ setSavList(function(l){ return l.map(function(s,j){ return j===i?updated:s; }); }); }}
             onDelete={function(){ setSavList(function(l){ return l.filter(function(_,j){ return j!==i; }); }); }}
             photos={savPhotos} setPhotos={setSavPhotos}
+            refChantier={data.meta.ref}
           />
         );
       })}
@@ -4294,7 +4294,7 @@ function SAVTab({ data, setData }) {
           display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
         + Nouvelle intervention SAV
       </button>
-      <WhatsAppNotify data={data} tab="sav" dcComp={null} acComp={null} />
+      <WhatsAppNotify data={data} tab="sav" />
     </div>
   );
 }
@@ -4410,7 +4410,7 @@ function MaintenanceTab({ data, setData }) {
             display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
           + Nouvelle visite de maintenance
         </button>
-        <WhatsAppNotify data={data} tab="maintenance" dcComp={null} acComp={null} />
+        <WhatsAppNotify data={data} tab="maintenance" />
       </div>
     );
   }
@@ -6153,6 +6153,56 @@ function NoteVocaleRecorder({ refChantier, onResult, onCancel }) {
     </div>
   );
 }
+
+// ── VoiceOrTextField — textarea générique avec option "note vocale" (transcription + résumé) ──
+function VoiceOrTextField({ value, onChange, placeholder, rows, refChantier }) {
+  var [mode, setMode] = useState("texte"); // "texte" | "vocal"
+  var [voiceData, setVoiceData] = useState(null);
+
+  return (
+    <div>
+      <div style={{ display:"flex", justifyContent:"flex-end", gap:4, marginBottom:4 }}>
+        {[["texte","✍️ Texte"],["vocal","🎙️ Vocal"]].map(function(opt){
+          var active = mode===opt[0];
+          return (
+            <button key={opt[0]} type="button" onClick={function(){ setMode(opt[0]); }}
+              style={{ fontSize:11, fontWeight:700, padding:"3px 9px", borderRadius:13, minHeight:0,
+                border:"1px solid "+(active?GREEN:"#d8d8d0"),
+                background:active?GREEN:"#fff", color:active?"#fff":"#666", cursor:"pointer" }}>
+              {opt[1]}
+            </button>
+          );
+        })}
+      </div>
+
+      {mode === "vocal" && !voiceData && (
+        <NoteVocaleRecorder refChantier={refChantier}
+          onResult={function(res){
+            setVoiceData(res);
+            var texte = res.resume || res.transcript || "";
+            onChange(value && value.trim() ? value.trim() + "\n\n" + texte : texte);
+          }}
+        />
+      )}
+      {mode === "vocal" && voiceData && (
+        <div style={{ background:"#f0f7f2", border:"1px solid #d4ead9", borderRadius:8, padding:"8px 10px", marginBottom:6 }}>
+          <div style={{ fontSize:11, color:"#1a1a1a", fontWeight:700, marginBottom:4 }}>
+            🎙️ Note vocale ajoutée{voiceData.langue ? " — " + voiceData.langue : ""}
+          </div>
+          {voiceData.audioUrl && <audio controls src={voiceData.audioUrl} style={{ width:"100%", marginBottom:6 }} />}
+          <button type="button" onClick={function(){ setVoiceData(null); }}
+            style={{ fontSize:11, color:"#c0392b", background:"none", border:"none", cursor:"pointer", minHeight:0, padding:0 }}>
+            🗑 Refaire la note vocale
+          </button>
+        </div>
+      )}
+
+      <textarea value={value||""} onChange={function(e){ onChange(e.target.value); }}
+        placeholder={placeholder} rows={rows||3}
+        style={{ width:"100%", fontSize:13, resize:"vertical", boxSizing:"border-box" }} />
+    </div>
+  );
+}
 // ── FIN NOTE VOCALE ─────────────────────────────────────────────────────────
 
 function CloturJourneeBlock({ tab, tabColor, journees, setJournees, locked, refChantier }) {
@@ -7693,10 +7743,17 @@ function AsBuiltViewer({ wgeUser }) {
 }
 
 // ── WhatsAppNotify ────────────────────────────────────────────────────────────
-function WhatsAppNotify({ data, tab, dcComp, acComp }) {
+function countPhotosInMap(photosMap) {
+  var c = 0;
+  Object.keys(photosMap||{}).forEach(function(k){ c += (photosMap[k]||[]).filter(function(p){ return p && p.url; }).length; });
+  return c;
+}
+
+function WhatsAppNotify({ data, tab }) {
   var [copied, setCopied] = useState(false);
   var [showPreview, setShowPreview] = useState(false);
   var [pmPhone, setPmPhone] = useState(null);
+  var [pmLoading, setPmLoading] = useState(true);
 
   var ref     = data.meta.ref || "—";
   var client  = data.meta.client || "Client inconnu";
@@ -7705,42 +7762,75 @@ function WhatsAppNotify({ data, tab, dcComp, acComp }) {
 
   // Load PM phone from briefing
   useEffect(function() {
-    if (!ref || ref === "—") return;
+    if (!ref || ref === "—") { setPmLoading(false); return; }
+    setPmLoading(true);
     supaLoadChantier(ref).then(function(d) {
       if (d && d.weGreen && d.weGreen.tel) {
         // Normalize: remove spaces, dots, dashes, leading +
         var t = d.weGreen.tel.replace(/[\s\.\-\(\)]/g, "").replace(/^\+/, "");
         setPmPhone(t || null);
       }
+      setPmLoading(false);
+    }).catch(function(e) {
+      console.warn("[WhatsAppNotify] chargement numéro PM échoué:", e);
+      setPmLoading(false);
     });
   }, [ref]);
 
   var reportUrl = "https://b-hers.github.io/Rapport-de-chantier-SAV-Maintenance/?ref=" + encodeURIComponent(ref);
 
-  // Status lines
-  var dcStr = data.meta.dcLocked ? "DC verrouille" : (dcComp && dcComp.pct > 0 ? "DC " + dcComp.pct + "%" + (dcComp.nokCount > 0 ? " (" + dcComp.nokCount + " NOK)" : " OK") : "DC non demarre");
-  var acStr = data.meta.acLocked ? "AC verrouille" : (acComp && acComp.pct > 0 ? "AC " + acComp.pct + "%" + (acComp.nokCount > 0 ? " (" + acComp.nokCount + " NOK)" : " OK") : "AC non demarre");
-  var savStr = (data.sav||[]).length > 0 ? "SAV: " + (data.sav||[]).length + " intervention(s)" : "";
-  var maintStr = (data.maintenanceVisites||[]).length > 0 ? "Maintenance: " + (data.maintenanceVisites||[]).length + " visite(s)" : "";
+  // ── Statut DC / AC — basé sur une activité réelle (checklist OU photos), sans % ──
+  var dcComp = calcDCCompletion(data);
+  var acComp = calcACCompletion(data);
+  var dcPhotoCount = countPhotosInMap(data.dc.photos);
+  var acPhotoCount = countPhotosInMap(data.ac.photos);
+  var dcStarted = data.meta.dcLocked || dcComp.done > 0 || dcPhotoCount > 0;
+  var acStarted = data.meta.acLocked || acComp.done > 0 || acPhotoCount > 0;
 
-  // Daily closure info
+  function statusLine(label, locked, comp, started) {
+    if (!started) return ""; // rien à signaler : on n'affiche pas "non démarré"
+    if (locked) return label + " : verrouillé";
+    if (comp.nokCount > 0) return label + " : en cours (⚠️ " + comp.nokCount + " NOK)";
+    if (comp.total > 0 && comp.done === comp.total) return label + " : terminé";
+    return label + " : en cours";
+  }
+  var dcStr = statusLine("DC", data.meta.dcLocked, dcComp, dcStarted);
+  var acStr = statusLine("AC", data.meta.acLocked, acComp, acStarted);
+
+  var today = new Date().toISOString().slice(0,10);
+
+  // ── Journées clôturées aujourd'hui (DC/AC) — note/résumé complet, pas tronqué ──
   var allJournees = [];
   (data.dc.journeesCloturees||[]).forEach(function(j){ allJournees.push(Object.assign({},j,{tab:"DC"})); });
   (data.ac.journeesCloturees||[]).forEach(function(j){ allJournees.push(Object.assign({},j,{tab:"AC"})); });
-  // Find today's closures
-  var today = new Date().toISOString().slice(0,10);
   var todayJournees = allJournees.filter(function(j){ return j.date === today; });
   var journeeStr = todayJournees.length > 0
     ? "📅 Journée clôturée (" + todayJournees.map(function(j){ return j.tab + (j.auteur ? " par " + j.auteur : ""); }).join(", ") + ")"
     : "";
-  // Extraits des commentaires du jour (texte libre ou résumé de note vocale)
   var journeeNoteLines = todayJournees
     .filter(function(j){ return j.note && j.note.trim(); })
-    .map(function(j){
-      var extrait = j.note.trim();
-      if (extrait.length > 140) extrait = extrait.slice(0,140) + "…";
-      return (j.audioUrl ? "🎙️ " : "💬 ") + j.tab + " : " + extrait;
+    .map(function(j){ return (j.audioUrl ? "🎙️ " : "💬 ") + j.tab + " : " + j.note.trim(); });
+
+  // ── SAV du jour — texte complet (description + actions) ──
+  var todaySav = (data.sav||[]).filter(function(s){ return s.date === today; });
+  var savLines = [];
+  if (todaySav.length > 0) {
+    savLines.push("🔧 SAV (" + todaySav.length + " intervention" + (todaySav.length>1?"s":"") + ")");
+    todaySav.forEach(function(s){
+      var head = "— " + (s.type||"Intervention") + (s.intervenant ? " · " + s.intervenant : "") + (s.statut ? " · " + s.statut : "");
+      savLines.push(head);
+      if (s.description && s.description.trim()) savLines.push("   Problème : " + s.description.trim());
+      if (s.actionsEffectuees && s.actionsEffectuees.trim()) savLines.push("   Actions : " + s.actionsEffectuees.trim());
     });
+  }
+
+  // ── Maintenance du jour ──
+  var todayMaint = (data.maintenanceVisites||[]).filter(function(v){ return v.date === today; });
+  var maintLines = [];
+  if (todayMaint.length > 0) {
+    maintLines.push("🔩 Maintenance (" + todayMaint.length + " visite" + (todayMaint.length>1?"s":"") + ")" +
+      (todayMaint[0].responsable ? " — " + todayMaint.map(function(v){ return v.responsable; }).filter(Boolean).join(", ") : ""));
+  }
 
   var tabLabel = {dc:"DC", ac:"AC", sav:"SAV", maintenance:"Maintenance"}[tab] || tab;
 
@@ -7751,10 +7841,10 @@ function WhatsAppNotify({ data, tab, dcComp, acComp }) {
   msgLines.push("");
   if (journeeStr) msgLines.push(journeeStr);
   journeeNoteLines.forEach(function(l){ msgLines.push(l); });
-  msgLines.push(dcStr);
-  msgLines.push(acStr);
-  if (savStr) msgLines.push(savStr);
-  if (maintStr) msgLines.push(maintStr);
+  if (dcStr) msgLines.push(dcStr);
+  if (acStr) msgLines.push(acStr);
+  savLines.forEach(function(l){ msgLines.push(l); });
+  maintLines.forEach(function(l){ msgLines.push(l); });
   msgLines.push("");
   msgLines.push("Rapport : " + reportUrl);
 
@@ -7765,15 +7855,21 @@ function WhatsAppNotify({ data, tab, dcComp, acComp }) {
   var waUrlPM    = pmPhone ? "https://wa.me/" + pmPhone + "?text=" + messageEncoded : null;
   var waUrlGroup = WA_GROUP;
 
-  function copyAndOpenGroup() {
-    var openGroup = function() { window.open(waUrlGroup, "_blank"); };
+  function copyToClipboard() {
     try {
       navigator.clipboard.writeText(messageDisplay).then(function() {
         setCopied(true);
         setTimeout(function(){ setCopied(false); }, 4000);
-        openGroup();
-      }).catch(openGroup);
-    } catch(e) { openGroup(); }
+      }).catch(function(){});
+    } catch(e) {}
+  }
+
+  function copyAndOpenGroup() {
+    // Ouvrir l'onglet en premier, de façon synchrone dans le clic : sur mobile (Safari/Chrome),
+    // ouvrir une fenêtre depuis un .then() asynchrone perd le "geste utilisateur" et affiche
+    // une page blanche / le popup est bloqué. On ouvre donc d'abord, puis on copie en tâche de fond.
+    window.open(waUrlGroup, "_blank");
+    copyToClipboard();
   }
 
   return (
@@ -7814,9 +7910,7 @@ function WhatsAppNotify({ data, tab, dcComp, acComp }) {
         ) : (
           <div style={{ fontSize: 11, color: "#856404", background: "#fff8e1",
             borderRadius: 7, padding: "8px 12px", flex: 1 }}>
-            {pmPhone === null && ref !== "—"
-              ? "⏳ Chargement numéro PM…"
-              : "⚠️ Numéro PM non renseigné dans le Briefing de Chantier"}
+            {pmLoading ? "⏳ Chargement numéro PM…" : "⚠️ Numéro PM non renseigné dans le Briefing de Chantier"}
           </div>
         )}
 
@@ -7827,11 +7921,19 @@ function WhatsAppNotify({ data, tab, dcComp, acComp }) {
             cursor: "pointer", whiteSpace: "nowrap" }}>
           👥 {copied ? "✅ Copié!" : "Groupe WGE"}
         </button>
+
+        <button onClick={copyToClipboard} title="Copier le message pour le coller où vous voulez"
+          style={{ display: "inline-flex", alignItems: "center", gap: 7,
+            padding: "10px 18px", background: WHITE, color: GREEN,
+            border: "1.5px solid " + GREEN, borderRadius: 8, fontSize: 13, fontWeight: 700,
+            cursor: "pointer", whiteSpace: "nowrap" }}>
+          📋 {copied ? "✅ Copié!" : "Copier"}
+        </button>
       </div>
 
       {copied && (
         <div style={{ fontSize: 11, color: "#27ae60", marginTop: 8 }}>
-          ✅ Message copié — collez-le dans le groupe WhatsApp qui vient de s'ouvrir
+          ✅ Message copié — collez-le (Ctrl+V / appui long) dans la conversation WhatsApp
         </div>
       )}
     </div>
