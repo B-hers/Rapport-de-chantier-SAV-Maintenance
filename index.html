@@ -352,6 +352,12 @@ const SUPA_URL = "https://qdepdtwrokazceyecege.supabase.co";
 const SUPA_KEY = "sb_publishable_U6PddofdvgpD5IgU4ZsPdg_wqB-5Scw";
 const SUPA_STORAGE_BUCKET = "rapport-photos";
 const GOOGLE_CLIENT_ID = "765677431332-2leuvo90bvhnmid77hml6cj230av8eao.apps.googleusercontent.com";
+
+// ── Note vocale (transcription + résumé IA, via Edge Functions) ────────────
+const SUPA_FN_BASE = SUPA_URL + "/functions/v1";
+const VOICE_TRANSCRIBE_ENDPOINT = SUPA_FN_BASE + "/transcribe-audio";
+const VOICE_SUMMARY_ENDPOINT = SUPA_FN_BASE + "/summarize-note";
+const VOICE_APP_SHARED_SECRET = "xh6y8dlA9-6x1ziYD9kmIP7kmFut6r4F";
 const ALLOWED_DOMAIN = "we-green.be";
 const ALLOWED_DOMAINS = ["we-green.be", "we-green.fr", "we-cover.be"];
 function isWGEEmail(email) { return !!email && ALLOWED_DOMAINS.some(function(d){ return email.endsWith("@"+d); }); }
@@ -365,6 +371,14 @@ var CLIENT_MODE = (function(){
 })();
 
 // ── Supabase Storage helpers ──────────────────────────────────────────────────
+function blobToDataURL(blob) {
+  return new Promise(function(resolve, reject) {
+    var r = new FileReader();
+    r.onload = function(e) { resolve(e.target.result); };
+    r.onerror = reject;
+    r.readAsDataURL(blob);
+  });
+}
 // Upload un data: URL (image ou fichier) vers Supabase Storage → retourne l'URL publique ou le data: original si échec
 async function uploadFileToStorage(ref, catKey, dataUrl, fileName, mimeType) {
   if (!dataUrl || !dataUrl.startsWith("data:")) return dataUrl;
@@ -373,7 +387,9 @@ async function uploadFileToStorage(ref, catKey, dataUrl, fileName, mimeType) {
     var blob = await fetchRes.blob();
     var mime = mimeType || blob.type || "application/octet-stream";
     var ext = mime === "image/jpeg" ? "jpg" : mime === "image/png" ? "png" : mime === "application/pdf" ? "pdf" :
-              mime.includes("excel") || mime.includes("spreadsheet") ? "xlsx" : "bin";
+              mime.includes("excel") || mime.includes("spreadsheet") ? "xlsx" :
+              mime.includes("audio/webm") ? "webm" : mime.includes("audio/mp4") || mime === "audio/x-m4a" ? "m4a" :
+              mime.includes("audio/mpeg") ? "mp3" : mime.includes("audio/") ? "audio" : "bin";
     var safeName = (fileName || "file").replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 60);
     var path = encodeURIComponent(ref) + "/" + catKey + "/" + Date.now() + "-" + safeName + "." + ext;
     var uploadRes = await fetch(SUPA_URL + "/storage/v1/object/" + SUPA_STORAGE_BUCKET + "/" + path, {
@@ -2676,6 +2692,7 @@ function DCTab({ data, setData, locked, isWGE, onUnlock }) {
         tab="DC"
         tabColor={DC_COLOR}
         locked={locked}
+        refChantier={data.meta.ref}
         journees={data.dc.journeesCloturees||[]}
         setJournees={function(updater){
           setData(function(prev){
@@ -3211,6 +3228,7 @@ function ACTab({ data, setData, locked, isWGE, onUnlock }) {
         tab="AC"
         tabColor={AC_COLOR}
         locked={locked}
+        refChantier={data.meta.ref}
         journees={data.ac.journeesCloturees||[]}
         setJournees={function(updater){
           setData(function(prev){
@@ -4759,6 +4777,7 @@ function ProgressPanel({ data, onClose }) {
                           border:"1px solid #f39c1244", borderRadius:7, padding:"8px 10px", fontSize:11, color:"#856404" }}>
                           ✅ Journée clôturée ({j.tab}) — {dateStr} {j.heure?"à "+j.heure:""}
                           {j.note && <div style={{ marginTop:3, color:"#555", fontStyle:"italic" }}>{j.note}</div>}
+                          {j.audioUrl && <audio controls src={j.audioUrl} style={{ width:"100%", marginTop:5, height:32 }} />}
                         </div>
                       );
                     })}
@@ -4876,6 +4895,9 @@ function ProgressPanel({ data, onClose }) {
                           <div style={{ fontSize:11, color:"#1a1a1a", lineHeight:1.5, marginTop:4,
                             background:WHITE, borderRadius:5, padding:"5px 8px",
                             borderLeft:"3px solid #f39c12", whiteSpace:"pre-wrap" }}>{j.note}</div>
+                        )}
+                        {j.audioUrl && (
+                          <audio controls src={j.audioUrl} style={{ width:"100%", marginTop:5, height:32 }} />
                         )}
                       </div>
                     );
@@ -5925,11 +5947,194 @@ function LockBanner({ tab, onUnlock, isWGE }) {
 // Section "Clôture de journée" — affichée au-dessus de la clôture de chantier.
 // Auteur = utilisateur connecté (auto), heure = moment de confirmation (auto),
 // date = aujourd'hui par défaut (modifiable), commentaire libre.
-function CloturJourneeBlock({ tab, tabColor, journees, setJournees, locked }) {
+// ═══════════════════════════════════════════════════════════════════════════
+// ── NOTE VOCALE ── composant autonome, isolé du reste de l'app ─────────────
+// Enregistre l'audio, l'upload sur Supabase Storage, le transcrit (Whisper)
+// puis en génère un résumé (Claude) via deux Edge Functions dédiées.
+// N'écrit nulle part ailleurs : rend juste { langue, transcript, resume,
+// audioUrl, dureeSec } via onResult(). Toute la logique "clôture de journée"
+// reste dans CloturJourneeBlock, juste en dessous.
+// ═══════════════════════════════════════════════════════════════════════════
+const NOTE_VOCALE_LANGUES = [
+  { code: "fr", label: "🇧🇪 FR" },
+  { code: "nl", label: "🇧🇪 NL" },
+  { code: "en", label: "🇬🇧 EN" },
+  { code: "es", label: "🇪🇸 ES" },
+  { code: "sq", label: "🇦🇱 SQ" },
+  { code: "tr", label: "🇹🇷 TR" },
+  { code: "ar", label: "🇲🇦 AR" }
+];
+
+async function noteVocaleTranscrire(blob, langueCode) {
+  var form = new FormData();
+  form.append("audio", blob, "note.webm");
+  if (langueCode) form.append("langue", langueCode);
+  var res = await fetch(VOICE_TRANSCRIBE_ENDPOINT, {
+    method: "POST",
+    headers: { "x-app-key": VOICE_APP_SHARED_SECRET },
+    body: form
+  });
+  var json = await res.json();
+  if (!res.ok) throw new Error((json && json.error) || ("HTTP " + res.status));
+  return json.transcript || "";
+}
+
+async function noteVocaleResumer(texte) {
+  var res = await fetch(VOICE_SUMMARY_ENDPOINT, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-app-key": VOICE_APP_SHARED_SECRET },
+    body: JSON.stringify({ texte: texte })
+  });
+  var json = await res.json();
+  if (!res.ok) throw new Error((json && json.error) || ("HTTP " + res.status));
+  return json.resume || "";
+}
+
+function NoteVocaleRecorder({ refChantier, onResult, onCancel }) {
+  var [langue, setLangue] = useState("fr");
+  var [recording, setRecording] = useState(false);
+  var [dureeSec, setDureeSec] = useState(0);
+  var [status, setStatus] = useState("idle"); // idle | recording | traitement | erreur
+  var [erreur, setErreur] = useState("");
+
+  var mediaRecorderRef = useRef(null);
+  var chunksRef = useRef([]);
+  var streamRef = useRef(null);
+  var timerRef = useRef(null);
+  var langueRef = useRef(langue);
+  useEffect(function() { langueRef.current = langue; }, [langue]);
+
+  useEffect(function() {
+    return function() {
+      if (timerRef.current) clearInterval(timerRef.current);
+      if (streamRef.current) streamRef.current.getTracks().forEach(function(t){ t.stop(); });
+    };
+  }, []);
+
+  function fmtDuree(sec) {
+    var m = Math.floor(sec/60), s = sec%60;
+    return (m<10?"0":"")+m+":"+(s<10?"0":"")+s;
+  }
+
+  async function startRecording() {
+    setErreur("");
+    chunksRef.current = [];
+    setDureeSec(0);
+    try {
+      var stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+      var mr = new MediaRecorder(stream);
+      mediaRecorderRef.current = mr;
+      mr.ondataavailable = function(e){ if (e.data.size>0) chunksRef.current.push(e.data); };
+      mr.onstop = function() { handleStop(); };
+      mr.start();
+      setRecording(true);
+      setStatus("recording");
+      var start = Date.now();
+      timerRef.current = setInterval(function(){ setDureeSec(Math.floor((Date.now()-start)/1000)); }, 500);
+    } catch(e) {
+      setErreur("Impossible d'accéder au micro : " + e.message);
+      setStatus("erreur");
+    }
+  }
+
+  function stopRecording() {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+      mediaRecorderRef.current.stop();
+    }
+    if (streamRef.current) { streamRef.current.getTracks().forEach(function(t){ t.stop(); }); streamRef.current = null; }
+    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
+    setRecording(false);
+  }
+
+  async function handleStop() {
+    setStatus("traitement");
+    var blob = new Blob(chunksRef.current, { type: chunksRef.current[0] ? chunksRef.current[0].type : "audio/webm" });
+    var finalDuree = dureeSec;
+    try {
+      // 1) Upload Storage (comme les photos) — si échec, on garde quand même transcript+résumé
+      var audioUrl = null;
+      try {
+        var dataUrl = await blobToDataURL(blob);
+        audioUrl = await uploadFileToStorage(refChantier || "sans-ref", "notes-vocales", dataUrl, "note-vocale", blob.type || "audio/webm");
+      } catch(e) { console.warn("[NoteVocale] upload audio échoué:", e); }
+
+      // 2) Transcription (Whisper)
+      var transcript = await noteVocaleTranscrire(blob, langueRef.current);
+
+      // 3) Résumé (Claude) — si la transcription est vide/trop courte, on n'appelle pas inutilement
+      var resume = "";
+      if (transcript && transcript.trim().length >= 10) {
+        try { resume = await noteVocaleResumer(transcript); }
+        catch(e) { console.warn("[NoteVocale] résumé échoué:", e); }
+      }
+
+      setStatus("idle");
+      onResult({
+        langue: langueRef.current,
+        transcript: transcript,
+        resume: resume,
+        audioUrl: audioUrl,
+        dureeSec: finalDuree
+      });
+    } catch(e) {
+      setErreur("Transcription indisponible : " + e.message);
+      setStatus("erreur");
+    }
+  }
+
+  return (
+    <div style={{ background:"#f0f7f2", border:"1px solid #d4ead9", borderRadius:9, padding:"12px 14px" }}>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
+        <div style={{ fontWeight:700, fontSize:12, color:GREEN }}>🎙️ Note vocale</div>
+        {onCancel && <button onClick={onCancel} style={{ background:"none", border:"none", color:MUTED, fontSize:12, cursor:"pointer", minHeight:0 }}>Annuler</button>}
+      </div>
+
+      <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginBottom:10 }}>
+        {NOTE_VOCALE_LANGUES.map(function(l) {
+          return (
+            <button key={l.code} disabled={recording || status==="traitement"}
+              onClick={function(){ setLangue(l.code); }}
+              style={{ minHeight:36, padding:"0 10px", borderRadius:18, fontSize:12, fontWeight:600,
+                border:"1px solid "+(langue===l.code?GREEN:"#d8d8d0"),
+                background: langue===l.code ? GREEN : "#fff", color: langue===l.code ? "#fff" : "#333", cursor:"pointer" }}>
+              {l.label}
+            </button>
+          );
+        })}
+      </div>
+      {langue === "ar" && (
+        <div style={{ fontSize:11, color:"#a33323", background:"#fdeeea", borderRadius:6, padding:"6px 9px", marginBottom:10 }}>
+          ⚠️ La darija parlée n'est pas reconnue de façon fiable par les moteurs de transcription actuels. Vérifiez et corrigez le texte si besoin.
+        </div>
+      )}
+
+      <div style={{ textAlign:"center" }}>
+        <button onClick={recording ? stopRecording : startRecording} disabled={status==="traitement"}
+          style={{ width:64, height:64, borderRadius:"50%", border:"none", fontSize:24, cursor:"pointer",
+            background: recording ? "#e74c3c" : GREEN, color:"#fff" }}>
+          {recording ? "⏹" : "🎙"}
+        </button>
+        <div style={{ fontSize:18, fontWeight:700, marginTop:6, fontVariantNumeric:"tabular-nums" }}>{fmtDuree(dureeSec)}</div>
+        <div style={{ fontSize:11, color:MUTED, marginTop:2 }}>
+          {status==="traitement" ? "Transcription et résumé en cours…" : recording ? "Enregistrement…" : "Appuyer pour démarrer"}
+        </div>
+      </div>
+
+      {erreur && <div style={{ fontSize:11, color:"#c0392b", background:"#fdecea", borderRadius:6, padding:"6px 9px", marginTop:10 }}>⚠️ {erreur}</div>}
+    </div>
+  );
+}
+// ── FIN NOTE VOCALE ─────────────────────────────────────────────────────────
+
+function CloturJourneeBlock({ tab, tabColor, journees, setJournees, locked, refChantier }) {
   var [showForm, setShowForm] = useState(false);
   var [expanded, setExpanded] = useState(null);
   var [formDate, setFormDate] = useState(function(){ return new Date().toISOString().slice(0,10); });
   var [formNote, setFormNote] = useState("");
+  var [inputMode, setInputMode] = useState("texte"); // "texte" | "vocal"
+  var [voiceData, setVoiceData] = useState(null); // { langue, transcript, resume, audioUrl, dureeSec }
+  var [expandedTranscript, setExpandedTranscript] = useState(null);
 
   var sortedJournees = (journees||[]).slice().sort(function(a,b){ return b.date > a.date ? 1 : -1; });
 
@@ -5941,6 +6146,8 @@ function CloturJourneeBlock({ tab, tabColor, journees, setJournees, locked }) {
   function openForm() {
     setFormDate(new Date().toISOString().slice(0,10));
     setFormNote("");
+    setInputMode("texte");
+    setVoiceData(null);
     setShowForm(true);
     setExpanded(null);
   }
@@ -5955,8 +6162,15 @@ function CloturJourneeBlock({ tab, tabColor, journees, setJournees, locked }) {
       note: formNote.trim(),
       tab: tab
     };
+    if (voiceData) {
+      entry.langue = voiceData.langue;
+      entry.transcript = voiceData.transcript || "";
+      entry.audioUrl = voiceData.audioUrl || null;
+      entry.audioDureeSec = voiceData.dureeSec || 0;
+    }
     setJournees(function(prev){ return (prev||[]).concat([entry]); });
     setShowForm(false);
+    setVoiceData(null);
   }
 
   function fmtDate(iso) {
@@ -6028,12 +6242,53 @@ function CloturJourneeBlock({ tab, tabColor, journees, setJournees, locked }) {
 
             {/* Commentaire */}
             <div style={{ marginBottom:14 }}>
-              <label style={{ fontSize:12, color:MUTED, fontWeight:500, marginBottom:4, display:"block" }}>
-                Commentaire de fin de journée <span style={{ fontWeight:400 }}>(optionnel)</span>
-              </label>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:4 }}>
+                <label style={{ fontSize:12, color:MUTED, fontWeight:500 }}>
+                  Commentaire de fin de journée <span style={{ fontWeight:400 }}>(optionnel)</span>
+                </label>
+                <div style={{ display:"flex", gap:4 }}>
+                  {[["texte","✍️ Texte"],["vocal","🎙️ Vocal"]].map(function(opt){
+                    var active = inputMode===opt[0];
+                    return (
+                      <button key={opt[0]} type="button" onClick={function(){ setInputMode(opt[0]); }}
+                        style={{ fontSize:11, fontWeight:700, padding:"4px 10px", borderRadius:14, minHeight:0,
+                          border:"1px solid "+(active?"#f39c12":"#d8d8d0"),
+                          background:active?"#f39c12":"#fff", color:active?"#fff":"#666", cursor:"pointer" }}>
+                        {opt[1]}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {inputMode === "vocal" && !voiceData && (
+                <NoteVocaleRecorder
+                  refChantier={refChantier}
+                  onResult={function(res){
+                    setVoiceData(res);
+                    setFormNote(res.resume || res.transcript || "");
+                  }}
+                />
+              )}
+              {inputMode === "vocal" && voiceData && (
+                <div style={{ background:"#fff8e8", border:"1px solid #fdd98a", borderRadius:8, padding:"8px 10px", marginBottom:8 }}>
+                  <div style={{ fontSize:11, color:"#856404", fontWeight:700, marginBottom:4 }}>🎙️ Note vocale enregistrée</div>
+                  {voiceData.audioUrl && <audio controls src={voiceData.audioUrl} style={{ width:"100%", marginBottom:6 }} />}
+                  <button type="button" onClick={function(){ setVoiceData(null); setFormNote(""); }}
+                    style={{ fontSize:11, color:"#c0392b", background:"none", border:"none", cursor:"pointer", minHeight:0, padding:0 }}>
+                    🗑 Refaire la note vocale
+                  </button>
+                </div>
+              )}
+
               <textarea value={formNote} onChange={function(e){ setFormNote(e.target.value); }}
                 placeholder="Avancement du chantier, points en suspens, remarques particulières…"
                 style={{ width:"100%", minHeight:80, resize:"vertical" }} />
+              {voiceData && (
+                <div style={{ fontSize:10.5, color:MUTED, marginTop:3 }}>
+                  Texte généré à partir de la note vocale ci-dessus — modifiable avant d'envoyer.
+                </div>
+              )}
             </div>
 
             <div style={{ display:"flex", gap:10, flexWrap:"wrap" }}>
@@ -6070,6 +6325,7 @@ function CloturJourneeBlock({ tab, tabColor, journees, setJournees, locked }) {
                       </div>
                       <div style={{ fontSize:11, color:MUTED, marginTop:2 }}>
                         👤 {j.auteur}
+                        {j.audioUrl && <span style={{ marginLeft:10 }}>🎙️</span>}
                         {j.note && <span style={{ marginLeft:10, fontStyle:"italic" }}>
                           "{j.note.slice(0,50)}{j.note.length>50?"…":""}"
                         </span>}
@@ -6091,6 +6347,9 @@ function CloturJourneeBlock({ tab, tabColor, journees, setJournees, locked }) {
                   </div>
                   {isOpen && (
                     <div style={{ padding:"10px 12px", borderTop:"1px solid #fdd98a", background:"#fffdf8" }}>
+                      {j.audioUrl && (
+                        <audio controls src={j.audioUrl} style={{ width:"100%", marginBottom:8 }} />
+                      )}
                       {j.note ? (
                         <div style={{ fontSize:12, color:"#1a1a1a", lineHeight:1.6,
                           background:"#fff8e8", borderRadius:6, padding:"8px 10px",
@@ -6099,6 +6358,20 @@ function CloturJourneeBlock({ tab, tabColor, journees, setJournees, locked }) {
                         </div>
                       ) : (
                         <div style={{ fontSize:12, color:MUTED, fontStyle:"italic" }}>Aucun commentaire.</div>
+                      )}
+                      {j.transcript && j.transcript.trim() && j.transcript.trim() !== (j.note||"").trim() && (
+                        <div style={{ marginTop:6 }}>
+                          <button type="button" onClick={function(){ setExpandedTranscript(expandedTranscript===j.id?null:j.id); }}
+                            style={{ fontSize:11, color:"#856404", background:"none", border:"none", cursor:"pointer", minHeight:0, padding:0, textDecoration:"underline" }}>
+                            {expandedTranscript===j.id ? "▲ Masquer la transcription complète" : "▼ Voir la transcription complète"}
+                          </button>
+                          {expandedTranscript===j.id && (
+                            <div style={{ fontSize:11.5, color:"#555", lineHeight:1.5, marginTop:4,
+                              background:"#fff", borderRadius:6, padding:"7px 9px", border:"1px solid #fdd98a", whiteSpace:"pre-wrap" }}>
+                              {j.transcript}
+                            </div>
+                          )}
+                        </div>
                       )}
                     </div>
                   )}
@@ -7437,6 +7710,14 @@ function WhatsAppNotify({ data, tab, dcComp, acComp }) {
   var journeeStr = todayJournees.length > 0
     ? "📅 Journée clôturée (" + todayJournees.map(function(j){ return j.tab + (j.auteur ? " par " + j.auteur : ""); }).join(", ") + ")"
     : "";
+  // Extraits des commentaires du jour (texte libre ou résumé de note vocale)
+  var journeeNoteLines = todayJournees
+    .filter(function(j){ return j.note && j.note.trim(); })
+    .map(function(j){
+      var extrait = j.note.trim();
+      if (extrait.length > 140) extrait = extrait.slice(0,140) + "…";
+      return (j.audioUrl ? "🎙️ " : "💬 ") + j.tab + " : " + extrait;
+    });
 
   var tabLabel = {dc:"DC", ac:"AC", sav:"SAV", maintenance:"Maintenance"}[tab] || tab;
 
@@ -7446,6 +7727,7 @@ function WhatsAppNotify({ data, tab, dcComp, acComp }) {
   if (pm) msgLines.push("PM : " + pm);
   msgLines.push("");
   if (journeeStr) msgLines.push(journeeStr);
+  journeeNoteLines.forEach(function(l){ msgLines.push(l); });
   msgLines.push(dcStr);
   msgLines.push(acStr);
   if (savStr) msgLines.push(savStr);
