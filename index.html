@@ -18,6 +18,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
 input, select, textarea { font-family: inherit; font-size: 13px; padding: 6px 10px; border: 1px solid #d0d0c8; border-radius: 6px; background: #fff; color: #1a1a1a; outline: none; transition: border-color 0.15s; width: 100%; }
 input:focus, select:focus, textarea:focus { border-color: #1B6B3A; }
 button { font-family: inherit; cursor: pointer; }
+@keyframes wgeRecPulse { 0% { box-shadow: 0 0 0 0 rgba(231,76,60,0.45); } 70% { box-shadow: 0 0 0 12px rgba(231,76,60,0); } 100% { box-shadow: 0 0 0 0 rgba(231,76,60,0); } }
 @media print {
   @page { size: A4 portrait; margin: 10mm 12mm; }
   body { background: white; margin: 0; font-size: 11px; }
@@ -1520,18 +1521,18 @@ function PhotoZone({ catKey, label, items, onAdd, onDelete, onUpdate, onReorder,
     <div style={{ marginBottom: 8 }}>
       {/* Label */}
       <div style={{ ...LBL, cursor:"pointer", userSelect:"none", marginBottom:6, display:"flex", alignItems:"center", gap:4 }}
-        onClick={function(){ zoneRef.current && zoneRef.current.focus(); }} title="Cliquer puis Ctrl+V pour coller">
+        onClick={function(){ zoneRef.current && zoneRef.current.focus(); }} title={isMobile?undefined:"Cliquer puis Ctrl+V pour coller"}>
         <span>{label}</span>
         {hiRes && <span style={{ fontSize:9, color:"#c0392b", fontWeight:700, background:"#fdecea", padding:"1px 5px", borderRadius:3 }}>HD</span>}
         {items.length>0 && <span style={{ color:GREEN, fontWeight:700, marginLeft:2 }}>({items.length})</span>}
-        {items.length>3 && (
+        {!isMobile && items.length>3 && (
           <button type="button" title="Voir toutes les photos de cette section"
             onClick={function(e){ e.stopPropagation(); setGalleryOpen(true); }}
             style={{ marginLeft:4, width:22, height:22, borderRadius:"50%", border:"1px solid "+GREEN,
               background:WHITE, color:GREEN, fontSize:11, lineHeight:1, cursor:"pointer", padding:0,
               display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>⊞</button>
         )}
-        <span style={{ fontSize:10, color:MUTED, fontWeight:400, marginLeft:4 }}>↵ coller</span>
+        {!isMobile && <span style={{ fontSize:10, color:MUTED, fontWeight:400, marginLeft:4 }}>↵ coller</span>}
         {crossOver && <span style={{ fontSize:10, color:"#2980b9", fontWeight:700, marginLeft:4 }}>↓ Déposer ici</span>}
       </div>
 
@@ -1542,11 +1543,15 @@ function PhotoZone({ catKey, label, items, onAdd, onDelete, onUpdate, onReorder,
 
         {/* Mobile capture buttons */}
         {isMobile ? (
-          <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginBottom:items.length>0?8:0 }}>
+          <div style={{ display:"flex", gap:6, marginBottom:items.length>0?8:0 }}>
             <button onClick={function(){ refCamera.current && refCamera.current.click(); }}
-              style={{ flex:1, minWidth:120, background:GREEN, color:WHITE, border:"none", borderRadius:8, padding:"10px 12px", fontSize:14, fontWeight:600, display:"flex", alignItems:"center", justifyContent:"center", gap:6 }}>📷 Photo</button>
+              style={{ flex:"1 1 37.5%", background:GREEN, color:WHITE, border:"none", borderRadius:8, padding:"10px 6px", fontSize:13, fontWeight:600, display:"flex", alignItems:"center", justifyContent:"center", gap:5, minWidth:0 }}>📷 Photo</button>
             <button onClick={function(){ refFile.current && refFile.current.click(); }}
-              style={{ flex:1, minWidth:100, background:WHITE, color:GREEN, border:"1.5px solid "+GREEN, borderRadius:8, padding:"10px 12px", fontSize:14, fontWeight:600, display:"flex", alignItems:"center", justifyContent:"center", gap:6 }}>🖼 Galerie</button>
+              style={{ flex:"1 1 37.5%", background:WHITE, color:GREEN, border:"1.5px solid "+GREEN, borderRadius:8, padding:"10px 6px", fontSize:13, fontWeight:600, display:"flex", alignItems:"center", justifyContent:"center", gap:5, minWidth:0 }}>🖼 Galerie</button>
+            {items.length>0 && (
+              <button type="button" title="Voir toutes les photos de cette section" onClick={function(){ setGalleryOpen(true); }}
+                style={{ flex:"0 0 44px", width:44, background:WHITE, color:GREEN, border:"1.5px solid "+GREEN, borderRadius:8, fontSize:17, display:"flex", alignItems:"center", justifyContent:"center" }}>⊞</button>
+            )}
           </div>
         ) : (
           items.length===0 && (
@@ -4516,28 +4521,16 @@ function ProgressPanel({ data, onClose }) {
 
   var [expandedDay, setExpandedDay] = useState(null);
   var [expandedSection, setExpandedSection] = useState(null);
-  var [zoomPhoto, setZoomPhoto]   = useState(null);  // { url, name, uploadedBy, section, tab }
+  var [zoomList, setZoomList]     = useState(null);  // tableau de photos en cours de visionnage
+  var [zoomIndex, setZoomIndex]   = useState(0);
   var [zoomScale, setZoomScale]   = useState(1);
   var [viewMode, setViewMode]     = useState("byDay"); // "byDay" | "byPerson"
-  var [dayIndex, setDayIndex]     = useState(0); // index courant dans le carrousel "par jour"
-  var dayCarouselRef = useRef(null);
-  var dayScrollTimerRef = useRef(null);
+  var zoomPhoto = zoomList ? zoomList[zoomIndex] : null;
 
-  function goToDay(idx, daysArr) {
-    if (!dayCarouselRef.current) return;
-    var clamped = Math.max(0, Math.min(idx, daysArr.length - 1));
-    var el = dayCarouselRef.current.children[clamped];
-    if (el) el.scrollIntoView({ behavior:"smooth", inline:"start", block:"nearest" });
-    setDayIndex(clamped);
-  }
-  function onDayCarouselScroll(e) {
-    if (dayScrollTimerRef.current) clearTimeout(dayScrollTimerRef.current);
-    var el = e.currentTarget;
-    dayScrollTimerRef.current = setTimeout(function(){
-      var idx = Math.round(el.scrollLeft / el.clientWidth);
-      setDayIndex(idx);
-    }, 80);
-  }
+  function openZoom(list, idx) { setZoomList(list); setZoomIndex(idx); setZoomScale(1); }
+  function closeZoom() { setZoomList(null); setZoomScale(1); }
+  function zoomPrev() { setZoomIndex(function(i){ return i>0 ? i-1 : i; }); setZoomScale(1); }
+  function zoomNext() { setZoomIndex(function(i){ return (zoomList && i<zoomList.length-1) ? i+1 : i; }); setZoomScale(1); }
 
   // Build label map for all photo categories
   var sectionLabels = {};
@@ -4681,47 +4674,66 @@ function ProgressPanel({ data, onClose }) {
       background:WHITE, boxShadow:"-4px 0 28px rgba(0,0,0,0.15)", zIndex:9990,
       display:"flex", flexDirection:"column", fontFamily:"inherit" }}>
 
-      {/* ── Zoom lightbox ── */}
+      {/* ── Zoom lightbox — navigable, avec les infos de la photo en tête ── */}
       {zoomPhoto && (
         <div className="photo-lightbox-overlay"
-          onClick={function(e){ if(e.target===e.currentTarget) { setZoomPhoto(null); setZoomScale(1); } }}
+          onClick={function(e){ if(e.target===e.currentTarget) closeZoom(); }}
           style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.94)", zIndex:9999,
-            display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center" }}>
-          <div style={{ position:"absolute", top:12, right:12, display:"flex", gap:8, zIndex:1 }}>
-            <button onClick={function(){ setZoomScale(function(s){ return Math.min(s+0.5,4); }); }}
-              style={{ background:"rgba(255,255,255,0.15)", border:"1px solid rgba(255,255,255,0.3)",
-                color:WHITE, borderRadius:8, padding:"6px 14px", cursor:"pointer", fontSize:18, fontWeight:700, minHeight:0 }}>＋</button>
-            <button onClick={function(){ setZoomScale(function(s){ return Math.max(s-0.5,0.5); }); }}
-              style={{ background:"rgba(255,255,255,0.15)", border:"1px solid rgba(255,255,255,0.3)",
-                color:WHITE, borderRadius:8, padding:"6px 14px", cursor:"pointer", fontSize:18, fontWeight:700, minHeight:0 }}>－</button>
-            <button onClick={function(){ setZoomScale(1); }}
-              style={{ background:"rgba(255,255,255,0.15)", border:"1px solid rgba(255,255,255,0.3)",
-                color:WHITE, borderRadius:8, padding:"6px 12px", cursor:"pointer", fontSize:12, minHeight:0 }}>1:1</button>
-            <button onClick={function(){ setZoomPhoto(null); setZoomScale(1); }}
-              style={{ background:"rgba(255,255,255,0.18)", border:"none", color:WHITE,
-                borderRadius:8, padding:"6px 14px", cursor:"pointer", fontSize:20, fontWeight:700, minHeight:0 }}>✕</button>
+            display:"flex", flexDirection:"column" }}>
+
+          {/* Bandeau d'infos (date, personne, section) */}
+          <div style={{ display:"flex", alignItems:"center", gap:8, padding:"10px 14px",
+            background:"rgba(0,0,0,0.7)", flexShrink:0, flexWrap:"wrap" }}>
+            <div style={{ flex:1, minWidth:0, display:"flex", flexWrap:"wrap", gap:6, alignItems:"center" }}>
+              {zoomPhoto.uploadedBy && (
+                <span style={{ background:"rgba(108,52,131,0.85)", color:WHITE, borderRadius:20,
+                  padding:"3px 11px", fontSize:11.5, fontWeight:700 }}>👤 {zoomPhoto.uploadedBy}</span>
+              )}
+              {zoomPhoto.addedAt && (
+                <span style={{ background:"rgba(255,255,255,0.14)", color:"#fff", borderRadius:20, padding:"3px 11px", fontSize:11.5 }}>
+                  📅 {new Date(zoomPhoto.addedAt).toLocaleString("fr-BE",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"})}
+                </span>
+              )}
+              {(zoomPhoto.tab||zoomPhoto.section) && (
+                <span style={{ background:"rgba(255,255,255,0.14)", color:"#ddd", borderRadius:20, padding:"3px 11px", fontSize:11.5 }}>
+                  🏷 {[zoomPhoto.tab, zoomPhoto.section].filter(Boolean).join(" — ")}
+                </span>
+              )}
+              {zoomList && zoomList.length>1 && (
+                <span style={{ color:"rgba(255,255,255,0.55)", fontSize:11.5 }}>{zoomIndex+1} / {zoomList.length}</span>
+              )}
+            </div>
+            <div style={{ display:"flex", gap:6, flexShrink:0 }}>
+              <button onClick={function(){ setZoomScale(function(s){ return Math.min(s+0.5,4); }); }}
+                style={{ background:"rgba(255,255,255,0.15)", border:"1px solid rgba(255,255,255,0.3)",
+                  color:WHITE, borderRadius:8, padding:"6px 12px", cursor:"pointer", fontSize:16, fontWeight:700, minHeight:0 }}>＋</button>
+              <button onClick={function(){ setZoomScale(function(s){ return Math.max(s-0.5,0.5); }); }}
+                style={{ background:"rgba(255,255,255,0.15)", border:"1px solid rgba(255,255,255,0.3)",
+                  color:WHITE, borderRadius:8, padding:"6px 12px", cursor:"pointer", fontSize:16, fontWeight:700, minHeight:0 }}>－</button>
+              <button onClick={closeZoom}
+                style={{ background:"#e74c3c", border:"none", color:WHITE,
+                  borderRadius:8, padding:"6px 14px", cursor:"pointer", fontSize:17, fontWeight:700, minHeight:0 }}>✕</button>
+            </div>
           </div>
-          <div style={{ overflow:"auto", maxWidth:"90vw", maxHeight:"80vh", display:"flex", alignItems:"flex-start", justifyContent:"flex-start" }}>
+
+          {/* Image + navigation précédent/suivant */}
+          <div style={{ flex:1, position:"relative", overflow:"auto", display:"flex", alignItems:zoomScale===1?"center":"flex-start", justifyContent:zoomScale===1?"center":"flex-start", minHeight:0 }}>
+            {zoomList && zoomIndex>0 && (
+              <button onClick={function(e){ e.stopPropagation(); zoomPrev(); }}
+                style={{ position:"absolute", left:10, top:"50%", transform:"translateY(-50%)", background:"rgba(255,255,255,0.14)",
+                  border:"none", borderRadius:"50%", width:46, height:46, color:"#fff", fontSize:26, cursor:"pointer", zIndex:2,
+                  display:"flex", alignItems:"center", justifyContent:"center" }}>‹</button>
+            )}
+            {zoomList && zoomIndex<zoomList.length-1 && (
+              <button onClick={function(e){ e.stopPropagation(); zoomNext(); }}
+                style={{ position:"absolute", right:10, top:"50%", transform:"translateY(-50%)", background:"rgba(255,255,255,0.14)",
+                  border:"none", borderRadius:"50%", width:46, height:46, color:"#fff", fontSize:26, cursor:"pointer", zIndex:2,
+                  display:"flex", alignItems:"center", justifyContent:"center" }}>›</button>
+            )}
             <img src={zoomPhoto.url} alt={zoomPhoto.name||""}
               style={{ transform:"scale("+zoomScale+")", transformOrigin:"top left",
                 display:"block", maxWidth:zoomScale===1?"88vw":"none",
-                maxHeight:zoomScale===1?"78vh":"none", transition:"transform 0.2s" }} />
-          </div>
-          <div style={{ position:"absolute", bottom:16, left:0, right:0, textAlign:"center" }}>
-            {zoomPhoto.uploadedBy && (
-              <span style={{ background:"rgba(108,52,131,0.85)", color:WHITE, borderRadius:20,
-                padding:"4px 14px", fontSize:12, fontWeight:700, marginRight:8 }}>
-                👤 {zoomPhoto.uploadedBy}
-              </span>
-            )}
-            {(zoomPhoto.tab||zoomPhoto.section) && (
-              <span style={{ background:"rgba(0,0,0,0.6)", color:"#ccc", borderRadius:20, padding:"4px 14px", fontSize:11 }}>
-                {[zoomPhoto.tab, zoomPhoto.section].filter(Boolean).join(" — ")}
-              </span>
-            )}
-            <div style={{ marginTop:6, fontSize:11, color:"rgba(255,255,255,0.45)" }}>
-              Zoom : {Math.round(zoomScale*100)}% · cliquez en dehors pour fermer
-            </div>
+                maxHeight:zoomScale===1?"calc(100vh - 110px)":"none", transition:"transform 0.2s" }} />
           </div>
         </div>
       )}
@@ -4851,14 +4863,16 @@ function ProgressPanel({ data, onClose }) {
                             <span style={{ fontSize:11, color:sec.tabColor||"#888", fontWeight:700 }}>{sec.photos.length} photo{sec.photos.length>1?"s":""}</span>
                             <span style={{ fontSize:10, color:MUTED, transform:secOpen2?"rotate(180deg)":"none" }}>▼</span>
                           </div>
-                          {secOpen2 && (
+                          {secOpen2 && (function(){
+                            var zList = sec.photos.map(function(pp){ return Object.assign({},pp,{section:sec.section,tab:sec.tab}); });
+                            return (
                             <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:6, padding:"8px 4px" }}>
                               {sec.photos.map(function(p, pi) {
                                 var time = p.addedAt ? new Date(p.addedAt).toLocaleTimeString("fr-BE",{hour:"2-digit",minute:"2-digit"}) : "";
                                 return (
                                   <div key={pi} style={{ borderRadius:7, overflow:"hidden", border:"1px solid "+BORDER, background:"#fafaf8" }}>
                                     <img src={p.url} style={{ width:"100%", aspectRatio:"4/3", objectFit:"cover", display:"block", cursor:"zoom-in" }}
-                                      onClick={function(){ setZoomPhoto(Object.assign({},p,{section:sec.section,tab:sec.tab})); setZoomScale(1); }} />
+                                      onClick={function(){ openZoom(zList, pi); }} />
                                     <div style={{ padding:"4px 6px", background:"#f0f0ec", lineHeight:1.4 }}>
                                       {time && <div style={{ fontSize:9, color:GREEN, fontWeight:700 }}>{time}</div>}
                                     </div>
@@ -4866,7 +4880,7 @@ function ProgressPanel({ data, onClose }) {
                                 );
                               })}
                             </div>
-                          )}
+                          ); })()}
                         </div>
                       );
                     })}
@@ -4877,151 +4891,123 @@ function ProgressPanel({ data, onClose }) {
           });
         })()}
 
-        {/* ── VUE PAR JOUR — carrousel horizontal, un jour par écran ── */}
-        {viewMode === "byDay" && days.length > 0 && (
-          <div style={{ marginBottom:10 }}>
-            {/* Barre de navigation entre jours */}
-            <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:6 }}>
-              <button onClick={function(){ goToDay(dayIndex-1, days); }} disabled={dayIndex<=0}
-                style={{ width:30, height:30, flexShrink:0, borderRadius:"50%", border:"1px solid "+BORDER,
-                  background:WHITE, color:dayIndex<=0?"#ccc":GREEN, fontSize:14, cursor:dayIndex<=0?"default":"pointer" }}>‹</button>
-              <div style={{ flex:1, textAlign:"center", fontSize:12, color:MUTED, fontWeight:600 }}>
-                Jour {Math.min(dayIndex+1, days.length)} / {days.length}
-              </div>
-              <button onClick={function(){ goToDay(dayIndex+1, days); }} disabled={dayIndex>=days.length-1}
-                style={{ width:30, height:30, flexShrink:0, borderRadius:"50%", border:"1px solid "+BORDER,
-                  background:WHITE, color:dayIndex>=days.length-1?"#ccc":GREEN, fontSize:14, cursor:dayIndex>=days.length-1?"default":"pointer" }}>›</button>
-            </div>
+        {/* ── VUE PAR JOUR — liste verticale, tous les jours visibles d'un coup d'œil ── */}
+        {viewMode === "byDay" && days.map(function(day, dIdx) {
+          var dayPhotos   = byDay[day];
+          var dayJournees = allJourneesMap[day] || [];
+          var daySections = groupBySection(dayPhotos);
+          var isOpen = expandedDay === day || (expandedDay===null && dIdx===0);
 
-            <div ref={dayCarouselRef} onScroll={onDayCarouselScroll}
-              style={{ display:"flex", flexWrap:"nowrap", overflowX:"auto", scrollSnapType:"x mandatory",
-                WebkitOverflowScrolling:"touch", gap:10, paddingBottom:4 }}>
-              {days.map(function(day, dIdx) {
-                var dayPhotos   = byDay[day];
-                var dayJournees = allJourneesMap[day] || [];
-                var daySections = groupBySection(dayPhotos);
+          var dayUploaders = [];
+          dayPhotos.forEach(function(p) {
+            if (p.uploadedBy && !dayUploaders.includes(p.uploadedBy)) dayUploaders.push(p.uploadedBy);
+          });
+          dayJournees.forEach(function(j) {
+            if (j.auteur && !dayUploaders.includes(j.auteur)) dayUploaders.push(j.auteur);
+          });
 
-                var dayUploaders = [];
-                dayPhotos.forEach(function(p) {
-                  if (p.uploadedBy && !dayUploaders.includes(p.uploadedBy)) dayUploaders.push(p.uploadedBy);
-                });
-                dayJournees.forEach(function(j) {
-                  if (j.auteur && !dayUploaders.includes(j.auteur)) dayUploaders.push(j.auteur);
-                });
-
-                return (
-                  <div key={day} style={{ flexShrink:0, width:"100%", scrollSnapAlign:"start",
-                    borderRadius:9, border:"1px solid #e8e8e4", overflow:"hidden" }}>
-                    {/* Day header (informatif, plus cliquable) */}
-                    <div style={{ padding:"11px 14px", background:dIdx===dayIndex?GREEN_LIGHT:"#fafaf8" }}>
-                      <div style={{ fontWeight:700, fontSize:13, color:GREEN, textTransform:"capitalize" }}>
-                        📅 {fmtDay(day)}
-                      </div>
-                      {dayUploaders.length > 0 && (
-                        <div style={{ fontSize:11, color:"#6c3483", marginTop:2, fontWeight:600 }}>
-                          👥 {dayUploaders.join(", ")}
-                        </div>
-                      )}
-                      <div style={{ fontSize:11, color:MUTED, marginTop:2 }}>
-                        {dayPhotos.length} photo{dayPhotos.length>1?"s":""}
-                      </div>
-                    </div>
-
-                    {/* Day content — toujours visible (c'est déjà "le" slide affiché) */}
-                    <div style={{ padding:"10px 14px 14px", background:WHITE, maxHeight:"60vh", overflowY:"auto" }}>
-                      {/* Journées clôturées */}
-                      {dayJournees.map(function(j, ji) {
-                        return (
-                          <div key={j.id||ji} style={{ marginBottom:10, background:"#fffbf0",
-                            border:"1.5px solid #f39c12", borderRadius:8, padding:"9px 12px" }}>
-                            <div style={{ fontWeight:700, fontSize:11, color:"#856404",
-                              display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
-                              ✅ Journée clôturée — {j.tab}
-                              {j.heure && <span style={{ fontWeight:400, color:MUTED }}>à {j.heure}</span>}
-                              {j.auteur && <span style={{ color:"#6c3483" }}>· 👤 {j.auteur}</span>}
-                            </div>
-                            {j.note && (
-                              <div style={{ fontSize:11, color:"#1a1a1a", lineHeight:1.5, marginTop:4,
-                                background:WHITE, borderRadius:5, padding:"5px 8px",
-                                borderLeft:"3px solid #f39c12", whiteSpace:"pre-wrap" }}>{j.note}</div>
-                            )}
-                            {j.audioUrl && (
-                              <audio controls src={j.audioUrl} style={{ width:"100%", marginTop:5, height:32 }} />
-                            )}
-                          </div>
-                        );
-                      })}
-
-                      {dayJournees.length === 0 && daySections.length === 0 && (
-                        <div style={{ fontSize:12, color:MUTED, fontStyle:"italic", textAlign:"center", padding:"20px 0" }}>
-                          Rien pour ce jour.
-                        </div>
-                      )}
-
-                      {/* Sections avec photos — photos en défilement horizontal */}
-                      {daySections.map(function(s, si) {
-                        var secKey = day+"|"+s.tab+"|"+s.section;
-                        var secOpen = expandedSection === secKey;
-                        return (
-                          <div key={si} style={{ marginBottom:8 }}>
-                            <div onClick={function(){ setExpandedSection(secOpen ? null : secKey); }}
-                              style={{ display:"flex", alignItems:"center", gap:8, padding:"7px 10px",
-                                borderRadius:7, cursor:"pointer",
-                                background:secOpen?s.tabColor+"12":"#f8f8f6",
-                                border:"1px solid "+(secOpen?s.tabColor+"44":"#e8e8e4") }}>
-                              <span style={{ width:8, height:8, borderRadius:"50%", background:s.tabColor, flexShrink:0 }} />
-                              <span style={{ flex:1, fontWeight:600, fontSize:12 }}>{s.tab} — {s.section}</span>
-                              <span style={{ fontSize:11, color:s.tabColor, fontWeight:700 }}>{s.photos.length} photo{s.photos.length>1?"s":""}</span>
-                              <span style={{ fontSize:10, color:MUTED, transform:secOpen?"rotate(180deg)":"none", transition:"0.2s" }}>▼</span>
-                            </div>
-                            {secOpen && (
-                              <div style={{ display:"flex", flexWrap:"nowrap", overflowX:"auto", gap:6, padding:"6px 4px", WebkitOverflowScrolling:"touch" }}>
-                                {s.photos.map(function(p, pi) {
-                                  var time = p.addedAt ? new Date(p.addedAt).toLocaleTimeString("fr-BE",{hour:"2-digit",minute:"2-digit"}) : "";
-                                  return (
-                                    <div key={pi} style={{ flexShrink:0, width:110, borderRadius:7, overflow:"hidden", border:"1px solid "+BORDER, background:"#fafaf8" }}>
-                                      <img src={p.url} alt={p.name||""}
-                                        style={{ width:"100%", aspectRatio:"4/3", objectFit:"cover", display:"block", cursor:"zoom-in" }}
-                                        onClick={function(){ setZoomPhoto(Object.assign({},p,{section:s.section,tab:s.tab,tabColor:s.tabColor})); setZoomScale(1); }} />
-                                      <div style={{ padding:"4px 6px", background:"#f0f0ec", lineHeight:1.4 }}>
-                                        {p.uploadedBy && (
-                                          <div style={{ fontSize:10, fontWeight:800, color:"#6c3483",
-                                            overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
-                                            👤 {p.uploadedBy}
-                                          </div>
-                                        )}
-                                        {time && <div style={{ fontSize:9, color:GREEN, fontWeight:700 }}>{time}</div>}
-                                      </div>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
+          return (
+            <div key={day} style={{ marginBottom:8, borderRadius:9, border:"1px solid #e8e8e4", overflow:"hidden" }}>
+              {/* Day header — cliquable, toujours visible pour une vue d'ensemble de toutes les journées */}
+              <div onClick={function(){ setExpandedDay(isOpen ? "" : day); }}
+                style={{ padding:"11px 14px", background:isOpen?GREEN_LIGHT:"#fafaf8", cursor:"pointer",
+                  display:"flex", alignItems:"center", justifyContent:"space-between", gap:8 }}>
+                <div style={{ minWidth:0 }}>
+                  <div style={{ fontWeight:700, fontSize:13, color:GREEN, textTransform:"capitalize" }}>
+                    📅 {fmtDay(day)}
                   </div>
-                );
-              })}
-            </div>
-
-            {/* Points de pagination */}
-            {days.length > 1 && (
-              <div style={{ display:"flex", justifyContent:"center", gap:5, marginTop:6 }}>
-                {days.map(function(day, dIdx) {
-                  return (
-                    <span key={day} onClick={function(){ goToDay(dIdx, days); }}
-                      style={{ width:7, height:7, borderRadius:"50%", cursor:"pointer",
-                        background:dIdx===dayIndex?GREEN:"#dcdcd6" }} />
-                  );
-                })}
+                  {dayUploaders.length > 0 && (
+                    <div style={{ fontSize:11, color:"#6c3483", marginTop:2, fontWeight:600 }}>
+                      👥 {dayUploaders.join(", ")}
+                    </div>
+                  )}
+                  <div style={{ fontSize:11, color:MUTED, marginTop:2 }}>
+                    {dayPhotos.length} photo{dayPhotos.length>1?"s":""}
+                    {dayJournees.length>0 && <span style={{ marginLeft:8 }}>✅ {dayJournees.length} clôture{dayJournees.length>1?"s":""}</span>}
+                  </div>
+                </div>
+                <span style={{ color:MUTED, fontSize:12, flexShrink:0, transform:isOpen?"rotate(180deg)":"none", transition:"transform 0.2s" }}>▼</span>
               </div>
-            )}
-          </div>
-        )}
 
+              {isOpen && (
+                <div style={{ padding:"10px 14px 14px", background:WHITE }}>
+                  {/* Journées clôturées */}
+                  {dayJournees.map(function(j, ji) {
+                    return (
+                      <div key={j.id||ji} style={{ marginBottom:10, background:"#fffbf0",
+                        border:"1.5px solid #f39c12", borderRadius:8, padding:"9px 12px" }}>
+                        <div style={{ fontWeight:700, fontSize:11, color:"#856404",
+                          display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
+                          ✅ Journée clôturée — {j.tab}
+                          {j.heure && <span style={{ fontWeight:400, color:MUTED }}>à {j.heure}</span>}
+                          {j.auteur && <span style={{ color:"#6c3483" }}>· 👤 {j.auteur}</span>}
+                        </div>
+                        {j.note && (
+                          <div style={{ fontSize:11, color:"#1a1a1a", lineHeight:1.5, marginTop:4,
+                            background:WHITE, borderRadius:5, padding:"5px 8px",
+                            borderLeft:"3px solid #f39c12", whiteSpace:"pre-wrap" }}>{j.note}</div>
+                        )}
+                        {j.audioUrl && (
+                          <audio controls src={j.audioUrl} style={{ width:"100%", marginTop:5, height:32 }} />
+                        )}
+                      </div>
+                    );
+                  })}
 
+                  {dayJournees.length === 0 && daySections.length === 0 && (
+                    <div style={{ fontSize:12, color:MUTED, fontStyle:"italic", textAlign:"center", padding:"20px 0" }}>
+                      Rien pour ce jour.
+                    </div>
+                  )}
+
+                  {/* Sections avec photos — photos en défilement horizontal */}
+                  {daySections.map(function(s, si) {
+                    var secKey = day+"|"+s.tab+"|"+s.section;
+                    var secOpen = expandedSection === secKey;
+                    var zList = s.photos.map(function(pp){ return Object.assign({},pp,{section:s.section,tab:s.tab,tabColor:s.tabColor}); });
+                    return (
+                      <div key={si} style={{ marginBottom:8 }}>
+                        <div onClick={function(){ setExpandedSection(secOpen ? null : secKey); }}
+                          style={{ display:"flex", alignItems:"center", gap:8, padding:"7px 10px",
+                            borderRadius:7, cursor:"pointer",
+                            background:secOpen?s.tabColor+"12":"#f8f8f6",
+                            border:"1px solid "+(secOpen?s.tabColor+"44":"#e8e8e4") }}>
+                          <span style={{ width:8, height:8, borderRadius:"50%", background:s.tabColor, flexShrink:0 }} />
+                          <span style={{ flex:1, fontWeight:600, fontSize:12 }}>{s.tab} — {s.section}</span>
+                          <span style={{ fontSize:11, color:s.tabColor, fontWeight:700 }}>{s.photos.length} photo{s.photos.length>1?"s":""}</span>
+                          <span style={{ fontSize:10, color:MUTED, transform:secOpen?"rotate(180deg)":"none", transition:"0.2s" }}>▼</span>
+                        </div>
+                        {secOpen && (
+                          <div style={{ display:"flex", flexWrap:"nowrap", overflowX:"auto", gap:6, padding:"6px 4px", WebkitOverflowScrolling:"touch" }}>
+                            {s.photos.map(function(p, pi) {
+                              var time = p.addedAt ? new Date(p.addedAt).toLocaleTimeString("fr-BE",{hour:"2-digit",minute:"2-digit"}) : "";
+                              return (
+                                <div key={pi} style={{ flexShrink:0, width:110, borderRadius:7, overflow:"hidden", border:"1px solid "+BORDER, background:"#fafaf8" }}>
+                                  <img src={p.url} alt={p.name||""}
+                                    style={{ width:"100%", aspectRatio:"4/3", objectFit:"cover", display:"block", cursor:"zoom-in" }}
+                                    onClick={function(){ openZoom(zList, pi); }} />
+                                  <div style={{ padding:"4px 6px", background:"#f0f0ec", lineHeight:1.4 }}>
+                                    {p.uploadedBy && (
+                                      <div style={{ fontSize:10, fontWeight:800, color:"#6c3483",
+                                        overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                                        👤 {p.uploadedBy}
+                                      </div>
+                                    )}
+                                    {time && <div style={{ fontSize:9, color:GREEN, fontWeight:700 }}>{time}</div>}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })}
 
         {/* Photos sans date */}
         {viewMode === "byDay" && noDate.length > 0 && (
@@ -5041,7 +5027,7 @@ function ProgressPanel({ data, onClose }) {
                     <div key={pi} style={{ borderRadius:7, overflow:"hidden", border:"1px solid "+BORDER, background:"#fafaf8" }}>
                       <img src={p.url} alt={p.name}
                         style={{ width:"100%", aspectRatio:"4/3", objectFit:"cover", display:"block", cursor:"zoom-in" }}
-                        onClick={function(){ setZoomPhoto(p); setZoomScale(1); }}
+                        onClick={function(){ openZoom(noDate, pi); }}
                       />
                       <div style={{ padding:"4px 6px", background:"#f0f0ec", lineHeight:1.4 }}>
                         {p.uploadedBy && <div style={{ fontSize:10, fontWeight:800, color:"#6c3483", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>👤 {p.uploadedBy}</div>}
@@ -6141,25 +6127,29 @@ function NoteVocaleRecorder({ refChantier, onResult, onCancel }) {
     }
   }
 
+  var idle = status==="idle" && !recording && dureeSec===0;
   return (
-    <div style={{ background:"#f0f7f2", border:"1px solid #d4ead9", borderRadius:9, padding:"8px 10px" }}>
-      <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+    <div style={{ background:"#f0f7f2", border:"1px solid #d4ead9", borderRadius:9, padding:"12px 10px" }}>
+      <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:6 }}>
         <button onClick={recording ? stopRecording : startRecording} disabled={status==="traitement"}
-          style={{ width:40, height:40, flexShrink:0, borderRadius:"50%", border:"none", fontSize:17, cursor:"pointer",
-            background: recording ? "#e74c3c" : GREEN, color:"#fff" }}>
-          {recording ? "⏹" : "🎙"}
+          title={recording ? "Arrêter l'enregistrement" : "Démarrer l'enregistrement"}
+          style={{ width:54, height:54, flexShrink:0, borderRadius:"50%", border:"none", fontSize:22, cursor:"pointer",
+            background: recording ? "#e74c3c" : GREEN, color:"#fff", display:"flex", alignItems:"center", justifyContent:"center",
+            animation: recording ? "wgeRecPulse 1.4s infinite" : "none", opacity: status==="traitement"?0.6:1 }}>
+          {recording ? "⏹" : "🎤"}
         </button>
-        <div style={{ flex:1, minWidth:0 }}>
-          <div style={{ fontSize:12, fontWeight:700, color:"#1a1a1a" }}>
-            {fmtDuree(dureeSec)}
-            <span style={{ fontWeight:400, color:MUTED, marginLeft:8 }}>
-              {status==="traitement" ? "Transcription en cours…" : recording ? "Enregistrement…" : "🌐 Langue détectée automatiquement"}
-            </span>
+        <div style={{ textAlign:"center" }}>
+          <div style={{ fontSize:13, fontWeight:700, color: recording ? "#c0392b" : "#1a1a1a" }}>
+            {status==="traitement" ? "Transcription en cours…"
+              : recording ? "● " + fmtDuree(dureeSec) + " — Enregistrement…"
+              : idle ? "Appuyez sur le micro pour enregistrer"
+              : fmtDuree(dureeSec)}
           </div>
+          {idle && <div style={{ fontSize:10.5, color:MUTED, marginTop:2 }}>🌐 Toutes langues détectées automatiquement</div>}
         </div>
-        {onCancel && <button onClick={onCancel} style={{ background:"none", border:"none", color:MUTED, fontSize:11, cursor:"pointer", minHeight:0, flexShrink:0 }}>Annuler</button>}
+        {onCancel && <button onClick={onCancel} style={{ background:"none", border:"none", color:MUTED, fontSize:11, cursor:"pointer", minHeight:0 }}>Annuler</button>}
       </div>
-      {erreur && <div style={{ fontSize:11, color:"#c0392b", background:"#fdecea", borderRadius:6, padding:"5px 8px", marginTop:6 }}>⚠️ {erreur}</div>}
+      {erreur && <div style={{ fontSize:11, color:"#c0392b", background:"#fdecea", borderRadius:6, padding:"5px 8px", marginTop:8 }}>⚠️ {erreur}</div>}
     </div>
   );
 }
@@ -6253,29 +6243,22 @@ function CloturJourneeBlock({ tab, tabColor, journees, setJournees, locked, refC
           <div style={{ padding:"14px", background:"#fffdf0",
             borderBottom: sortedJournees.length>0 ? "1px solid #fdd98a" : "none" }}>
 
-            {/* Info auto (lecture seule) */}
-            <div style={{ background:"#fff", border:"1px solid #fdd98a", borderRadius:8,
-              padding:"9px 12px", marginBottom:12, display:"flex", flexWrap:"wrap", gap:16 }}>
-              <div>
-                <div style={{ fontSize:11, color:MUTED, fontWeight:500, marginBottom:2 }}>Chef d'équipe</div>
-                <div style={{ fontSize:13, fontWeight:700, color:"#1a1a1a" }}>👤 {currentUser}</div>
+            {/* Date (modifiable) + heure de clôture — côte à côte pour gagner de la place */}
+            <div style={{ display:"flex", gap:10, flexWrap:"wrap", marginBottom:12 }}>
+              <div style={{ flex:"1 1 150px" }}>
+                <label style={{ fontSize:11, color:MUTED, fontWeight:500, marginBottom:4, display:"block" }}>
+                  Date <span style={{ fontWeight:400, color:"#b8860b" }}>(modifiable)</span>
+                </label>
+                <input type="date" value={formDate} onChange={function(e){ setFormDate(e.target.value); }}
+                  style={{ width:"100%" }} />
               </div>
-              <div>
-                <div style={{ fontSize:11, color:MUTED, fontWeight:500, marginBottom:2 }}>Heure de clôture</div>
-                <div style={{ fontSize:13, fontWeight:700, color:"#1a1a1a" }}>
-                  🕐 Enregistrée à la confirmation
+              <div style={{ flex:"1 1 150px" }}>
+                <label style={{ fontSize:11, color:MUTED, fontWeight:500, marginBottom:4, display:"block" }}>Heure de clôture</label>
+                <div style={{ background:"#fff", border:"1px solid #fdd98a", borderRadius:6,
+                  padding:"6px 10px", fontSize:13, fontWeight:700, color:"#1a1a1a" }}>
+                  🕐 À la confirmation
                 </div>
               </div>
-            </div>
-
-            {/* Date (modifiable) */}
-            <div style={{ marginBottom:12 }}>
-              <label style={{ fontSize:12, color:MUTED, fontWeight:500, marginBottom:4, display:"block" }}>
-                Date de la journée
-                <span style={{ fontWeight:400, marginLeft:6, color:"#b8860b" }}>(aujourd'hui par défaut, modifiable)</span>
-              </label>
-              <input type="date" value={formDate} onChange={function(e){ setFormDate(e.target.value); }}
-                style={{ width:"100%", maxWidth:240 }} />
             </div>
 
             {/* Commentaire */}
