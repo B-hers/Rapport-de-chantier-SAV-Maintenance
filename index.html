@@ -6106,11 +6106,15 @@ function NoteVocaleRecorder({ refChantier, onResult, onCancel }) {
       var transcriptionRes = await noteVocaleTranscrire(blob);
       var transcript = transcriptionRes.transcript;
 
-      // 3) Résumé (Claude) — si la transcription est vide/trop courte, on n'appelle pas inutilement
+      // 3) Résumé + traduction en français (Claude) — si la transcription est vide/trop
+      // courte, on n'appelle pas inutilement. Si cet appel échoue (ex: note dans une
+      // langue étrangère), on ne doit JAMAIS faire passer le texte brut non traduit
+      // pour un résumé final silencieusement : on le signale explicitement.
       var resume = "";
+      var resumeFailed = false;
       if (transcript && transcript.trim().length >= 10) {
         try { resume = await noteVocaleResumer(transcript); }
-        catch(e) { console.warn("[NoteVocale] résumé échoué:", e); }
+        catch(e) { console.warn("[NoteVocale] résumé échoué:", e); resumeFailed = true; }
       }
 
       setStatus("idle");
@@ -6118,6 +6122,7 @@ function NoteVocaleRecorder({ refChantier, onResult, onCancel }) {
         langue: transcriptionRes.langueDetectee,
         transcript: transcript,
         resume: resume,
+        resumeFailed: resumeFailed,
         audioUrl: audioUrl,
         dureeSec: finalDuree
       });
@@ -6180,6 +6185,7 @@ function VoiceOrTextField({ value, onChange, placeholder, rows, refChantier }) {
           onResult={function(res){
             setVoiceData(res);
             var texte = res.resume || res.transcript || "";
+            if (res.resumeFailed && texte) texte = "⚠️ Traduction indisponible — texte brut (langue d'origine) :\n" + texte;
             onChange(value && value.trim() ? value.trim() + "\n\n" + texte : texte);
           }}
         />
@@ -6189,6 +6195,11 @@ function VoiceOrTextField({ value, onChange, placeholder, rows, refChantier }) {
           <div style={{ fontSize:11, color:"#1a1a1a", fontWeight:700, marginBottom:4 }}>
             🎙️ Note vocale ajoutée{voiceData.langue ? " — " + voiceData.langue : ""}
           </div>
+          {voiceData.resumeFailed && (
+            <div style={{ fontSize:11, color:"#c0392b", fontWeight:600, marginBottom:4 }}>
+              ⚠️ Traduction en français indisponible — le texte inséré est brut, dans la langue parlée.
+            </div>
+          )}
           {voiceData.audioUrl && <audio controls src={voiceData.audioUrl} style={{ width:"100%", marginBottom:6 }} />}
           <button type="button" onClick={function(){ setVoiceData(null); }}
             style={{ fontSize:11, color:"#c0392b", background:"none", border:"none", cursor:"pointer", minHeight:0, padding:0 }}>
@@ -6337,7 +6348,9 @@ function CloturJourneeBlock({ tab, tabColor, journees, setJournees, locked, refC
                   refChantier={refChantier}
                   onResult={function(res){
                     setVoiceData(res);
-                    setFormNote(res.resume || res.transcript || "");
+                    var texte = res.resume || res.transcript || "";
+                    if (res.resumeFailed && texte) texte = "⚠️ Traduction indisponible — texte brut (langue d'origine) :\n" + texte;
+                    setFormNote(texte);
                   }}
                 />
               )}
@@ -6346,6 +6359,11 @@ function CloturJourneeBlock({ tab, tabColor, journees, setJournees, locked, refC
                   <div style={{ fontSize:11, color:"#856404", fontWeight:700, marginBottom:4 }}>
                     🎙️ Note vocale enregistrée{voiceData.langue ? " — " + voiceData.langue : ""}
                   </div>
+                  {voiceData.resumeFailed && (
+                    <div style={{ fontSize:11, color:"#c0392b", fontWeight:600, marginBottom:4 }}>
+                      ⚠️ Traduction en français indisponible — le texte inséré est brut, dans la langue parlée.
+                    </div>
+                  )}
                   {voiceData.audioUrl && <audio controls src={voiceData.audioUrl} style={{ width:"100%", marginBottom:6 }} />}
                   <button type="button" onClick={function(){ setVoiceData(null); setFormNote(""); }}
                     style={{ fontSize:11, color:"#c0392b", background:"none", border:"none", cursor:"pointer", minHeight:0, padding:0 }}>
