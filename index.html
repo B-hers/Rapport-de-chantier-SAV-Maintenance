@@ -7834,8 +7834,12 @@ function WhatsAppNotify({ data, tab }) {
 
   var tabLabel = {dc:"DC", ac:"AC", sav:"SAV", maintenance:"Maintenance"}[tab] || tab;
 
+  var nomTache = data.meta.nom_tache || "";
+
   // Build lines array then join safely
-  var msgLines = ["Rapport de Chantier -- " + ref, "Client : " + client];
+  var msgLines = ["Rapport de Chantier -- " + ref];
+  if (nomTache) msgLines.push("Projet : " + nomTache);
+  msgLines.push("Client : " + client);
   if (adresse) msgLines.push("Adresse : " + adresse);
   if (pm) msgLines.push("PM : " + pm);
   msgLines.push("");
@@ -10640,6 +10644,32 @@ function App() {
         lastDbUpdatedAt.current = row.updated_at || list[0].updated_at || null;
         prevDataRef.current = null;
         if (userRef.current && row.ref) supaCtrlLogAudit(row.ref, list[0].id, userRef.current, "load", {});
+
+        // ── Comblement des champs manquants depuis le Briefing ──────────────
+        // Une feuille de rapport existante (anciens chantiers, créée avant que
+        // ces champs ne soient systématiquement remplis) peut avoir client/adresse/pm
+        // vides même si le Briefing de Chantier correspondant existe et les contient.
+        // On ne complète QUE les champs vides, sans jamais écraser une valeur déjà saisie.
+        var savedMeta = (row.data && row.data.meta) || {};
+        var missingClient  = !savedMeta.client;
+        var missingAdresse = !savedMeta.adresse;
+        var missingPm      = !savedMeta.pm;
+        if (missingClient || missingAdresse || missingPm) {
+          var chantierDataGap = await supaLoadChantier(ref);
+          if (chantierDataGap) {
+            var clientGap  = chantierDataGap.client || {};
+            var weGreenGap = chantierDataGap.weGreen || {};
+            setData(function(prev) {
+              var n = Object.assign({}, prev);
+              n.meta = Object.assign({}, prev.meta, {
+                client:  prev.meta.client  || clientGap.nom      || "",
+                adresse: prev.meta.adresse || clientGap.adresse  || "",
+                pm:      prev.meta.pm      || weGreenGap.manager || ""
+              });
+              return n;
+            });
+          }
+        }
       }
     } else {
       // Aucune feuille → auto-prefill depuis le Briefing de Chantier
