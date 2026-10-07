@@ -12,6 +12,7 @@
 <script src="https://unpkg.com/@babel/standalone@7.23.10/babel.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js" async></script>
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f4f4f0; color: #1a1a1a; font-size: 14px; }
@@ -1417,7 +1418,35 @@ function PhotoZone({ catKey, label, items, onAdd, onDelete, onUpdate, onReorder,
   const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
   // Compression: DC 1600px/0.82 — AC + strings + schémas 2400px/0.92
-  const compressImg = function(blob, isHiRes) { return new Promise(function(res) {
+  // HEIC/HEIF (photos iPhone / certains Android) : non décodable par Chrome/Firefox/Edge.
+  // On les convertit en JPEG avant compression ; sinon la photo restait sans image (url null)
+  // et s'affichait comme un "PDF" illisible.
+  const isHeic = function(f) {
+    var t = (f.type || "").toLowerCase(), n = (f.name || "").toLowerCase();
+    return t === "image/heic" || t === "image/heif" || /\.(heic|heif)$/.test(n);
+  };
+  const toDecodable = async function(f) {
+    if (!isHeic(f)) return f;
+    // Safari sait décoder le HEIC nativement : on essaie d'abord sans conversion
+    try {
+      var bmp = await createImageBitmap(f);
+      if (bmp && bmp.width) { if (bmp.close) bmp.close(); return f; }
+    } catch(e) {}
+    if (!window.heic2any) {
+      // la librairie est chargée en async : on lui laisse quelques secondes
+      for (var w = 0; w < 20 && !window.heic2any; w++) await new Promise(function(r){ setTimeout(r, 250); });
+    }
+    if (!window.heic2any) return f;
+    try {
+      var out = await window.heic2any({ blob: f, toType: "image/jpeg", quality: 0.92 });
+      return Array.isArray(out) ? out[0] : out;
+    } catch(e) { console.warn("[Photo] conversion HEIC échouée:", e); return f; }
+  };
+  const compressImg = async function(blob0, isHiRes) {
+    var blob = await toDecodable(blob0);
+    return compressImgCore(blob, isHiRes);
+  };
+  const compressImgCore = function(blob, isHiRes) { return new Promise(function(res) {
     const img = new Image(); const objUrl = URL.createObjectURL(blob);
     img.onload = function() {
       const MAX = isHiRes ? 2400 : 1600; const QUALITY = isHiRes ? 0.92 : 0.82;
@@ -1434,16 +1463,21 @@ function PhotoZone({ catKey, label, items, onAdd, onDelete, onUpdate, onReorder,
   }); };
 
   const handleFiles = async function(files) {
-    const arr = Array.from(files).filter(function(f) { return f.type.startsWith("image/") || f.type === "application/pdf"; });
+    const arr = Array.from(files).filter(function(f) { return f.type.startsWith("image/") || f.type === "application/pdf" || isHeic(f); });
     const result = [];
+    const failed = [];
     const addedAt = new Date().toISOString();
     var uploaderName = (window._wgeCurrentUser && window._wgeCurrentUser.name) || (function(){ try { return JSON.parse(localStorage.getItem("wge_user")||"{}").name||""; } catch(e) { return ""; } })();
     for (let i=0; i<arr.length; i++) {
       const f = arr[i];
-      const url = f.type.startsWith("image/") ? await compressImg(f, hiRes) : null;
-      result.push({ name: f.name, url, type: f.type, addedAt: addedAt, uploadedBy: uploaderName });
+      const isImg = f.type.startsWith("image/") || isHeic(f);
+      const url = isImg ? await compressImg(f, hiRes) : null;
+      // Une image qui n'a pas pu être lue n'est JAMAIS enregistrée (sinon elle apparaît comme "PDF" illisible)
+      if (isImg && !url) { failed.push(f.name); continue; }
+      result.push({ name: isHeic(f) ? f.name.replace(/\.(heic|heif)$/i, ".jpg") : f.name, url, type: isHeic(f) ? "image/jpeg" : f.type, addedAt: addedAt, uploadedBy: uploaderName });
     }
-    onAdd(result);
+    if (failed.length) alert("⚠️ " + failed.length + " photo(s) illisible(s), non ajoutée(s) :\n" + failed.slice(0,8).join("\n") + (failed.length>8?"\n…":"") + "\n\nAstuce : réglez l'appareil photo en JPEG/« Plus compatible », ou prenez la photo directement avec le bouton 📷 Photo.");
+    if (result.length) onAdd(result);
   };
 
   const handlePaste = async function(e) {
@@ -1592,7 +1626,7 @@ function PhotoZone({ catKey, label, items, onAdd, onDelete, onUpdate, onReorder,
                 {/* Image */}
                 {item.url
                   ? <img src={item.url} alt={item.name} style={{ width:"100%", height:isMobile?90:75, objectFit:"cover", display:"block", cursor:"pointer" }} onClick={function(e){ e.stopPropagation(); setPreviewIdx(i); setPreviewZoomed(false); }} />
-                  : <div style={{ width:"100%", height:isMobile?90:75, display:"flex", alignItems:"center", justifyContent:"center", background:"#f4f4f0", fontSize:11, color:MUTED }}>PDF</div>}
+                  : <div style={{ width:"100%", height:isMobile?90:75, display:"flex", alignItems:"center", justifyContent:"center", textAlign:"center", background:(item.type||"").indexOf("image")===0?"#fdecea":"#f4f0f0", fontSize:11, color:(item.type||"").indexOf("image")===0?"#c0392b":MUTED, padding:4 }}>{(item.type||"").indexOf("image")===0 ? "⚠️ Image illisible — à supprimer et rajouter" : "PDF"}</div>}
                 {/* Uploader name */}
                 {item.uploadedBy && (
                   <div style={{ fontSize:10, color:MUTED, textAlign:"center", padding:"3px 4px", background:"#f8f8f6", borderTop:"1px solid "+BORDER, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}
