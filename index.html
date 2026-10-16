@@ -121,6 +121,7 @@ button { font-family: inherit; cursor: pointer; }
           <option value="Manu (DM Électricité)">Manu — DM Électricité</option>
           <option value="Fast-Elec (Christophe)">Fast-Elec — Christophe &amp; team</option>
           <option value="Oscar Campos">Oscar Campos</option>
+          <option value="Damien - Daktoit">Damien - Daktoit</option>
           <option value="Leimir">Leimir</option>
           <option value="Konrad">Konrad</option>
           <option value="Lohan">Lohan</option>
@@ -324,13 +325,14 @@ const LBL = { fontSize: 12, color: MUTED, fontWeight: 500, marginBottom: 4, disp
 const G2 = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 12 };
 const G3 = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12 };
 
-const PM_LIST = ["Alexander Vos","Benjamin Hers","Dominic Rousselle","Enguerrand de Formanoir","Hugues Léglise","Nassim Fekreche","Nelson Hohlweg","Romain Janssens","Teresa Rousselle","Thibaut Cougnet","Valentin Dabauvalle","Viktor A","Wajdi Habib","Wissam Elhage","Yohan Poullain"];
+const PM_LIST = ["Alexander Vos","Benjamin Hers","Cédric Lescrenier","Dominic Rousselle","Enguerrand de Formanoir","Hugues Léglise","Nassim Fekreche","Nelson Hohlweg","Romain Janssens","Teresa Rousselle","Thibaut Cougnet","Valentin Dabauvalle","Viktor A","Wajdi Habib","Wissam Elhage","Yohan Poullain"];
 
 // ── Numéros WhatsApp des PMs (format international sans +) ───────────────────
 // Compléter avec les vrais numéros
 const PM_PHONES = {
   "Alexander Vos":               "32475869276",
   "Benjamin Hers":               "32479627511",
+  "Cédric Lescrenier":           "32496983603",
   "Dominic Rousselle":           "32495811670",
   "Enguerrand de Formanoir":     "32495870986",
   "Hugues Léglise":              "32496576866",
@@ -1106,6 +1108,24 @@ function collectNOK(data) {
 
 
 // Téléchargement forcé pour URLs cross-origin (Supabase Storage)
+function wgeIsVideo(it) {
+  if (!it) return false;
+  var t = (it.type || "").toLowerCase();
+  return t.indexOf("video") === 0 || /\.(mp4|mov|m4v|webm|3gp|3gpp|avi|mkv)(\?|$)/i.test(it.name || "");
+}
+async function uploadVideoToStorage(ref, file) {
+  var ext = ((file.name || "").match(/\.([a-zA-Z0-9]{2,4})$/) || [])[1] || "mp4";
+  var mime = file.type || (ext.toLowerCase() === "mov" ? "video/quicktime" : "video/mp4");
+  var safe = (file.name || "video").replace(/\.[^.]+$/, "").replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 50);
+  var path = encodeURIComponent(ref || "sans-ref") + "/videos/" + Date.now() + "-" + safe + "." + ext.toLowerCase();
+  var res = await fetch(SUPA_URL + "/storage/v1/object/" + SUPA_STORAGE_BUCKET + "/" + path, {
+    method: "POST",
+    headers: { "apikey": SUPA_KEY, "Authorization": "Bearer " + SUPA_KEY, "Content-Type": mime, "x-upsert": "true" },
+    body: file
+  });
+  if (!res.ok) { var txt = ""; try { txt = await res.text(); } catch(e) {} throw new Error("HTTP " + res.status + " " + txt.slice(0, 120)); }
+  return { url: SUPA_URL + "/storage/v1/object/public/" + SUPA_STORAGE_BUCKET + "/" + path, type: mime };
+}
 async function downloadBlob(url, filename) {
   try {
     var res = await fetch(url);
@@ -1399,7 +1419,15 @@ function AnnotationModal({ imageUrl, onSave, onClose }) {
 }
 
 var _crossDrag = null; // cross-zone native drag tracker
-function PhotoZone({ catKey, label, items, onAdd, onDelete, onUpdate, onReorder, onReceiveCross, onMoveTo, allSections, hasNote, note, onNoteChange, hiRes }) {
+function PhotoZone({ catKey, label, items, onAdd, onDelete, onUpdate, onReorder, onReceiveCross, onMoveTo, allSections, hasNote, note, onNoteChange, hiRes, allowVideo, refChantier, single }) {
+  // Valeurs par défaut : certaines zones (maintenance) n'ont pas toutes les props → plus de plantage
+  items = items || [];
+  allSections = allSections || [];
+  var noop = function(){};
+  onUpdate = onUpdate || noop; onReorder = onReorder || noop; onReceiveCross = onReceiveCross || noop; onMoveTo = onMoveTo || noop;
+  catKey = catKey || ("zone_" + (label || "x"));
+  const [uploadingVid, setUploadingVid] = React.useState(0);
+  const [busy, setBusy] = React.useState(false);
   const [drag, setDrag] = React.useState(false);
   const [dragIdx, setDragIdx] = React.useState(null);
   const [overIdx, setOverIdx] = React.useState(null);
@@ -1414,6 +1442,7 @@ function PhotoZone({ catKey, label, items, onAdd, onDelete, onUpdate, onReorder,
   const toxRef = React.useRef(null);
   const refFile = React.useRef();
   const refCamera = React.useRef();
+  const refVid = React.useRef();
   const zoneRef = React.useRef();
   const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
@@ -1463,21 +1492,39 @@ function PhotoZone({ catKey, label, items, onAdd, onDelete, onUpdate, onReorder,
   }); };
 
   const handleFiles = async function(files) {
-    const arr = Array.from(files).filter(function(f) { return f.type.startsWith("image/") || f.type === "application/pdf" || isHeic(f); });
+    const isVidF = function(f) { return !!allowVideo && wgeIsVideo(f); };
+    const isImgF = function(f) { return (f.type || "").startsWith("image/") || isHeic(f) || (!f.type && /\.(jpe?g|png|webp|gif|bmp|avif)$/i.test(f.name || "")); };
+    const all = Array.from(files);
+    const arr = all.filter(function(f) { return isImgF(f) || f.type === "application/pdf" || isVidF(f); });
+    if (all.length && !arr.length) { alert("⚠️ Format non pris en charge : " + all.slice(0,5).map(function(f){ return f.name || "fichier"; }).join(", ") + (allowVideo ? "\n\nFormats acceptés : photos, PDF, vidéos (MP4, MOV, 3GP, WebM)." : "\n\nFormats acceptés : photos et PDF.")); return; }
+    setBusy(true);
+    try {
     const result = [];
     const failed = [];
     const addedAt = new Date().toISOString();
     var uploaderName = (window._wgeCurrentUser && window._wgeCurrentUser.name) || (function(){ try { return JSON.parse(localStorage.getItem("wge_user")||"{}").name||""; } catch(e) { return ""; } })();
     for (let i=0; i<arr.length; i++) {
       const f = arr[i];
-      const isImg = f.type.startsWith("image/") || isHeic(f);
+      if (isVidF(f)) {
+        setUploadingVid(function(n){ return n+1; });
+        try {
+          var up = await uploadVideoToStorage(refChantier, f);
+          result.push({ name: f.name, url: up.url, type: up.type, addedAt: addedAt, uploadedBy: uploaderName, isVideo: true, size: f.size });
+        } catch(err) {
+          failed.push(f.name + " (vidéo non envoyée : " + (err && err.message ? err.message : "erreur") + ")");
+        }
+        setUploadingVid(function(n){ return Math.max(0, n-1); });
+        continue;
+      }
+      const isImg = isImgF(f);
       const url = isImg ? await compressImg(f, hiRes) : null;
       // Une image qui n'a pas pu être lue n'est JAMAIS enregistrée (sinon elle apparaît comme "PDF" illisible)
       if (isImg && !url) { failed.push(f.name); continue; }
-      result.push({ name: isHeic(f) ? f.name.replace(/\.(heic|heif)$/i, ".jpg") : f.name, url, type: isHeic(f) ? "image/jpeg" : f.type, addedAt: addedAt, uploadedBy: uploaderName });
+      result.push({ name: isHeic(f) ? f.name.replace(/\.(heic|heif)$/i, ".jpg") : f.name, url, type: (isHeic(f) || !f.type) ? "image/jpeg" : f.type, addedAt: addedAt, uploadedBy: uploaderName });
     }
     if (failed.length) alert("⚠️ " + failed.length + " photo(s) illisible(s), non ajoutée(s) :\n" + failed.slice(0,8).join("\n") + (failed.length>8?"\n…":"") + "\n\nAstuce : réglez l'appareil photo en JPEG/« Plus compatible », ou prenez la photo directement avec le bouton 📷 Photo.");
     if (result.length) onAdd(result);
+    } finally { setBusy(false); }
   };
 
   const handlePaste = async function(e) {
@@ -1552,7 +1599,7 @@ function PhotoZone({ catKey, label, items, onAdd, onDelete, onUpdate, onReorder,
   var bgStyle = crossOver ? "#e8f4fd" : drag ? GREEN_LIGHT : BG;
 
   return (
-    <div style={{ marginBottom: 8 }}>
+    <div style={{ marginBottom: 8, minWidth: 0, maxWidth: "100%" }}>
       {/* Label */}
       <div style={{ ...LBL, cursor:"pointer", userSelect:"none", marginBottom:6, display:"flex", alignItems:"center", gap:4 }}
         onClick={function(){ zoneRef.current && zoneRef.current.focus(); }} title={isMobile?undefined:"Cliquer puis Ctrl+V pour coller"}>
@@ -1575,6 +1622,11 @@ function PhotoZone({ catKey, label, items, onAdd, onDelete, onUpdate, onReorder,
         onDragOver={zoneOver} onDragLeave={zoneLeave} onDrop={zoneDrop}
         style={{ border: borderStyle, background: bgStyle, borderRadius:8, padding:8, minHeight:60, outline:"none", transition:"border-color 0.12s, background 0.12s" }}>
 
+        {(busy || uploadingVid>0) && (
+          <div style={{ fontSize:12, color:GREEN, fontWeight:600, padding:"6px 8px", marginBottom:6, background:GREEN_LIGHT, borderRadius:6 }}>
+            ⏳ {uploadingVid>0 ? "Envoi de la vidéo en cours… (ne fermez pas la page)" : "Traitement des photos en cours…"}
+          </div>
+        )}
         {/* Mobile capture buttons */}
         {isMobile ? (
           <div style={{ display:"flex", gap:6, marginBottom:items.length>0?8:0 }}>
@@ -1582,6 +1634,10 @@ function PhotoZone({ catKey, label, items, onAdd, onDelete, onUpdate, onReorder,
               style={{ flex:"1 1 37.5%", background:GREEN, color:WHITE, border:"none", borderRadius:8, padding:"10px 6px", fontSize:13, fontWeight:600, display:"flex", alignItems:"center", justifyContent:"center", gap:5, minWidth:0 }}>📷 Photo</button>
             <button onClick={function(){ refFile.current && refFile.current.click(); }}
               style={{ flex:"1 1 37.5%", background:WHITE, color:GREEN, border:"1.5px solid "+GREEN, borderRadius:8, padding:"10px 6px", fontSize:13, fontWeight:600, display:"flex", alignItems:"center", justifyContent:"center", gap:5, minWidth:0 }}>🖼 Galerie</button>
+            {allowVideo && (
+              <button type="button" title="Filmer une vidéo" onClick={function(){ refVid.current && refVid.current.click(); }}
+                style={{ flex:"0 0 44px", width:44, background:WHITE, color:"#c0392b", border:"1.5px solid #c0392b", borderRadius:8, fontSize:17, display:"flex", alignItems:"center", justifyContent:"center" }}>🎥</button>
+            )}
             {items.length>0 && (
               <button type="button" title="Voir toutes les photos de cette section" onClick={function(){ setGalleryOpen(true); }}
                 style={{ flex:"0 0 44px", width:44, background:WHITE, color:GREEN, border:"1.5px solid "+GREEN, borderRadius:8, fontSize:17, display:"flex", alignItems:"center", justifyContent:"center" }}>⊞</button>
@@ -1595,6 +1651,7 @@ function PhotoZone({ catKey, label, items, onAdd, onDelete, onUpdate, onReorder,
               <span style={{ fontSize:12, color:"#aaa" }}>Drop ici</span>
               <span style={{ fontSize:12, color:"#ccc" }}>|</span>
               <span style={{ fontSize:12, color:"#aaa" }}>Ctrl+V</span>
+              {allowVideo && <span style={{ fontSize:12, color:"#aaa" }}>| 🎥 vidéos OK</span>}
             </div>
           )
         )}
@@ -1624,7 +1681,12 @@ function PhotoZone({ catKey, label, items, onAdd, onDelete, onUpdate, onReorder,
                   onTouchStart={function(){ htStart(i); }} onTouchMove={htMove} onTouchEnd={htEnd}
                   style={{ cursor:"grab", textAlign:"center", padding:"3px 0", background:"#f0f0ec", borderBottom:"1px solid "+BORDER, color:"#bbb", fontSize:13, userSelect:"none", touchAction:"none", letterSpacing:2 }}>⠿</div>
                 {/* Image */}
-                {item.url
+                {item.url && wgeIsVideo(item)
+                  ? <div style={{ position:"relative", width:"100%", height:isMobile?90:75, background:"#111", cursor:"pointer" }} onClick={function(e){ e.stopPropagation(); setPreviewIdx(i); setPreviewZoomed(false); }}>
+                      <video src={item.url + "#t=0.1"} preload="metadata" muted playsInline style={{ width:"100%", height:"100%", objectFit:"cover", display:"block", pointerEvents:"none" }} />
+                      <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center", color:"#fff", fontSize:26, textShadow:"0 1px 6px rgba(0,0,0,0.7)" }}>▶</div>
+                    </div>
+                : item.url
                   ? <img src={item.url} alt={item.name} style={{ width:"100%", height:isMobile?90:75, objectFit:"cover", display:"block", cursor:"pointer" }} onClick={function(e){ e.stopPropagation(); setPreviewIdx(i); setPreviewZoomed(false); }} />
                   : <div style={{ width:"100%", height:isMobile?90:75, display:"flex", alignItems:"center", justifyContent:"center", textAlign:"center", background:(item.type||"").indexOf("image")===0?"#fdecea":"#f4f0f0", fontSize:11, color:(item.type||"").indexOf("image")===0?"#c0392b":MUTED, padding:4 }}>{(item.type||"").indexOf("image")===0 ? "⚠️ Image illisible — à supprimer et rajouter" : "PDF"}</div>}
                 {/* Uploader name */}
@@ -1638,7 +1700,7 @@ function PhotoZone({ catKey, label, items, onAdd, onDelete, onUpdate, onReorder,
                 <div style={{ display:"flex", borderTop:"1px solid "+BORDER }}>
                   {item.url && <button className="photo-action" title="Agrandir" onClick={function(e){ e.stopPropagation(); setPreviewIdx(i); setPreviewZoomed(false); }}
                     style={{ flex:1, background:"none", border:"none", borderRight:"1px solid "+BORDER, cursor:"pointer", fontSize:isMobile?18:15, padding:"6px 0", color:"#555" }}>🔍</button>}
-                  {item.url && <button title="Annoter / dessiner / écrire" onClick={function(e){ e.stopPropagation(); setAnnotating(i); }}
+                  {item.url && !wgeIsVideo(item) && <button title="Annoter / dessiner / écrire" onClick={function(e){ e.stopPropagation(); setAnnotating(i); }}
                     style={{ flex:1, background:"none", border:"none", borderRight:"1px solid "+BORDER, cursor:"pointer", fontSize:isMobile?18:15, padding:"6px 0", color:"#2980b9" }}>✏️</button>}
                   {item.url && <button title="Télécharger" data-lightbox="true" onClick={function(e){ e.stopPropagation(); downloadBlob(item.url, item.name||"photo.jpg"); }}
                     style={{ flex:1, background:"none", border:"none", borderRight:"1px solid "+BORDER, cursor:"pointer", fontSize:isMobile?18:15, padding:"6px 0", color:"#27ae60" }}>⬇️</button>}
@@ -1683,7 +1745,12 @@ function PhotoZone({ catKey, label, items, onAdd, onDelete, onUpdate, onReorder,
                 return (
                   <div key={i} onClick={function(){ setGalleryOpen(false); setPreviewIdx(i); setPreviewZoomed(false); }}
                     style={{ borderRadius:8, overflow:"hidden", background:"#222", cursor:"pointer" }}>
-                    {item.url
+                    {item.url && wgeIsVideo(item)
+                      ? <div style={{ position:"relative", width:"100%", aspectRatio:"4/3", background:"#000" }}>
+                          <video src={item.url + "#t=0.1"} preload="metadata" muted playsInline style={{ width:"100%", height:"100%", objectFit:"cover", display:"block", pointerEvents:"none" }} />
+                          <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center", color:"#fff", fontSize:28 }}>▶</div>
+                        </div>
+                      : item.url
                       ? <img src={item.url} alt={item.name||""} style={{ width:"100%", aspectRatio:"4/3", objectFit:"cover", display:"block" }} />
                       : <div style={{ width:"100%", aspectRatio:"4/3", display:"flex", alignItems:"center", justifyContent:"center", color:"#aaa", fontSize:11 }}>PDF</div>}
                     <div style={{ padding:"3px 6px", background:"rgba(0,0,0,0.6)" }}>
@@ -1711,8 +1778,8 @@ function PhotoZone({ catKey, label, items, onAdd, onDelete, onUpdate, onReorder,
             </span>
             <button data-lightbox="true" onClick={function(e){ e.stopPropagation(); downloadBlob(items[previewIdx].url, items[previewIdx].name||"photo.jpg"); }}
               style={{ padding:"6px 12px", borderRadius:6, background:"#27ae60", color:"#fff", border:"none", fontSize:13, cursor:"pointer", fontWeight:600, whiteSpace:"nowrap" }}>⬇ Télécharger</button>
-            <button data-lightbox="true" onClick={function(e){ e.stopPropagation(); var idx=previewIdx; closePreview(); setAnnotating(idx); }}
-              style={{ padding:"6px 12px", borderRadius:6, background:"#2980b9", color:"#fff", border:"none", fontSize:13, cursor:"pointer", fontWeight:600, whiteSpace:"nowrap" }}>✏️ Modifier</button>
+            {!wgeIsVideo(items[previewIdx]) && <button data-lightbox="true" onClick={function(e){ e.stopPropagation(); var idx=previewIdx; closePreview(); setAnnotating(idx); }}
+              style={{ padding:"6px 12px", borderRadius:6, background:"#2980b9", color:"#fff", border:"none", fontSize:13, cursor:"pointer", fontWeight:600, whiteSpace:"nowrap" }}>✏️ Modifier</button>}
             {!isMobile && <button data-lightbox="true" onClick={function(e){ e.stopPropagation(); setPreviewZoomed(function(z){return !z;}); }}
               title={previewZoomed?"Cliquer pour dézoomer":"Cliquer sur l'image pour zoomer"}
               style={{ padding:"6px 10px", borderRadius:6, background:previewZoomed?"#444":"#333", color:"#fff", border:"none", fontSize:13, cursor:"pointer" }}>
@@ -1733,11 +1800,14 @@ function PhotoZone({ catKey, label, items, onAdd, onDelete, onUpdate, onReorder,
               <button data-lightbox="true" onClick={function(e){ e.stopPropagation(); openNext(); }}
                 style={{ position:"absolute", right:10, top:"50%", transform:"translateY(-50%)", background:"rgba(255,255,255,0.14)", border:"none", borderRadius:"50%", width:48, height:48, color:"#fff", fontSize:28, cursor:"pointer", zIndex:2, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>›</button>
             )}
-            <img src={items[previewIdx].url}
+            {wgeIsVideo(items[previewIdx])
+              ? <video key={items[previewIdx].url} src={items[previewIdx].url} controls autoPlay playsInline
+                  style={{ maxWidth:"92vw", maxHeight:"calc(100vh - 160px)", display:"block", background:"#000", borderRadius:4 }} />
+              : <img src={items[previewIdx].url}
               onClick={function(e){ if(!isMobile){ e.stopPropagation(); setPreviewZoomed(function(z){return !z;}); } }}
               style={{ maxWidth:previewZoomed?"none":"92vw", maxHeight:previewZoomed?"none":"calc(100vh - 160px)", width:"auto", height:"auto",
                 objectFit:"contain", display:"block", borderRadius:previewZoomed?0:4,
-                cursor:isMobile?"default":(previewZoomed?"zoom-out":"zoom-in") }} alt="" />
+                cursor:isMobile?"default":(previewZoomed?"zoom-out":"zoom-in") }} alt="" />}
           </div>
 
           {/* Bouton fermer accessible sur iPhone (toujours visible en bas) */}
@@ -1755,7 +1825,11 @@ function PhotoZone({ catKey, label, items, onAdd, onDelete, onUpdate, onReorder,
           {/* Thumbnails strip */}
           {items.length>1 && (
             <div style={{ display:"flex", gap:5, padding:"8px 12px", background:"rgba(0,0,0,0.55)", overflowX:"auto", flexShrink:0 }}>
-              {items.map(function(it,idx){ return it.url?(
+              {items.map(function(it,idx){ return it.url && wgeIsVideo(it)?(
+                <div key={idx} onClick={function(e){ e.stopPropagation(); setPreviewIdx(idx); setPreviewZoomed(false); }}
+                  style={{ width:54, height:42, borderRadius:4, cursor:"pointer", flexShrink:0, background:"#222", color:"#fff", display:"flex", alignItems:"center", justifyContent:"center", fontSize:16,
+                    border:idx===previewIdx?"2.5px solid "+GREEN:"2px solid transparent", opacity:idx===previewIdx?1:0.65 }}>▶</div>
+              ):it.url?(
                 <img key={idx} src={it.url} onClick={function(e){ e.stopPropagation(); setPreviewIdx(idx); setPreviewZoomed(false); }}
                   style={{ width:54, height:42, objectFit:"cover", borderRadius:4, cursor:"pointer", flexShrink:0,
                     border:idx===previewIdx?"2.5px solid "+GREEN:"2px solid transparent", opacity:idx===previewIdx?1:0.65 }} alt="" />
@@ -1772,8 +1846,9 @@ function PhotoZone({ catKey, label, items, onAdd, onDelete, onUpdate, onReorder,
           onClose={function(){ setAnnotating(null); }} />
       )}
 
-      <input ref={refCamera} type="file" multiple accept="image/*" capture="environment" style={{ display:"none" }} onChange={function(e){ if(e.target.files&&e.target.files.length) handleFiles(e.target.files); }} />
-      <input ref={refFile} type="file" multiple accept="image/*,application/pdf,.heic,.heif" style={{ display:"none" }} onChange={function(e){ if(e.target.files&&e.target.files.length) handleFiles(e.target.files); }} />
+      <input ref={refCamera} type="file" multiple accept="image/*" capture="environment" style={{ display:"none" }} onChange={function(e){ var fl=e.target.files?Array.from(e.target.files):[]; e.target.value=""; if(fl.length) handleFiles(fl); }} />
+      <input ref={refVid} type="file" accept="video/*" capture="environment" style={{ display:"none" }} onChange={function(e){ var fl=e.target.files?Array.from(e.target.files):[]; e.target.value=""; if(fl.length) handleFiles(fl); }} />
+      <input ref={refFile} type="file" multiple accept={allowVideo ? "image/*,application/pdf,.heic,.heif,video/*,.mp4,.mov,.m4v,.3gp,.webm" : "image/*,application/pdf,.heic,.heif"} style={{ display:"none" }} onChange={function(e){ var fl=e.target.files?Array.from(e.target.files):[]; e.target.value=""; if(fl.length) handleFiles(fl); }} />
     </div>
   );
 }
@@ -2498,7 +2573,8 @@ function RulesPanel({ rules, color }) {
 }
 
 // ── StringsSection ────────────────────────────────────────────────────────────
-function StringsSection({ nbStrings, photos, tensions, stringNames, stringPVCounts, setPhotos, setTension, setStringName, setStringPVCount }) {
+function StringsSection({ nbStrings, photos, tensions, measured, setMeasured, stringNames, stringPVCounts, setPhotos, setTension, setStringName, setStringPVCount }) {
+  measured = measured || {};
   var count = parseInt(nbStrings) || 0;
   if (count <= 0) {
     return (
@@ -2537,9 +2613,12 @@ function StringsSection({ nbStrings, photos, tensions, stringNames, stringPVCoun
               </div>
               {/* Tension */}
               <div style={{ display: "flex", alignItems: "center", gap: 5, marginLeft: "auto" }}>
-                <label style={{ fontSize: 12, color: MUTED, whiteSpace: "nowrap" }}>Tension :</label>
+                <label style={{ fontSize: 12, color: MUTED, whiteSpace: "nowrap" }}>Tension théo. :</label>
                 <input type="text" value={tensions[i]||""} onChange={function(e){ setTension(i, e.target.value); }}
                   placeholder="ex: 380V" style={{ width: 75, fontSize: 13, padding: "4px 8px" }} />
+                <label style={{ fontSize: 12, color: GREEN, fontWeight: 700, whiteSpace: "nowrap", marginLeft: 6 }}>Mesurée (V) :</label>
+                <input type="text" inputMode="decimal" value={measured[i]||""} onChange={function(e){ if(setMeasured) setMeasured(i, e.target.value); }}
+                  placeholder="ex: 372" style={{ width: 75, fontSize: 13, padding: "4px 8px", borderColor: GREEN_MID }} />
               </div>
             </div>
             <PhotoZone catKey={cat.key} label={"📷 "+displayName+" (identification + tension)"}
@@ -2662,6 +2741,15 @@ function DCTab({ data, setData, locked, isWGE, onUnlock }) {
     alert("✅ " + briefingStrings.length + " string(s) trouvée(s) dans le Briefing.\n" +
       filledCount + " complétée(s), " + preservedCount + " déjà renseignée(s) préservée(s) telles quelles.\nLes photos n'ont pas été touchées.");
   }
+  function setStringMeasured(idx, val) {
+    setData(function(prev){
+      var n = Object.assign({}, prev);
+      var t = Object.assign({}, (prev.dc||{}).stringMeasured||{});
+      t[idx] = val;
+      n.dc = Object.assign({}, prev.dc, { stringMeasured: t });
+      return n;
+    });
+  }
   function setStringTension(idx, val) {
     setData(function(prev){
       var n = Object.assign({}, prev); n.dc = Object.assign({}, prev.dc);
@@ -2748,6 +2836,8 @@ function DCTab({ data, setData, locked, isWGE, onUnlock }) {
                   nbStrings={sData["nbStrings"]}
                   photos={data.dc.photos||{}}
                   tensions={data.dc.stringTensions||{}}
+                  measured={data.dc.stringMeasured||{}}
+                  setMeasured={setStringMeasured}
                   stringNames={data.dc.stringNames||{}}
                   stringPVCounts={data.dc.stringPVCounts||{}}
                   setPhotos={setPhotos}
@@ -3446,83 +3536,137 @@ function MaintChip({label,selected,color,onClick}){
 
 /* ── PhotoZone ── */
 
-function MaintStringTable({strings,onUpdate,onAdd,onDelete}){
-  const thSt={color:WHITE,padding:"7px 10px",fontSize:12,fontWeight:700,background:GREEN};
-  const tdSt={padding:"4px 8px",border:`1px solid ${BORDER}`,textAlign:"center"};
-  const updStr=(i,k,v)=>onUpdate(strings.map((r,idx)=>idx===i?{...r,[k]:v}:r));
+// Seuil d'alerte d'écart de tension (en %) — à ajuster selon la fréquence des alertes terrain.
+// La tension varie avec l'ensoleillement : on compare à la valeur théorique ET à la 1re mesure réelle (installation).
+const STRING_ALERT_PCT = 10;
+
+function MaintStringTable({strings,onUpdate,onAdd,onDelete,getHistory,ondIdx,ondId,onImport}){
+  const strRef=React.useRef(strings); strRef.current=strings;
+  const [openRows,setOpenRows]=useState({});
+  const upd=(i,patch)=>onUpdate(strRef.current.map((r,idx)=>idx===i?{...r,...patch}:r));
+  const toNum=v=>{const n=parseFloat(String(v==null?"":v).replace(",",".")); return isNaN(n)?null:n;};
+  const pctOf=(a,b)=>(a!=null&&b!=null&&b!==0)?((a-b)/b*100):null;
+  const fmtP=p=>p==null?"—":(p>0?"+":"")+p.toFixed(1)+"%";
+  const inp={width:"100%",fontSize:16,padding:"7px 8px",textAlign:"right",boxSizing:"border-box"};
+  const lbl={fontSize:11,color:MUTED,marginBottom:2,display:"block"};
   return(
     <div>
-      <div style={{overflowX:"auto"}}>
-        <table style={{width:"100%",borderCollapse:"collapse",minWidth:500}}>
-          <thead>
-            <tr>
-              <th style={{...thSt,textAlign:"left",width:70}}>String</th>
-              <th style={thSt}>PE/− (MΩ)</th>
-              <th style={thSt}>PE/+ (MΩ)</th>
-              <th style={thSt}>Tension est. (V)</th>
-              <th style={thSt}>Tension mes. (V)</th>
-              <th style={{...thSt,width:36}}></th>
-            </tr>
-          </thead>
-          <tbody>
-            {strings.map((s,i)=>{
-              const est=parseFloat(s.voltEst),mes=parseFloat(s.voltMes);
-              const ecart=(!isNaN(est)&&!isNaN(mes)&&est!==0)?Math.abs((mes-est)/est*100).toFixed(1):null;
-              const warn=ecart&&parseFloat(ecart)>5;
-              return(
-                <tr key={i} style={{background:i%2===0?WHITE:"#fafaf8"}}>
-                  <td style={{padding:"5px 8px",border:`1px solid ${BORDER}`}}>
-                    <input type="text" value={s.num} onChange={e=>updStr(i,"num",e.target.value)} style={{width:46,fontWeight:700,color:GREEN,textAlign:"center"}} placeholder={String(i+1)}/>
-                  </td>
-                  {["isolNeg","isolPos"].map(k=>{
-                    const val=s[k],ok=val&&parseFloat(val)>=0.5;
-                    return(
-                      <td key={k} style={tdSt}>
-                        <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:3}}>
-                          <input type="number" step="any" value={val} onChange={e=>updStr(i,k,e.target.value)} style={{width:64,textAlign:"right"}} placeholder="—"/>
-                          <span style={{fontSize:11,color:MUTED}}>MΩ</span>
-                          {val&&<span style={{fontSize:10,fontWeight:700,color:ok?GREEN:"#e74c3c"}}>{ok?"✓":"⚠"}</span>}
-                        </div>
-                      </td>
-                    );
-                  })}
-                  <td style={tdSt}>
-                    <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:3}}>
-                      <input type="number" step="any" value={s.voltEst} onChange={e=>updStr(i,"voltEst",e.target.value)} style={{width:64,textAlign:"right"}} placeholder="—"/>
-                      <span style={{fontSize:11,color:MUTED}}>V</span>
-                    </div>
-                  </td>
-                  <td style={tdSt}>
-                    <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:3}}>
-                      <input type="number" step="any" value={s.voltMes} onChange={e=>updStr(i,"voltMes",e.target.value)} style={{width:64,textAlign:"right"}} placeholder="—"/>
-                      <span style={{fontSize:11,color:MUTED}}>V</span>
-                      {ecart&&<span style={{fontSize:10,fontWeight:700,color:warn?"#e74c3c":GREEN}}>{ecart}%</span>}
-                    </div>
-                  </td>
-                  <td style={{padding:"4px",border:`1px solid ${BORDER}`,textAlign:"center"}}>
-                    <button onClick={()=>onDelete(i)} style={{fontSize:15,color:MUTED,background:"none",border:"none",cursor:"pointer"}}>×</button>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8,marginBottom:10}}>
+        <div style={{fontSize:11,color:MUTED}}>Alerte si écart &gt; {STRING_ALERT_PCT}% (vs théorique ou vs installation) · Isolement &gt; 0,5 MΩ = OK</div>
+        <button onClick={onImport} style={{fontSize:12,color:GREEN,background:GREEN_LIGHT,border:"1px solid "+GREEN_MID,borderRadius:6,padding:"6px 10px",cursor:"pointer",fontWeight:600}}>📥 Importer les strings du rapport</button>
       </div>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:8,flexWrap:"wrap",gap:8}}>
-        <div style={{fontSize:11,color:MUTED}}>Isolement &gt; 0,5 MΩ = OK · Tension : écart &gt; 5% = rouge</div>
-        <button onClick={onAdd} style={{fontSize:12,color:GREEN,background:"none",border:`1px dashed ${GREEN_MID}`,borderRadius:6,padding:"3px 10px",cursor:"pointer"}}>+ String</button>
+      {strings.map((s,i)=>{
+        const theo=toNum(s.voltEst), inst=toNum(s.voltInstall), mes=toNum(s.voltMes);
+        const hist=(getHistory?getHistory(ondIdx,s.num):[])||[];
+        const prev=hist.length?toNum(hist[hist.length-1].volt):null;
+        const eTheo=pctOf(mes,theo), eInst=pctOf(mes,inst), ePrev=pctOf(mes,prev);
+        const alertTheo=eTheo!=null&&Math.abs(eTheo)>STRING_ALERT_PCT;
+        const alertInst=eInst!=null&&Math.abs(eInst)>STRING_ALERT_PCT;
+        const alert1=alertTheo||alertInst;
+        const open=!!openRows[i];
+        const border=alert1?"#e74c3c":(mes!=null?GREEN_MID:BORDER);
+        const chip=(txt,bad)=><span style={{fontSize:11,fontWeight:700,padding:"2px 7px",borderRadius:10,background:bad?"#fdecea":GREEN_LIGHT,color:bad?"#c0392b":GREEN}}>{txt}</span>;
+        return(
+          <div key={i} style={{border:"1.5px solid "+border,borderRadius:9,marginBottom:10,background:alert1?"#fff8f7":WHITE,padding:"10px 10px 8px"}}>
+            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8,flexWrap:"wrap"}}>
+              <span style={{fontWeight:700,color:GREEN,fontSize:13}}>STR</span>
+              <input type="text" value={s.num} onChange={e=>upd(i,{num:e.target.value})} style={{width:52,fontWeight:700,color:GREEN,textAlign:"center",fontSize:16,padding:"5px 4px"}} placeholder={String(i+1)}/>
+              {s.nom&&<span style={{fontSize:12,color:MUTED,flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.nom}</span>}
+              <span style={{flex:s.nom?0:1}}/>
+              {mes!=null&&eTheo!=null&&chip("vs théo "+fmtP(eTheo),alertTheo)}
+              {mes!=null&&eInst!=null&&chip("vs install. "+fmtP(eInst),alertInst)}
+              <button onClick={()=>onDelete(i)} title="Supprimer ce string" style={{fontSize:18,color:MUTED,background:"none",border:"none",cursor:"pointer",padding:"0 6px",minHeight:36}}>×</button>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(96px,1fr))",gap:8}}>
+              <div><label style={lbl}>Théorique (V)</label><input type="number" inputMode="decimal" step="any" value={s.voltEst||""} onChange={e=>upd(i,{voltEst:e.target.value})} style={inp} placeholder="—"/></div>
+              <div><label style={lbl}>Installation (V)</label><input type="number" inputMode="decimal" step="any" value={s.voltInstall||""} onChange={e=>upd(i,{voltInstall:e.target.value})} style={inp} placeholder="—"/></div>
+              <div><label style={{...lbl,color:GREEN,fontWeight:700}}>Mesuré aujourd'hui (V)</label><input type="number" inputMode="decimal" step="any" value={s.voltMes||""} onChange={e=>upd(i,{voltMes:e.target.value})} style={{...inp,borderColor:alert1?"#e74c3c":undefined,fontWeight:700}} placeholder="—"/></div>
+              {["isolNeg","isolPos"].map(k=>{
+                const val=s[k], ok=val&&parseFloat(val)>=0.5;
+                return(<div key={k}><label style={lbl}>{k==="isolNeg"?"PE/− (MΩ)":"PE/+ (MΩ)"} {val?<b style={{color:ok?GREEN:"#e74c3c"}}>{ok?"✓":"⚠"}</b>:null}</label>
+                  <input type="number" inputMode="decimal" step="any" value={val||""} onChange={e=>upd(i,{[k]:e.target.value})} style={inp} placeholder="—"/></div>);
+              })}
+            </div>
+            {alert1&&(
+              <div style={{marginTop:8,padding:"7px 10px",background:"#fdecea",border:"1px solid #e74c3c",borderRadius:7,fontSize:12,color:"#c0392b",lineHeight:1.4}}>
+                ⚠️ <b>Écart anormal</b> sur ce string{alertTheo?" ("+fmtP(eTheo)+" vs théorique)":""}{alertInst?" ("+fmtP(eInst)+" vs installation)":""}. Vérifier connexions, MC4, ombrage ou panneau défectueux. Rappel : la tension varie avec l'ensoleillement (fin de journée notamment), refaire la mesure si besoin.
+              </div>
+            )}
+            <button onClick={()=>setOpenRows({...openRows,[i]:!open})}
+              style={{marginTop:8,fontSize:12,fontWeight:600,color:GREEN,background:"none",border:"1px dashed "+GREEN_MID,borderRadius:6,padding:"6px 10px",cursor:"pointer",width:"100%",minHeight:36}}>
+              {open?"▲ Masquer":"📊 Historique & 📷 photos de mesure"} {(s.photos&&s.photos.length)?"("+s.photos.length+" photo"+(s.photos.length>1?"s":"")+")":""} {hist.length?"· "+hist.length+" relevé"+(hist.length>1?"s":"")+" précédent"+(hist.length>1?"s":""):""}
+            </button>
+            {open&&(
+              <div style={{marginTop:8}}>
+                <div style={{overflowX:"auto"}}>
+                  <table style={{width:"100%",borderCollapse:"collapse",fontSize:12,minWidth:300}}>
+                    <thead><tr style={{background:GREEN,color:WHITE}}>
+                      <th style={{padding:"5px 8px",textAlign:"left"}}>Relevé</th><th style={{padding:"5px 8px"}}>Tension (V)</th><th style={{padding:"5px 8px"}}>vs install.</th><th style={{padding:"5px 8px"}}>PE−/PE+ (MΩ)</th>
+                    </tr></thead>
+                    <tbody>
+                      <tr><td style={{padding:"4px 8px",border:"1px solid "+BORDER}}>Théorique (briefing)</td><td style={{padding:"4px 8px",border:"1px solid "+BORDER,textAlign:"center"}}>{theo!=null?theo:"—"}</td><td style={{border:"1px solid "+BORDER}}/><td style={{border:"1px solid "+BORDER}}/></tr>
+                      <tr><td style={{padding:"4px 8px",border:"1px solid "+BORDER}}>Installation (1re mesure)</td><td style={{padding:"4px 8px",border:"1px solid "+BORDER,textAlign:"center",fontWeight:700}}>{inst!=null?inst:"—"}</td><td style={{border:"1px solid "+BORDER}}/><td style={{border:"1px solid "+BORDER}}/></tr>
+                      {hist.map((h,hi)=>{const hv=toNum(h.volt); const he=pctOf(hv,inst); const bad=he!=null&&Math.abs(he)>STRING_ALERT_PCT;
+                        return(<tr key={hi}><td style={{padding:"4px 8px",border:"1px solid "+BORDER}}>{h.label}</td>
+                          <td style={{padding:"4px 8px",border:"1px solid "+BORDER,textAlign:"center"}}>{hv!=null?hv:"—"}</td>
+                          <td style={{padding:"4px 8px",border:"1px solid "+BORDER,textAlign:"center",color:bad?"#c0392b":GREEN,fontWeight:700}}>{fmtP(he)}</td>
+                          <td style={{padding:"4px 8px",border:"1px solid "+BORDER,textAlign:"center"}}>{(h.isolNeg||"—")+" / "+(h.isolPos||"—")}</td></tr>);})}
+                      <tr style={{background:GREEN_LIGHT}}><td style={{padding:"4px 8px",border:"1px solid "+BORDER,fontWeight:700}}>Aujourd'hui</td>
+                        <td style={{padding:"4px 8px",border:"1px solid "+BORDER,textAlign:"center",fontWeight:700}}>{mes!=null?mes:"—"}</td>
+                        <td style={{padding:"4px 8px",border:"1px solid "+BORDER,textAlign:"center",color:alertInst?"#c0392b":GREEN,fontWeight:700}}>{fmtP(eInst)}</td>
+                        <td style={{padding:"4px 8px",border:"1px solid "+BORDER,textAlign:"center"}}>{(s.isolNeg||"—")+" / "+(s.isolPos||"—")}</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+                {prev!=null&&mes!=null&&<div style={{fontSize:11,color:MUTED,marginTop:4}}>Évolution depuis le relevé précédent : <b>{fmtP(ePrev)}</b></div>}
+                <div style={{marginTop:8}}>
+                  <PhotoZone catKey={"maint_strmes_"+(ondId||ondIdx)+"_"+(s.num||i)} label={"📷 Photos de la mesure — STR "+(s.num||i+1)}
+                    items={s.photos||[]} hiRes={true}
+                    onAdd={arr=>upd(i,{photos:((strRef.current[i]&&strRef.current[i].photos)||[]).concat(arr)})}
+                    onDelete={idx=>{ if(!window.confirm("Supprimer cette photo ?")) return; upd(i,{photos:((strRef.current[i]&&strRef.current[i].photos)||[]).filter((_,j)=>j!==idx)}); }}
+                    onUpdate={(idx,u)=>upd(i,{photos:((strRef.current[i]&&strRef.current[i].photos)||[]).map((x,j)=>j===idx?u:x)})}
+                    onReorder={(f,t)=>{var a=[].concat((strRef.current[i]&&strRef.current[i].photos)||[]);var it=a.splice(f,1)[0];a.splice(t,0,it);upd(i,{photos:a});}}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })}
+      <div style={{display:"flex",justifyContent:"flex-end"}}>
+        <button onClick={onAdd} style={{fontSize:13,color:GREEN,background:"none",border:`1px dashed ${GREEN_MID}`,borderRadius:6,padding:"7px 14px",cursor:"pointer",minHeight:38}}>+ String</button>
       </div>
     </div>
   );
 }
 
 /* ── Onduleur card ── */
-function MaintOnduleurCard({idx,ond,onChange,onDelete}){
+function MaintOnduleurCard({idx,ond,onChange,onDelete,refChantier,getHistory,dcStrings}){
   const [open,setOpen]=useState(true);
-  const set=(k,v)=>onChange({...ond,[k]:v});
-  const setE=(k,v)=>onChange({...ond,erreur:{...ond.erreur,[k]:v}});
+  const ondRef=React.useRef(ond); ondRef.current=ond; // toujours la dernière version (ajouts photo asynchrones)
+  const set=(k,v)=>onChange({...ondRef.current,[k]:v});
+  const setE=(k,v)=>onChange({...ondRef.current,erreur:{...ondRef.current.erreur,[k]:v}});
   const allStr=ond.strings||[];
-  const mkS=n=>({num:String(n),isolNeg:"",isolPos:"",voltEst:"",voltMes:""});
+  const mkS=n=>({num:String(n),isolNeg:"",isolPos:"",voltEst:"",voltInstall:"",voltMes:""});
+  // Import des strings du rapport (onglet DC) : ne remplit que ce qui est vide, ne supprime rien
+  const importFromDC=()=>{
+    const list0=dcStrings||[];
+    if(!list0.length){ alert("Aucun string dans le rapport (onglet DC, section Strings).\nImportez d'abord les strings du Briefing dans l'onglet DC."); return; }
+    const hasOnd=list0.some(d=>/ond\.?\s*\d+/i.test(d.name||""));
+    const list=hasOnd?list0.filter(d=>{const m=(d.name||"").match(/ond\.?\s*(\d+)/i); return m&&parseInt(m[1])===idx+1;}):list0;
+    if(!list.length){ alert("Aucun string du rapport n'est rattaché à l'onduleur "+(idx+1)+"."); return; }
+    const next=(ondRef.current.strings||[]).map(r=>({...r}));
+    let added=0,filled=0;
+    list.forEach(d=>{
+      let r=next.find(x=>String(x.num).trim()===d.num);
+      if(!r){ r={...mkS(d.num)}; next.push(r); added++; }
+      if(!r.voltEst&&d.theo!=null){ r.voltEst=String(d.theo); filled++; }
+      if(!r.voltInstall&&d.measured!=null){ r.voltInstall=String(d.measured); filled++; }
+      if(!r.nom&&d.name) r.nom=d.name;
+    });
+    set("strings",next);
+    alert("✅ "+list.length+" string(s) importé(s) ("+added+" ajouté(s), "+filled+" valeur(s) complétée(s)).\nLes valeurs déjà saisies n'ont pas été modifiées.");
+  };
 
   // Status color
   const statusColor=ond.etat==="OK"?GREEN:ond.etat==="Erreur"?"#e74c3c":BORDER;
@@ -3567,8 +3711,9 @@ function MaintOnduleurCard({idx,ond,onChange,onDelete}){
             <div style={{minWidth:100}}>
               <div style={{...LBL,marginBottom:4}}>Fiche signalétique</div>
               <PhotoZone single={true} items={ond.photoFiche||[]}
-                onAdd={items=>set("photoFiche",(ond.photoFiche||[]).concat(items).slice(0,1))}
-                onDelete={()=>set("photoFiche",[])}/>
+                onAdd={items=>set("photoFiche",(ondRef.current.photoFiche||[]).concat(items).slice(0,1))}
+                onDelete={()=>set("photoFiche",[])}
+                onUpdate={(i,u)=>set("photoFiche",[u])} catKey="maint_fiche"/>
             </div>
           </div>
 
@@ -3654,8 +3799,8 @@ function MaintOnduleurCard({idx,ond,onChange,onDelete}){
 
               <div>
                 <label style={LBL}>a) Description du problème</label>
-                <textarea value={(ond.erreur&&ond.erreur.description)||""} onChange={e=>setE("description",e.target.value)}
-                  rows={3} style={{width:"100%",resize:"vertical"}} placeholder="Comportement anormal observé…"/>
+                <VoiceOrTextField value={(ond.erreur&&ond.erreur.description)||""} onChange={v=>setE("description",v)}
+                  rows={3} refChantier={refChantier} placeholder="Comportement anormal observé…"/>
               </div>
 
               <MaintField label="c) Message / Code d'erreur onduleur" value={(ond.erreur&&ond.erreur.code)||""}
@@ -3663,13 +3808,16 @@ function MaintOnduleurCard({idx,ond,onChange,onDelete}){
 
               <div>
                 <label style={LBL}>d) Opérations déjà réalisées</label>
-                <textarea value={(ond.erreur&&ond.erreur.operations)||""} onChange={e=>setE("operations",e.target.value)}
-                  rows={2} style={{width:"100%",resize:"vertical"}} placeholder="Actions déjà tentées…"/>
+                <VoiceOrTextField value={(ond.erreur&&ond.erreur.operations)||""} onChange={v=>setE("operations",v)}
+                  rows={2} refChantier={refChantier} placeholder="Actions déjà tentées…"/>
               </div>
 
               <PhotoZone label="Photos erreur / LEDs" items={ond.photosErreur||[]}
-                onAdd={items=>set("photosErreur",(ond.photosErreur||[]).concat(items))}
-                onDelete={i=>set("photosErreur",(ond.photosErreur||[]).filter((_,idx)=>idx!==i))}/>
+                onAdd={items=>set("photosErreur",(ondRef.current.photosErreur||[]).concat(items))}
+                onDelete={i=>set("photosErreur",(ondRef.current.photosErreur||[]).filter((_,idx)=>idx!==i))}
+                onUpdate={(i,u)=>set("photosErreur",(ondRef.current.photosErreur||[]).map((x,idx)=>idx===i?u:x))}
+                onReorder={(f,t)=>{var a=[].concat(ondRef.current.photosErreur||[]);var it=a.splice(f,1)[0];a.splice(t,0,it);set("photosErreur",a);}}
+                catKey="maint_photosErreur" hiRes={true}/>
             </div>
           )}
 
@@ -3727,12 +3875,15 @@ function MaintOnduleurCard({idx,ond,onChange,onDelete}){
             <div style={{marginTop:10,display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,alignItems:"start"}}>
               <div>
                 <label style={LBL}>Remarques AC</label>
-                <textarea value={(ond.ac&&ond.ac.remarques)||""} onChange={e=>set("ac",{...(ond.ac||{}),remarques:e.target.value})}
-                  rows={2} style={{width:"100%",resize:"vertical"}} placeholder="Observations…"/>
+                <VoiceOrTextField value={(ond.ac&&ond.ac.remarques)||""} onChange={v=>set("ac",{...(ondRef.current.ac||{}),remarques:v})}
+                  rows={2} refChantier={refChantier} placeholder="Observations…"/>
               </div>
               <PhotoZone label="Photos AC" items={ond.photosAc||[]}
-                onAdd={items=>set("photosAc",(ond.photosAc||[]).concat(items))}
-                onDelete={i=>set("photosAc",(ond.photosAc||[]).filter((_,idx)=>idx!==i))}/>
+                onAdd={items=>set("photosAc",(ondRef.current.photosAc||[]).concat(items))}
+                onDelete={i=>set("photosAc",(ondRef.current.photosAc||[]).filter((_,idx)=>idx!==i))}
+                onUpdate={(i,u)=>set("photosAc",(ondRef.current.photosAc||[]).map((x,idx)=>idx===i?u:x))}
+                onReorder={(f,t)=>{var a=[].concat(ondRef.current.photosAc||[]);var it=a.splice(f,1)[0];a.splice(t,0,it);set("photosAc",a);}}
+                catKey="maint_photosAc" hiRes={true}/>
             </div>
           </div>
 
@@ -3742,19 +3893,22 @@ function MaintOnduleurCard({idx,ond,onChange,onDelete}){
               Mesures DC — Strings
             </div>
             <MaintStringTable
-              strings={allStr}
+              strings={allStr} getHistory={getHistory} ondIdx={idx} ondId={ond.id} onImport={importFromDC}
               onUpdate={v=>set("strings",v)}
-              onAdd={()=>set("strings",[...allStr,mkS(allStr.length+1)])}
-              onDelete={i=>set("strings",allStr.filter((_,idx)=>idx!==i))}/>
+              onAdd={()=>set("strings",[...(ondRef.current.strings||[]),mkS((ondRef.current.strings||[]).length+1)])}
+              onDelete={i=>{ if(!window.confirm("Supprimer ce string et ses relevés ?")) return; set("strings",(ondRef.current.strings||[]).filter((_,k)=>k!==i)); }}/>
             <div style={{marginTop:12,display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,alignItems:"start"}}>
               <div>
                 <label style={LBL}>Remarques DC</label>
-                <textarea value={ond.dcRemarques||""} onChange={e=>set("dcRemarques",e.target.value)}
-                  rows={2} style={{width:"100%",resize:"vertical"}} placeholder="Observations DC…"/>
+                <VoiceOrTextField value={ond.dcRemarques||""} onChange={v=>set("dcRemarques",v)}
+                  rows={2} refChantier={refChantier} placeholder="Observations DC…"/>
               </div>
               <PhotoZone label="Photos DC" items={ond.photosDc||[]}
-                onAdd={items=>set("photosDc",(ond.photosDc||[]).concat(items))}
-                onDelete={i=>set("photosDc",(ond.photosDc||[]).filter((_,idx)=>idx!==i))}/>
+                onAdd={items=>set("photosDc",(ondRef.current.photosDc||[]).concat(items))}
+                onDelete={i=>set("photosDc",(ondRef.current.photosDc||[]).filter((_,idx)=>idx!==i))}
+                onUpdate={(i,u)=>set("photosDc",(ondRef.current.photosDc||[]).map((x,idx)=>idx===i?u:x))}
+                onReorder={(f,t)=>{var a=[].concat(ondRef.current.photosDc||[]);var it=a.splice(f,1)[0];a.splice(t,0,it);set("photosDc",a);}}
+                catKey="maint_photosDc" hiRes={true}/>
             </div>
             {/* Strings OK checkbox */}
             <div onClick={()=>set("stringsOk",!ond.stringsOk)}
@@ -3784,7 +3938,7 @@ function mkOnd(n){
   return{id:Date.now()+n,modele:"",serie:"",emplacement:"",photoFiche:[],photosErreur:[],photosAc:[],photosDc:[],
     etat:null,ledVert:"",ledRouge:"",ledBleu:"",ledRougeDesc:"",ledBleuDesc:"",
     majFirmware:null,firmwareVersion:"",redemarrage:false,stringsOk:false,
-    ac:{},strings:[{num:"1",isolNeg:"",isolPos:"",voltEst:"",voltMes:""}],dcRemarques:"",
+    ac:{},strings:[{num:"1",isolNeg:"",isolPos:"",voltEst:"",voltInstall:"",voltMes:""}],dcRemarques:"",
     erreur:{description:"",code:"",operations:""}};
 }
 
@@ -3820,7 +3974,7 @@ function SAVCard({ sav, idx, onChange, onDelete, photos, setPhotos, refChantier 
   var photoApresKey = "sav_apres_" + sav.id;
 
   function pz(catKey, label) {
-    return <PhotoZone catKey={catKey} label={label} items={photos[catKey]||[]} hiRes={true}
+    return <PhotoZone catKey={catKey} label={label} items={photos[catKey]||[]} hiRes={true} allowVideo={true} refChantier={refChantier}
       allSections={[{key: photoAvantKey, label:"Avant"},{key: photoApresKey, label:"Après"}]}
       onAdd={function(arr){ setPhotos(catKey, function(p){ return (p||[]).concat(arr); }); }}
       onDelete={function(i){ if(!window.confirm("Supprimer ?")) return;
@@ -3910,9 +4064,9 @@ function SAVCard({ sav, idx, onChange, onDelete, photos, setPhotos, refChantier 
           </div>
 
           {/* Photos */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
-            <div>{pz(photoAvantKey, "📷 Photos AVANT")}</div>
-            <div>{pz(photoApresKey, "📷 Photos APRÈS")}</div>
+          <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr)", gap: 12, marginBottom: 12 }}>
+            <div style={{ minWidth:0 }}>{pz(photoAvantKey, "📷 Photos AVANT")}</div>
+            <div style={{ minWidth:0 }}>{pz(photoApresKey, "📷 Photos APRÈS")}</div>
           </div>
 
           {/* Delete */}
@@ -4455,21 +4609,58 @@ function MaintenanceTab({ data, setData }) {
 
   var onds = visite.onduleurs || [mkOnd(0)];
 
+  // Mises à jour fonctionnelles (par id de visite) : une photo qui arrive après traitement
+  // n'écrase plus ce qui a été saisi entre-temps.
+  function patchVisiteById(fn) {
+    var vid = visite.id;
+    setMaintList(function(l) { return l.map(function(v) { return v.id === vid ? fn(v) : v; }); });
+  }
   function updateOnd(i, updated) {
-    updateVisite(currentIdx, Object.assign({}, visite, {
-      onduleurs: onds.map(function(o, j) { return j === i ? updated : o; })
-    }));
+    patchVisiteById(function(v) {
+      var cur = v.onduleurs || [mkOnd(0)];
+      return Object.assign({}, v, { onduleurs: cur.map(function(o, j) { return j === i ? updated : o; }) });
+    });
   }
 
   function setVisitePhotos(catKey, updater) {
-    var current = (visite.photos || {})[catKey] || [];
-    var updated2 = typeof updater === "function" ? updater(current) : updater;
-    updateVisite(currentIdx, Object.assign({}, visite, {
-      photos: Object.assign({}, visite.photos || {}, { [catKey]: updated2 })
-    }));
+    patchVisiteById(function(v) {
+      var current = (v.photos || {})[catKey] || [];
+      var updated2 = typeof updater === "function" ? updater(current) : updater;
+      return Object.assign({}, v, { photos: Object.assign({}, v.photos || {}, { [catKey]: updated2 }) });
+    });
   }
 
   var visitePhotos = visite.photos || {};
+
+  // Strings du rapport (onglet DC) : nom, tension théorique (briefing), 1re mesure réelle (installation)
+  var dcStringsList = (function(){
+    var dc = data.dc || {};
+    var nb = parseInt(((dc.items||{}).strings||{}).nbStrings) || 0;
+    var names = dc.stringNames||{}, tens = dc.stringTensions||{}, meas = dc.stringMeasured||{};
+    Object.keys(names).concat(Object.keys(tens), Object.keys(meas)).forEach(function(k){ var n=parseInt(k)+1; if(!isNaN(n) && n>nb) nb=n; });
+    var toN = function(v){ var n=parseFloat(String(v==null?"":v).replace(",",".")); return isNaN(n)?null:n; };
+    var out = [];
+    for (var k=0; k<nb; k++) out.push({ num:String(k+1), name:names[k]||"", theo:toN(tens[k]), measured:toN(meas[k]) });
+    return out;
+  })();
+  // Historique d'un string : relevés des AUTRES visites de cette feuille (même onduleur, même n° de string), du plus ancien au plus récent
+  function getStringHistory(ondIdx, num) {
+    var key = String(num==null?"":num).trim();
+    var res = [];
+    var sorted = maintList.map(function(v, vi){ return { v:v, vi:vi }; })
+      .filter(function(x){ return x.v.id !== visite.id; })
+      .sort(function(a,b){ return String(a.v.date||"").localeCompare(String(b.v.date||"")) || (a.vi-b.vi); });
+    sorted.forEach(function(x){
+      var o = (x.v.onduleurs||[])[ondIdx]; if(!o) return;
+      var r = (o.strings||[]).find(function(rr){ return String(rr.num==null?"":rr.num).trim() === key; });
+      if(!r || (r.voltMes==null || r.voltMes==="") && !r.isolNeg && !r.isolPos) return;
+      // seules les visites antérieures ou de même date comptent comme "précédentes"
+      if (String(x.v.date||"") > String(visite.date||"9999")) return;
+      var d = x.v.date ? new Date(x.v.date).toLocaleDateString("fr-BE") : "";
+      res.push({ label:"Visite "+(x.vi+1)+(d?" ("+d+")":""), volt:r.voltMes, isolNeg:r.isolNeg, isolPos:r.isolPos });
+    });
+    return res;
+  }
 
   return (
     <div>
@@ -4509,7 +4700,8 @@ function MaintenanceTab({ data, setData }) {
 
       {/* Onduleurs */}
       {onds.map(function(ond, i) {
-        return <MaintOnduleurCard key={ond.id||i} idx={i} ond={ond}
+        return <MaintOnduleurCard key={ond.id||i} idx={i} ond={ond} refChantier={data.meta && data.meta.ref}
+          getHistory={getStringHistory} dcStrings={dcStringsList}
           onChange={function(u){ updateOnd(i, u); }}
           onDelete={onds.length > 1 ? function(){
             updateVisite(currentIdx, Object.assign({}, visite, {
@@ -4528,6 +4720,13 @@ function MaintenanceTab({ data, setData }) {
         fontSize:13, fontWeight:600, cursor:"pointer", marginBottom:14 }}>
         + Ajouter un onduleur
       </button>
+
+      {/* Observations générales de la visite (texte ou note vocale) */}
+      <div style={{ background:WHITE, border:"1px solid "+BORDER, borderRadius:9, padding:"12px 14px", marginBottom:14 }}>
+        <div style={{ fontWeight:700, fontSize:11, color:GREEN, textTransform:"uppercase", letterSpacing:"0.07em", marginBottom:10 }}>Observations générales de la visite</div>
+        <VoiceOrTextField value={visite.remarques||""} onChange={function(v){ patchVisiteById(function(x){ return Object.assign({}, x, { remarques: v }); }); }}
+          rows={3} refChantier={data.meta && data.meta.ref} placeholder="Remarques générales, points d'attention, travaux à prévoir…" />
+      </div>
 
       {/* General photos */}
       <div style={{ background:WHITE, border:"1px solid "+BORDER, borderRadius:9, padding:"12px 14px" }}>
@@ -4616,7 +4815,7 @@ function ProgressPanel({ data, onClose }) {
   function collectFromMap(photoMap, keyPrefix) {
     Object.keys(photoMap||{}).forEach(function(catKey) {
       (photoMap[catKey]||[]).forEach(function(p) {
-        if (!p || !p.url) return;
+        if (!p || !p.url || wgeIsVideo(p)) return;
         var fullKey = keyPrefix ? keyPrefix + catKey : catKey;
         var label = sectionLabels[catKey] || sectionLabels[fullKey] || {
           tab: "Autre", tabColor: MUTED, section: catKey, cat: catKey
@@ -8076,7 +8275,7 @@ const PM_DATA = {
   "Olivier Hers":            { tel: "+32 498 67 18 65", email: "" },
   "Alexander Vos":           { tel: "+32 475 86 92 76", email: "alexander.vos@we-green.be" },
   "Benjamin Hers":           { tel: "+32 479 62 75 11", email: "benjamin.hers@we-green.be" },
-  "Cédric":                  { tel: "", email: "" },
+  "Cédric Lescrenier":       { tel: "+32 496 98 36 03", email: "cedric.lescrenier@we-cover.be" },
   "Dominic Rousselle":       { tel: "+32 495 81 16 70", email: "dominic.rousselle@we-green.be" },
   "Enguerrand de Formanoir": { tel: "+32 495 87 09 86", email: "enguerrand.deformanoir@we-green.be" },
   "Hugues Léglise":          { tel: "0496 57 68 66",   email: "hugues.leglise@gmail.com" },
