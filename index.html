@@ -4841,6 +4841,21 @@ function ProgressPanel({ data, onClose }) {
   (data.maintenanceVisites||[]).forEach(function(v, vi){
     collectFromMap(v.photos||{}, "maint_v"+vi+"_"); // préfixe pour matcher sectionLabels
   });
+  // Maintenance : photos rattachées aux onduleurs (fiche, erreur, AC, DC) et aux mesures de strings
+  (data.maintenanceVisites||[]).forEach(function(v, vi){
+    (v.onduleurs||[]).forEach(function(o, oi){
+      var sec = "Visite "+(vi+1)+" — Onduleur "+(oi+1);
+      function pushP(p, cat) {
+        if (!p || !p.url || wgeIsVideo(p)) return;
+        allPhotos.push({ url:p.url, name:p.name||"", addedAt:p.addedAt||null, uploadedBy:p.uploadedBy||"",
+          catKey:"maint_ond_"+vi+"_"+oi, tab:"Maintenance", tabColor:GREEN, section:sec, cat:cat });
+      }
+      [["photoFiche","Fiche signalétique"],["photosErreur","Erreur / LEDs"],["photosAc","Photos AC"],["photosDc","Photos DC"]].forEach(function(pair){
+        (o[pair[0]]||[]).forEach(function(p){ pushP(p, pair[1]); });
+      });
+      (o.strings||[]).forEach(function(r){ (r.photos||[]).forEach(function(p){ pushP(p, "Mesure STR "+(r.num||"?")); }); });
+    });
+  });
   // Photos générales
   (data.photosGenerales||[]).forEach(function(p) {
     if (!p || !p.url) return;
@@ -4879,6 +4894,32 @@ function ProgressPanel({ data, onClose }) {
   (data.dc.journeesCloturees||[]).forEach(addJournee);
   (data.ac.journeesCloturees||[]).forEach(addJournee);
 
+  // Interventions SAV et visites de maintenance : une carte par jour (même sans photo)
+  var dayActivities = {};
+  function addActivity(day, a) { if (!day) return; (dayActivities[day] = dayActivities[day] || []).push(a); }
+  (data.sav||[]).forEach(function(sv, si) {
+    addActivity(String(sv.date||"").slice(0,10), { color:"#f39c12", bg:"#fffbf0", title:"🔧 SAV n°"+(si+1)+(sv.type?" — "+sv.type:""),
+      who:sv.intervenant||"", badge:sv.statut||"",
+      lines:[["Problème", sv.description],["Actions", sv.actionsEffectuees],["Pièces", sv.piecesRemplacees]] });
+  });
+  (data.maintenanceVisites||[]).forEach(function(v, vi) {
+    var onds = v.onduleurs||[]; var measured = 0, alerts = 0; var errs = [];
+    onds.forEach(function(o, oi) {
+      if (o.etat === "Erreur") errs.push("Onduleur "+(oi+1)+((o.erreur&&o.erreur.description)?" : "+o.erreur.description:""));
+      (o.strings||[]).forEach(function(r) {
+        var mes = parseFloat(r.voltMes); if (isNaN(mes)) return; measured++;
+        var bad = false;
+        [parseFloat(r.voltEst), parseFloat(r.voltInstall)].forEach(function(ref) {
+          if (!isNaN(ref) && ref !== 0 && Math.abs((mes-ref)/ref*100) > STRING_ALERT_PCT) bad = true;
+        });
+        if (bad) alerts++;
+      });
+    });
+    addActivity(String(v.date||"").slice(0,10), { color:GREEN, bg:GREEN_LIGHT, title:"🔩 Visite de maintenance n°"+(vi+1),
+      who:v.technicien||v.responsable||"", badge:onds.length+" onduleur"+(onds.length>1?"s":""),
+      lines:[["Strings mesurés", measured ? measured+(alerts?" — ⚠️ "+alerts+" en alerte":" — aucune alerte") : ""],["Onduleurs en erreur", errs.join(" ; ")],["Remarques", v.remarques]] });
+  });
+
   // Group by day
   var byDay = {};
   var noDate = [];
@@ -4890,6 +4931,7 @@ function ProgressPanel({ data, onClose }) {
   });
   // Ensure days with journées but no other photos are included
   Object.keys(allJourneesMap).forEach(function(d){ if(!byDay[d]) byDay[d]=[]; });
+  Object.keys(dayActivities).forEach(function(d){ if(!byDay[d]) byDay[d]=[]; });
 
   var days = Object.keys(byDay).sort().reverse(); // plus récent en premier
 
@@ -5128,6 +5170,7 @@ function ProgressPanel({ data, onClose }) {
         {viewMode === "byDay" && days.map(function(day, dIdx) {
           var dayPhotos   = byDay[day];
           var dayJournees = allJourneesMap[day] || [];
+          var dayActs     = dayActivities[day] || [];
           var daySections = groupBySection(dayPhotos);
           var isOpen = expandedDay === day || (expandedDay===null && dIdx===0);
 
@@ -5137,6 +5180,9 @@ function ProgressPanel({ data, onClose }) {
           });
           dayJournees.forEach(function(j) {
             if (j.auteur && !dayUploaders.includes(j.auteur)) dayUploaders.push(j.auteur);
+          });
+          dayActs.forEach(function(a) {
+            if (a.who && !dayUploaders.includes(a.who)) dayUploaders.push(a.who);
           });
 
           return (
@@ -5157,6 +5203,7 @@ function ProgressPanel({ data, onClose }) {
                   <div style={{ fontSize:11, color:MUTED, marginTop:2 }}>
                     {dayPhotos.length} photo{dayPhotos.length>1?"s":""}
                     {dayJournees.length>0 && <span style={{ marginLeft:8 }}>✅ {dayJournees.length} clôture{dayJournees.length>1?"s":""}</span>}
+                    {dayActs.length>0 && <span style={{ marginLeft:8 }}>{dayActs.map(function(a){ return a.title.slice(0,2); }).join(" ")} {dayActs.length} SAV/maint.</span>}
                   </div>
                 </div>
                 <span style={{ color:MUTED, fontSize:12, flexShrink:0, transform:isOpen?"rotate(180deg)":"none", transition:"transform 0.2s" }}>▼</span>
@@ -5187,7 +5234,27 @@ function ProgressPanel({ data, onClose }) {
                     );
                   })}
 
-                  {dayJournees.length === 0 && daySections.length === 0 && (
+                  {/* Interventions SAV et visites de maintenance */}
+                  {dayActs.map(function(a, ai) {
+                    return (
+                      <div key={"act"+ai} style={{ marginBottom:10, background:a.bg, border:"1.5px solid "+a.color, borderRadius:8, padding:"9px 12px" }}>
+                        <div style={{ fontWeight:700, fontSize:12, color:"#1a1a1a", display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
+                          {a.title}
+                          {a.badge && <span style={{ fontSize:10.5, fontWeight:700, color:a.color, background:WHITE, border:"1px solid "+a.color, borderRadius:10, padding:"1px 8px" }}>{a.badge}</span>}
+                          {a.who && <span style={{ color:"#6c3483", fontWeight:600, fontSize:11 }}>· 👤 {a.who}</span>}
+                        </div>
+                        {a.lines.filter(function(l){ return l[1]; }).map(function(l, li) {
+                          return (
+                            <div key={li} style={{ fontSize:11, lineHeight:1.5, marginTop:4, background:WHITE, borderRadius:5, padding:"5px 8px", borderLeft:"3px solid "+a.color, whiteSpace:"pre-wrap" }}>
+                              <b style={{ color:MUTED }}>{l[0]} : </b>{l[1]}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })}
+
+                  {dayJournees.length === 0 && dayActs.length === 0 && daySections.length === 0 && (
                     <div style={{ fontSize:12, color:MUTED, fontStyle:"italic", textAlign:"center", padding:"20px 0" }}>
                       Rien pour ce jour.
                     </div>
