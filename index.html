@@ -325,7 +325,7 @@ const LBL = { fontSize: 12, color: MUTED, fontWeight: 500, marginBottom: 4, disp
 const G2 = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 12 };
 const G3 = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12 };
 
-const PM_LIST = ["Alexander Vos","Benjamin Hers","Cédric Lescrenier","Dominic Rousselle","Enguerrand de Formanoir","Hugues Léglise","Nassim Fekreche","Nelson Hohlweg","Romain Janssens","Teresa Rousselle","Thibaut Cougnet","Valentin Dabauvalle","Viktor A","Wajdi Habib","Wissam Elhage","Yohan Poullain"];
+const PM_LIST = ["Alexander Vos","Benjamin Hers","Cédric Lescrenier","Dominic Rousselle","Enguerrand de Formanoir","Hugues Léglise","Jonathan Fievez","Nassim Fekreche","Nelson Hohlweg","Romain Janssens","Serge Delchambre","Teresa Rousselle","Thibaut Cougnet","Valentin Dabauvalle","Viktor A","Wajdi Habib","Wissam Elhage","Yohan Poullain"];
 
 // ── Numéros WhatsApp des PMs (format international sans +) ───────────────────
 // Compléter avec les vrais numéros
@@ -336,9 +336,11 @@ const PM_PHONES = {
   "Dominic Rousselle":           "32495811670",
   "Enguerrand de Formanoir":     "32495870986",
   "Hugues Léglise":              "32496576866",
+  "Jonathan Fievez":             "32472364336",
   "Nassim Fekreche":             "",
   "Nelson Hohlweg":              "32496775443",
   "Romain Janssens":             "32493569351",
+  "Serge Delchambre":            "32475808727",
   "Teresa Rousselle":            "32497692627",
   "Thibaut Cougnet":             "32494471185",
   "Valentin Dabauvalle":         "32470635380",
@@ -6325,18 +6327,18 @@ async function noteVocaleTranscrire(blob) {
   return { transcript: json.transcript || "", langueDetectee: json.langueDetectee || "" };
 }
 
-async function noteVocaleResumer(texte) {
+async function noteVocaleResumer(texte, mode) {
   var res = await fetch(VOICE_SUMMARY_ENDPOINT, {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-app-key": VOICE_APP_SHARED_SECRET },
-    body: JSON.stringify({ texte: texte })
+    body: JSON.stringify({ texte: texte, mode: mode || "resume" })
   });
   var json = await res.json();
   if (!res.ok) throw new Error((json && json.error) || ("HTTP " + res.status));
   return json.resume || "";
 }
 
-function NoteVocaleRecorder({ refChantier, onResult, onCancel }) {
+function NoteVocaleRecorder({ refChantier, onResult, onCancel, aiMode }) {
   var [recording, setRecording] = useState(false);
   var [dureeSec, setDureeSec] = useState(0);
   var [status, setStatus] = useState("idle"); // idle | recording | traitement | erreur
@@ -6412,8 +6414,8 @@ function NoteVocaleRecorder({ refChantier, onResult, onCancel }) {
       // pour un résumé final silencieusement : on le signale explicitement.
       var resume = "";
       var resumeFailed = false;
-      if (transcript && transcript.trim().length >= 10) {
-        try { resume = await noteVocaleResumer(transcript); }
+      if (transcript && transcript.trim().length >= (aiMode === "materiel" ? 3 : 10)) {
+        try { resume = await noteVocaleResumer(transcript, aiMode); }
         catch(e) { console.warn("[NoteVocale] résumé échoué:", e); resumeFailed = true; }
       }
 
@@ -6460,7 +6462,7 @@ function NoteVocaleRecorder({ refChantier, onResult, onCancel }) {
 }
 
 // ── VoiceOrTextField — textarea générique avec option "note vocale" (transcription + résumé) ──
-function VoiceOrTextField({ value, onChange, placeholder, rows, refChantier }) {
+function VoiceOrTextField({ value, onChange, placeholder, rows, refChantier, aiMode }) {
   var [mode, setMode] = useState("texte"); // "texte" | "vocal"
   var [voiceData, setVoiceData] = useState(null);
 
@@ -6481,10 +6483,11 @@ function VoiceOrTextField({ value, onChange, placeholder, rows, refChantier }) {
       </div>
 
       {mode === "vocal" && !voiceData && (
-        <NoteVocaleRecorder refChantier={refChantier}
+        <NoteVocaleRecorder refChantier={refChantier} aiMode={aiMode}
           onResult={function(res){
             setVoiceData(res);
             var texte = res.resume || res.transcript || "";
+            if (aiMode === "materiel" && (res.resume || "").trim().toUpperCase() === "AUCUN") texte = "";
             if (res.resumeFailed && texte) texte = "⚠️ Traduction indisponible — texte brut (langue d'origine) :\n" + texte;
             onChange(value && value.trim() ? value.trim() + "\n\n" + texte : texte);
           }}
@@ -8329,6 +8332,7 @@ function HeaderSection({ data, setData, onLoad, onPrefill, prefillMsg, loading }
    Le rapport We Green ci-dessous reste totalement intact.
    ─────────────────────────────────────────────────────────────────────── */
 var WCApp;
+var WC_CURRENT_REF = ""; // référence courante (pour ranger les notes vocales dans le bon dossier Storage)
 (function() {
   // Hooks React (locaux à l'IIFE)
   var useState   = React.useState;
@@ -8346,9 +8350,11 @@ const PM_DATA = {
   "Dominic Rousselle":       { tel: "+32 495 81 16 70", email: "dominic.rousselle@we-green.be" },
   "Enguerrand de Formanoir": { tel: "+32 495 87 09 86", email: "enguerrand.deformanoir@we-green.be" },
   "Hugues Léglise":          { tel: "0496 57 68 66",   email: "hugues.leglise@gmail.com" },
+  "Jonathan Fievez":         { tel: "+32 472 36 43 36", email: "jonathan.fievez@we-green.be" },
   "Nassim Fekreche":         { tel: "", email: "" },
   "Nelson Hohlweg":          { tel: "0496 77 54 43",   email: "nelson.hohlweg@we-green.be" },
   "Romain Janssens":         { tel: "+32 493 56 93 51", email: "romain.janssens@we-green.be" },
+  "Serge Delchambre":        { tel: "+32 475 80 87 27", email: "serge.delchambre@we-green.be" },
   "Teresa Rousselle":        { tel: "+32 497 69 26 27", email: "teresa.rousselle@we-green.be" },
   "Thibaut Cougnet":         { tel: "+32 494 47 11 85", email: "thibaut.cougnet@we-green.be" },
   "Valentin Dabauvalle":     { tel: "+32 470 63 53 80", email: "valentin.dabauvalle@we-green.be" },
@@ -8469,6 +8475,123 @@ async function wcSave(ref, data, rowId) {
     var rows2 = await res2.json();
     return { ok: true, id: (rows2 && rows2[0]) ? rows2[0].id : null };
   } catch(e) { return { ok: false, id: null }; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   SAUVEGARDE MULTI-ONGLETS (We Cover)
+   Problème corrigé : un onglet ouvert avant une modification (ex : liste de
+   matériel) renvoyait sa vieille version complète au serveur et écrasait tout.
+   Désormais :
+   1) Verrou optimiste : on n'écrit que si la ligne n'a pas changé depuis notre
+      dernière synchronisation (updated_at identique).
+   2) Sinon : fusion « à 3 voies » (base connue / ma version / version serveur) :
+      seules MES modifications réelles sont appliquées sur la version serveur.
+   3) Rien n'est envoyé si je n'ai rien modifié (un onglet périmé ne peut plus
+      écraser quoi que ce soit en passant en arrière-plan).
+   4) Au retour sur l'onglet, la version serveur est rechargée et fusionnée.
+   ═══════════════════════════════════════════════════════════════════════════ */
+function wcIsObj(x) { return x !== null && typeof x === "object" && !Array.isArray(x); }
+function wcEq(a, b) {
+  if (a === b) return true;
+  if (a === null || b === null || typeof a !== typeof b) return false;
+  if (Array.isArray(a)) {
+    if (!Array.isArray(b) || a.length !== b.length) return false;
+    for (var i = 0; i < a.length; i++) { if (!wcEq(a[i], b[i])) return false; }
+    return true;
+  }
+  if (typeof a === "object") {
+    if (Array.isArray(b)) return false;
+    var seen = {}, k;
+    for (k in a) { seen[k] = 1; if (!wcEq(a[k], b[k])) return false; }
+    for (k in b) { if (!seen[k] && !wcEq(a[k], b[k])) return false; }
+    return true;
+  }
+  return false;
+}
+function wcClone(x) { return x === undefined ? x : JSON.parse(JSON.stringify(x)); }
+// Clé stable d'un élément de tableau : id, sinon nom+date d'ajout (photos : l'URL change après upload, pas le nom)
+function wcItemKey(x) {
+  if (!wcIsObj(x)) return null;
+  if (x.id !== undefined && x.id !== null) return "id:" + x.id;
+  if (x.name || x.addedAt) return "p:" + (x.name || "") + "|" + (x.addedAt || "");
+  return null;
+}
+function wcMergeText(b, l, r) {
+  if (typeof b === "string" && l.indexOf(b) === 0 && r.indexOf(b) === 0) {
+    // les deux ont AJOUTÉ du texte à la suite de la même base : on garde les deux ajouts
+    return b + r.slice(b.length) + (l.slice(b.length) ? (r.slice(b.length) ? "\n" : "") + l.slice(b.length) : "");
+  }
+  if (l.indexOf(r) >= 0) return l;
+  if (r.indexOf(l) >= 0) return r;
+  if (l.length > 20 || r.length > 20 || /\n/.test(l + r)) {
+    return l + "\n\n⚠️ Autre version enregistrée en parallèle :\n" + r;
+  }
+  return l;
+}
+// b = base (dernière synchro), l = local (ce que je veux sauver), r = serveur (actuel)
+function wcMerge3(b, l, r) {
+  if (wcEq(l, b)) return r;
+  if (wcEq(r, b)) return l;
+  if (wcEq(l, r)) return l;
+  if (wcIsObj(l) && wcIsObj(r)) {
+    var bb = wcIsObj(b) ? b : {};
+    var out = {}, keys = {}, k;
+    for (k in l) keys[k] = 1; for (k in r) keys[k] = 1; for (k in bb) keys[k] = 1;
+    for (k in keys) {
+      var inL = Object.prototype.hasOwnProperty.call(l, k), inR = Object.prototype.hasOwnProperty.call(r, k);
+      if (!inL) { if (!wcEq(r[k], bb[k])) out[k] = r[k]; continue; }      // supprimé chez moi
+      if (!inR) { if (!wcEq(l[k], bb[k])) out[k] = l[k]; continue; }      // supprimé sur le serveur
+      out[k] = wcMerge3(bb[k], l[k], r[k]);
+    }
+    return out;
+  }
+  if (Array.isArray(l) && Array.isArray(r)) {
+    var ba = Array.isArray(b) ? b : [];
+    var keyed = l.every(function(x){ return wcItemKey(x) !== null; }) && r.every(function(x){ return wcItemKey(x) !== null; }) && ba.every(function(x){ return wcItemKey(x) !== null; });
+    if (keyed) {
+      var mapOf = function(arr){ var m = {}; arr.forEach(function(x){ m[wcItemKey(x)] = x; }); return m; };
+      var bm = mapOf(ba), lm = mapOf(l), rm = mapOf(r);
+      var order = r.map(wcItemKey);
+      l.forEach(function(x){ var kk = wcItemKey(x); if (order.indexOf(kk) < 0) order.push(kk); });
+      var res = [];
+      order.forEach(function(kk){
+        var inL = kk in lm, inR = kk in rm, inB = kk in bm;
+        if (inL && inR) res.push(wcMerge3(bm[kk], lm[kk], rm[kk]));
+        else if (inL) { if (!inB || !wcEq(lm[kk], bm[kk])) res.push(lm[kk]); }   // nouveau chez moi, ou supprimé serveur mais modifié chez moi
+        else if (inR) { if (!inB || !wcEq(rm[kk], bm[kk])) res.push(rm[kk]); }   // nouveau serveur, ou supprimé chez moi mais modifié serveur
+      });
+      return res;
+    }
+    return l;
+  }
+  if (typeof l === "string" && typeof r === "string") return wcMergeText(b, l, r);
+  return l;
+}
+
+async function wcFetchRow(rowId) {
+  try {
+    var res = await fetch(SUPA_URL + "/rest/v1/feuilles_controle?id=eq." + rowId + "&select=id,updated_at,data", {
+      headers: { "apikey": SUPA_KEY, "Authorization": "Bearer " + SUPA_KEY }
+    });
+    if (!res.ok) return null;
+    var rows = await res.json();
+    return (rows && rows[0]) ? rows[0] : null;
+  } catch(e) { return null; }
+}
+// PATCH conditionnel : n'écrit que si updated_at n'a pas changé (verrou optimiste)
+async function wcPatchIf(rowId, data, expectedUpdatedAt) {
+  try {
+    var q = "id=eq." + rowId + (expectedUpdatedAt ? "&updated_at=eq." + encodeURIComponent(expectedUpdatedAt) : "") + "&select=id,updated_at";
+    var res = await fetch(SUPA_URL + "/rest/v1/feuilles_controle?" + q, {
+      method: "PATCH",
+      headers: { "apikey": SUPA_KEY, "Authorization": "Bearer " + SUPA_KEY, "Content-Type": "application/json", "Prefer": "return=representation" },
+      body: JSON.stringify({ data: data, updated_at: new Date().toISOString() })
+    });
+    if (!res.ok) return { ok: false, conflict: false };
+    var rows = await res.json();
+    if (!rows || !rows.length) return { ok: false, conflict: true };
+    return { ok: true, updatedAt: rows[0].updated_at };
+  } catch(e) { return { ok: false, conflict: false }; }
 }
 
 /* Lecture du briefing associé (cross-ref) pour pré-remplir certaines méta. Optionnel. */
@@ -8838,7 +8961,8 @@ function makeEmptyData(ref) {
     facade: makeEmptyFacade(),
     toitures: [],
     journeesCloturees: [],
-    remarques: ""
+    remarques: "",
+    remarquesLock: { locked: false }
   };
 }
 
@@ -9021,9 +9145,9 @@ function SectionCard({ section, sectionDef, scopeLabel, onUpdate, accent, render
 
         <div style={{ marginTop: 10 }}>
           <label style={LBL}>Notes (optionnel)</label>
-          <textarea value={sec.notes || ""} onChange={function(e){ set(["notes"], e.target.value); }} rows={2}
-            placeholder="ce qui a été fait, ce qui reste, point bloquant…"
-            style={{ width: "100%", resize: "vertical", boxSizing: "border-box" }} />
+          <VoiceOrTextField value={sec.notes || ""} onChange={function(v){ set(["notes"], v); }} rows={2}
+            refChantier={WC_CURRENT_REF}
+            placeholder="ce qui a été fait, ce qui reste, point bloquant…" />
         </div>
       </div>
       )}
@@ -9167,6 +9291,12 @@ function PreviewDoc({ data }) {
               <div key={j.id} className="photo-section" style={{ borderLeft: "3px solid #f39c12", paddingLeft: 8, marginBottom: 8 }}>
                 <div style={{ fontSize: 12, fontWeight: 700, color: "#856404", textTransform: "capitalize" }}>{j.date}{j.heure ? " — " + j.heure : ""} <span style={{ fontWeight: 400, color: MUTED }}>· {j.auteur}</span></div>
                 {j.note && <div style={{ fontSize: 12, color: TEXT, whiteSpace: "pre-wrap", marginTop: 2 }}>{j.note}</div>}
+                {j.materiel && j.materiel.length > 0 && (
+                  <div style={{ fontSize: 12, marginTop: 4 }}>
+                    <b>📦 Matériel manquant :</b>
+                    {j.materiel.map(function(m){ return <div key={m.id}>{m.recu ? "☑" : "☐"} {m.label}{m.recu ? " (apporté)" : ""}</div>; })}
+                  </div>
+                )}
               </div>
             );
           })}
@@ -9182,7 +9312,7 @@ function PreviewDoc({ data }) {
       Parcourt directement facade.sections + toitures[].sections (pas de catalogue
       statique à maintenir) et regroupe les photos par jour (addedAt) ou par
       intervenant (uploadedBy), exactement comme le fait We Green. ── */
-function WCProgressPanel({ data, onClose }) {
+function WCProgressPanel({ data, onClose, onToggleMateriel }) {
   var [viewMode, setViewMode] = useState("byDay"); // "byDay" | "byPerson"
   var [expandedDay, setExpandedDay] = useState(null);
   var [expandedPerson, setExpandedPerson] = useState(null);
@@ -9396,6 +9526,7 @@ function WCProgressPanel({ data, onClose }) {
                               background: WHITE, borderRadius: 5, padding: "5px 8px",
                               borderLeft: "3px solid #f39c12", whiteSpace: "pre-wrap" }}>{j.note}</div>
                           )}
+                          <MaterielChecklist items={j.materiel} onToggle={onToggleMateriel ? function(mid){ onToggleMateriel(j.id, mid); } : null} />
                         </div>
                       );
                     })}
@@ -9486,11 +9617,122 @@ function WCProgressPanel({ data, onClose }) {
   );
 }
 
-function CloturJourneeBlock({ journees, setJournees, currentUser, onLogged }) {
+/* ── Matériel manquant (clôture de journée We Cover) ─────────────────────────
+   La liste est saisie (texte ou dictée) AVANT la confirmation de la clôture.
+   Une fois la clôture confirmée, elle est FIGÉE (trace écrite) : on ne peut plus
+   changer les libellés ni supprimer d'articles, seulement cocher « apporté ». ── */
+function wcParseMaterielLines(txt) {
+  return String(txt || "").split(/\n/).map(function(l){
+    return l.replace(/^\s*(?:[-•*·]|\d+[.)])\s*/, "").trim();
+  }).filter(function(l){ return l && l.toUpperCase() !== "AUCUN"; });
+}
+function wcNewMatItem(label) {
+  return { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), label: label, recu: false };
+}
+
+function MaterielManquantEditor({ items, setItems, refChantier }) {
+  var [newLabel, setNewLabel] = useState("");
+  var [recOpen, setRecOpen] = useState(false);
+  var [warn, setWarn] = useState("");
+  function addLabel(label) {
+    var l = (label || "").trim(); if (!l) return;
+    setItems(function(prev){ return (prev || []).concat([wcNewMatItem(l)]); });
+  }
+  function onVoice(res) {
+    var lines = wcParseMaterielLines(res.resume);
+    if (res.resumeFailed || (!lines.length && res.transcript && (res.resume || "").trim().toUpperCase() !== "AUCUN")) {
+      // IA indisponible : on découpe la dictée brute (virgules, « et », retours à la ligne)
+      lines = String(res.transcript || "").split(/[,;\n]| et /i).map(function(x){ return x.trim(); }).filter(Boolean);
+      setWarn("⚠️ Mise en liste automatique indisponible : la dictée a été découpée simplement, vérifiez les lignes.");
+    } else {
+      setWarn(lines.length ? "" : "Aucun matériel détecté dans la dictée.");
+    }
+    lines.forEach(addLabel);
+    setRecOpen(false);
+  }
+  var list = items || [];
+  return (
+    <div style={{ marginBottom: 14, background: "#fff", border: "1.5px solid #fdd98a", borderRadius: 8, padding: "10px 12px" }}>
+      <div style={{ fontWeight: 700, fontSize: 12, color: "#856404", marginBottom: 2 }}>📦 Matériel manquant <span style={{ fontWeight: 400 }}>(optionnel)</span></div>
+      <div style={{ fontSize: 11, color: MUTED, marginBottom: 8, lineHeight: 1.4 }}>
+        Ajoutez les articles à la main ou dictez-les. ⚠️ Après confirmation de la clôture, la liste est <b>figée</b> : on pourra seulement cocher ce qui a été apporté.
+      </div>
+      {list.map(function(m, i){
+        return (
+          <div key={m.id} style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 6 }}>
+            <span style={{ color: "#b8860b", fontWeight: 700 }}>•</span>
+            <input type="text" value={m.label} onChange={function(e){
+                var v = e.target.value;
+                setItems(function(prev){ return (prev || []).map(function(x){ return x.id === m.id ? Object.assign({}, x, { label: v }) : x; }); });
+              }}
+              style={{ flex: 1, minWidth: 0, fontSize: 16, padding: "7px 8px", boxSizing: "border-box" }} />
+            <button type="button" title="Retirer" onClick={function(){ setItems(function(prev){ return (prev || []).filter(function(x){ return x.id !== m.id; }); }); }}
+              style={{ background: "none", border: "none", color: MUTED, fontSize: 20, cursor: "pointer", minHeight: 40, minWidth: 36 }}>×</button>
+          </div>
+        );
+      })}
+      <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
+        <input type="text" value={newLabel} placeholder="ex : 5 coudes 90°"
+          onChange={function(e){ setNewLabel(e.target.value); }}
+          onKeyDown={function(e){ if (e.key === "Enter") { e.preventDefault(); addLabel(newLabel); setNewLabel(""); } }}
+          style={{ flex: 1, minWidth: 0, fontSize: 16, padding: "7px 8px", boxSizing: "border-box" }} />
+        <button type="button" onClick={function(){ addLabel(newLabel); setNewLabel(""); }}
+          style={{ background: "#f39c12", color: "#fff", border: "none", borderRadius: 7, padding: "0 14px", fontWeight: 700, fontSize: 13, cursor: "pointer", minHeight: 40 }}>+ Ajouter</button>
+      </div>
+      <div style={{ marginTop: 8 }}>
+        {!recOpen ? (
+          <button type="button" onClick={function(){ setRecOpen(true); setWarn(""); }}
+            style={{ background: "#f0f7f2", border: "1px solid #d4ead9", color: GREEN, borderRadius: 7, padding: "8px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer", minHeight: 40 }}>
+            🎙️ Dicter la liste à l'oral
+          </button>
+        ) : (
+          <div>
+            <NoteVocaleRecorder refChantier={refChantier} aiMode="materiel" onResult={onVoice} />
+            <button type="button" onClick={function(){ setRecOpen(false); }}
+              style={{ marginTop: 6, fontSize: 11, color: MUTED, background: "none", border: "none", cursor: "pointer", textDecoration: "underline", minHeight: 0 }}>Annuler la dictée</button>
+          </div>
+        )}
+        {warn && <div style={{ marginTop: 6, fontSize: 11, color: warn.indexOf("⚠️") === 0 ? "#c0392b" : MUTED, fontWeight: 600 }}>{warn}</div>}
+      </div>
+    </div>
+  );
+}
+
+// Liste figée avec cases « apporté » (utilisée dans la clôture et dans l'avancement)
+function MaterielChecklist({ items, onToggle }) {
+  var list = items || [];
+  if (!list.length) return null;
+  var done = list.filter(function(m){ return m.recu; }).length;
+  return (
+    <div style={{ marginTop: 6, background: "#fff", border: "1px solid #fdd98a", borderRadius: 7, padding: "8px 10px" }}>
+      <div style={{ fontSize: 11, fontWeight: 700, color: "#856404", marginBottom: 4, display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+        <span>📦 Matériel manquant 🔒</span>
+        <span style={{ color: done === list.length ? GREEN : "#c0392b" }}>{done}/{list.length} apporté{done > 1 ? "s" : ""}</span>
+      </div>
+      {list.map(function(m){
+        return (
+          <label key={m.id} style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "5px 0", cursor: onToggle ? "pointer" : "default", borderTop: "1px solid #f6e6bd" }}>
+            <input type="checkbox" checked={!!m.recu} disabled={!onToggle}
+              onChange={function(){ if (onToggle) onToggle(m.id); }}
+              style={{ width: 20, height: 20, marginTop: 1, flexShrink: 0 }} />
+            <span style={{ flex: 1, fontSize: 13, lineHeight: 1.4, color: m.recu ? MUTED : "#1a1a1a", textDecoration: m.recu ? "line-through" : "none" }}>
+              {m.label}
+              {m.recu && m.recuBy && <span style={{ display: "block", fontSize: 10.5, color: GREEN, textDecoration: "none" }}>✅ apporté{m.recuBy ? " · " + m.recuBy : ""}{m.recuAt ? " · " + new Date(m.recuAt).toLocaleString("fr-BE", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : ""}</span>}
+            </span>
+          </label>
+        );
+      })}
+      <div style={{ fontSize: 10.5, color: MUTED, marginTop: 4 }}>Liste figée : seules les cases « apporté » peuvent être modifiées.</div>
+    </div>
+  );
+}
+
+function CloturJourneeBlock({ journees, setJournees, currentUser, onLogged, refChantier, onToggleMateriel }) {
   var [showForm, setShowForm] = useState(false);
   var [expanded, setExpanded] = useState(null);
   var [formDate, setFormDate] = useState(function(){ return todayISO(); });
   var [formNote, setFormNote] = useState("");
+  var [formMateriel, setFormMateriel] = useState([]);
 
   var sortedJournees = (journees || []).slice().sort(function(a, b) {
     var ka = (a.date || "") + " " + (a.heure || "");
@@ -9503,6 +9745,7 @@ function CloturJourneeBlock({ journees, setJournees, currentUser, onLogged }) {
   function openForm() {
     setFormDate(todayISO());
     setFormNote("");
+    setFormMateriel([]);
     setShowForm(true);
     setExpanded(null);
   }
@@ -9516,6 +9759,9 @@ function CloturJourneeBlock({ journees, setJournees, currentUser, onLogged }) {
       auteur: auteurLabel,
       note: formNote.trim()
     };
+    var mat = (formMateriel || []).filter(function(m){ return m.label && m.label.trim(); })
+      .map(function(m){ return { id: m.id, label: m.label.trim(), recu: false }; });
+    if (mat.length) entry.materiel = mat; // liste figée dès la confirmation
     setJournees(function(prev){ return (prev || []).concat([entry]); });
     setShowForm(false);
     if (onLogged) onLogged(entry);
@@ -9591,10 +9837,12 @@ function CloturJourneeBlock({ journees, setJournees, currentUser, onLogged }) {
               <label style={{ fontSize: 12, color: MUTED, fontWeight: 500, marginBottom: 4, display: "block" }}>
                 Commentaire de fin de journée <span style={{ fontWeight: 400 }}>(optionnel)</span>
               </label>
-              <textarea value={formNote} onChange={function(e){ setFormNote(e.target.value); }}
-                placeholder="Avancement global de la journée, points en suspens, remarques particulières…"
-                style={{ width: "100%", minHeight: 80, resize: "vertical", boxSizing: "border-box" }} />
+              <VoiceOrTextField value={formNote} onChange={function(v){ setFormNote(v); }} rows={3}
+                refChantier={refChantier}
+                placeholder="Avancement global de la journée, points en suspens, remarques particulières…" />
             </div>
+
+            <MaterielManquantEditor items={formMateriel} setItems={setFormMateriel} refChantier={refChantier} />
 
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
               <button onClick={submitJournee}
@@ -9633,9 +9881,15 @@ function CloturJourneeBlock({ journees, setJournees, currentUser, onLogged }) {
                         {j.note && <span style={{ marginLeft: 10, fontStyle: "italic" }}>
                           "{j.note.slice(0, 50)}{j.note.length > 50 ? "…" : ""}"
                         </span>}
+                        {j.materiel && j.materiel.length > 0 && <span style={{ marginLeft: 10, fontWeight: 700, color: "#856404" }}>
+                          📦 {j.materiel.filter(function(m){ return m.recu; }).length}/{j.materiel.length}
+                        </span>}
                       </div>
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                      {(j.materiel && j.materiel.length > 0) ? (
+                        <span title="Clôture avec liste de matériel : non supprimable (trace écrite)" style={{ fontSize: 13 }}>🔒</span>
+                      ) : (
                       <button onClick={function(e){ e.stopPropagation();
                         if (!window.confirm("Supprimer cette clôture de journée ?")) return;
                         setJournees(function(prev){ return (prev || []).filter(function(x){ return x.id !== j.id; }); }); }}
@@ -9643,6 +9897,7 @@ function CloturJourneeBlock({ journees, setJournees, currentUser, onLogged }) {
                           borderRadius: 5, padding: "3px 8px", fontSize: 11, cursor: "pointer", minHeight: 0 }}>
                         🗑
                       </button>
+                      )}
                       <span style={{ color: MUTED, fontSize: 11,
                         transform: isOpen ? "rotate(180deg)" : "none", transition: "transform 0.2s" }}>▼</span>
                     </div>
@@ -9658,6 +9913,7 @@ function CloturJourneeBlock({ journees, setJournees, currentUser, onLogged }) {
                       ) : (
                         <div style={{ fontSize: 12, color: MUTED, fontStyle: "italic" }}>Aucun commentaire.</div>
                       )}
+                      <MaterielChecklist items={j.materiel} onToggle={onToggleMateriel ? function(mid){ onToggleMateriel(j.id, mid); } : null} />
                     </div>
                   )}
                 </div>
@@ -9701,6 +9957,10 @@ function WCWhatsAppNotify({ data, refChantier, journeeDuJour }) {
   if (journeeDuJour) {
     msgLines.push("📅 Journée clôturée" + (journeeDuJour.auteur ? " par " + journeeDuJour.auteur : ""));
     if (journeeDuJour.note) msgLines.push(journeeDuJour.note);
+    if (journeeDuJour.materiel && journeeDuJour.materiel.length) {
+      msgLines.push("📦 Matériel manquant :");
+      journeeDuJour.materiel.forEach(function(m){ msgLines.push("• " + m.label + (m.recu ? " (apporté)" : "")); });
+    }
     msgLines.push("");
   }
   msgLines.push("Rapport : " + reportUrl);
@@ -9885,6 +10145,8 @@ function App() {
   var [pdfLoading, setPdfLoading] = useState(false);
   var firstLoad = useRef(true);
   var rowIdRef = useRef(null); // id Supabase (feuilles_controle) de la ligne We Cover active
+  var baseDataRef = useRef(null);      // dernière version SYNCHRONISÉE avec le serveur (base de la fusion à 3 voies)
+  var baseUpdatedAtRef = useRef(null); // updated_at de cette version (verrou optimiste)
   var isSavingRef = useRef(false); // mutex anti-sauvegardes concurrentes
   var saveTimerRef = useRef(null); // timer du debounce, pour pouvoir l'annuler/forcer
   var [isMobileView, setIsMobileView] = useState(function(){
@@ -9938,9 +10200,13 @@ function App() {
       base.ref = r;
       found = true;
       rowIdRef.current = resu.row.id || null;
+      baseUpdatedAtRef.current = resu.row.updated_at || null;
+      baseDataRef.current = wcClone(base);
       setSaveStatus("saved");
     } else {
       rowIdRef.current = null;
+      baseUpdatedAtRef.current = null;
+      baseDataRef.current = null;
       try { var ls = localStorage.getItem("wc_rapport_" + r); if (ls) { base = mergeDefaults(base, JSON.parse(ls)); base = normalize(base); base.ref = r; found = true; } } catch(e){}
       setSaveStatus(resu.ok ? "new" : "local");
     }
@@ -10004,7 +10270,70 @@ function App() {
   var latestDataRef = useRef(data);
   useEffect(function(){ latestDataRef.current = data; }, [data]);
   var refValueRef = useRef(ref);
-  useEffect(function(){ refValueRef.current = ref; }, [ref]);
+  useEffect(function(){ refValueRef.current = ref; WC_CURRENT_REF = ref; }, [ref]);
+
+  // Normalise une version serveur comme on le fait au chargement
+  function remoteToData(r, raw) {
+    var d = mergeDefaults(makeEmptyData(r), raw || {});
+    d = normalize(d); d.ref = r;
+    return d;
+  }
+
+  // Sauvegarde avec verrou optimiste + fusion à 3 voies en cas de version concurrente
+  async function wcSaveMerged(r, toSave) {
+    if (!rowIdRef.current) {
+      var created = await wcSave(r, toSave, null);
+      if (created.ok && created.id) {
+        rowIdRef.current = created.id;
+        var fresh = await wcFetchRow(created.id);
+        baseUpdatedAtRef.current = fresh ? fresh.updated_at : null;
+        baseDataRef.current = wcClone(toSave);
+      }
+      return created;
+    }
+    var local = toSave, merged = false;
+    for (var attempt = 0; attempt < 4; attempt++) {
+      var patch = await wcPatchIf(rowIdRef.current, local, baseUpdatedAtRef.current);
+      if (patch.ok) {
+        baseUpdatedAtRef.current = patch.updatedAt || null;
+        baseDataRef.current = wcClone(local);
+        if (merged) {
+          // Des modifications d'un autre onglet ont été intégrées : on met l'écran à jour
+          // sans écraser ce que l'utilisateur a pu taper pendant la sauvegarde.
+          var sent = toSave, result = local;
+          setData(function(prev){ return wcEq(prev, sent) ? result : wcMerge3(sent, prev, result); });
+          latestDataRef.current = result;
+        }
+        return { ok: true, id: rowIdRef.current };
+      }
+      if (!patch.conflict) return { ok: false, id: rowIdRef.current };
+      // Conflit : quelqu'un a sauvegardé entre-temps → on récupère sa version et on fusionne
+      var row = await wcFetchRow(rowIdRef.current);
+      if (!row) return { ok: false, id: rowIdRef.current };
+      var remote = remoteToData(r, row.data);
+      local = wcMerge3(baseDataRef.current || remote, local, remote);
+      local.ref = r;
+      baseDataRef.current = wcClone(remote);
+      baseUpdatedAtRef.current = row.updated_at;
+      merged = true;
+    }
+    return { ok: false, id: rowIdRef.current };
+  }
+
+  // Resynchronisation : récupère la version serveur (autre onglet / autre personne) et la fusionne
+  async function syncFromRemote(force) {
+    var r = refValueRef.current;
+    if (!r || !loaded || !rowIdRef.current || isSavingRef.current) return;
+    if (!force && saveTimerRef.current) return;
+    var row = await wcFetchRow(rowIdRef.current);
+    if (!row || !row.updated_at || row.updated_at === baseUpdatedAtRef.current) return;
+    if (isSavingRef.current) return;
+    var remote = remoteToData(r, row.data);
+    var base = baseDataRef.current || remote;
+    baseDataRef.current = wcClone(remote);
+    baseUpdatedAtRef.current = row.updated_at;
+    setData(function(prev){ var m = wcMerge3(base, prev, remote); m.ref = r; return m; });
+  }
 
   async function flushSave() {
     var r = refValueRef.current;
@@ -10019,8 +10348,12 @@ function App() {
       var toSave = latestDataRef.current;
       if (up.changed) { toSave = up.data; setData(up.data); latestDataRef.current = up.data; }
       try { localStorage.setItem("wc_rapport_" + r, JSON.stringify(toSave)); } catch(e){}
-      var saveRes = await wcSave(r, toSave, rowIdRef.current);
-      if (saveRes.ok && saveRes.id) rowIdRef.current = saveRes.id;
+      // Rien de modifié depuis la dernière synchro : on n'envoie RIEN (un onglet périmé n'écrase plus le serveur)
+      if (rowIdRef.current && baseDataRef.current && wcEq(toSave, baseDataRef.current)) {
+        setSaveStatus("saved");
+        return;
+      }
+      var saveRes = await wcSaveMerged(r, toSave);
       setSaveStatus(saveRes.ok ? "saved" : "local");
       if (saveRes.ok) setLastSavedAt(new Date());
 
@@ -10051,7 +10384,19 @@ function App() {
   /* Filet de sécurité : force la sauvegarde dès que l'onglet passe en arrière-plan,
      se décharge, ou avant fermeture — évite la perte de photo sur chantier. */
   useEffect(function(){
-    function onVisibilityChange() { if (document.visibilityState === "hidden") flushSave(); }
+    function onVisibilityChange() {
+      if (document.visibilityState === "hidden") flushSave();
+      else syncFromRemote(true); // retour sur l'onglet : on récupère d'abord la version serveur
+    }
+    function onFocus() { syncFromRemote(true); }
+    var pollId = setInterval(function(){
+      if (document.visibilityState !== "visible") return;
+      // on ne resynchronise en tâche de fond que s'il n'y a aucune modification locale en attente
+      if (saveTimerRef.current || isSavingRef.current) return;
+      if (baseDataRef.current && !wcEq(latestDataRef.current, baseDataRef.current)) return;
+      syncFromRemote(false);
+    }, 30000);
+    window.addEventListener("focus", onFocus);
     function onPageHide() { flushSave(); }
     function onBeforeUnload(e) {
       flushSave();
@@ -10065,6 +10410,8 @@ function App() {
     window.addEventListener("pagehide", onPageHide);
     window.addEventListener("beforeunload", onBeforeUnload);
     return function(){
+      clearInterval(pollId);
+      window.removeEventListener("focus", onFocus);
       document.removeEventListener("visibilitychange", onVisibilityChange);
       window.removeEventListener("pagehide", onPageHide);
       window.removeEventListener("beforeunload", onBeforeUnload);
@@ -10105,6 +10452,22 @@ function App() {
       setPdfMsg("Erreur lecture PDF : " + (e.message || e));
     }
     setPdfLoading(false);
+  }
+
+  // Coche « apporté » d'un article de matériel manquant (la liste elle-même reste figée)
+  function toggleMateriel(journeeId, itemId) {
+    var who = _userTag(user);
+    setData(function(d){
+      var js = (d.journeesCloturees || []).map(function(j){
+        if (j.id !== journeeId || !j.materiel) return j;
+        return Object.assign({}, j, { materiel: j.materiel.map(function(m){
+          if (m.id !== itemId) return m;
+          return m.recu ? Object.assign({}, m, { recu: false, recuAt: null, recuBy: null })
+                        : Object.assign({}, m, { recu: true, recuAt: new Date().toISOString(), recuBy: who });
+        }) });
+      });
+      return Object.assign({}, d, { journeesCloturees: js });
+    });
   }
 
   /* ── Handlers façade ── */
@@ -10432,6 +10795,8 @@ function App() {
                 });
               }}
               currentUser={user}
+              refChantier={ref}
+              onToggleMateriel={toggleMateriel}
               onLogged={function(entry){
                 if (ref && user) wcLogAudit(ref, user, "cloture_journee", entry.date + (entry.note ? " · " + entry.note.slice(0,60) : ""));
               }}
@@ -10451,9 +10816,45 @@ function App() {
 
             {/* Remarques générales */}
             <Card icon="📝" title="Remarques générales" defaultOpen={false}>
-              <textarea value={data.remarques} onChange={function(e){ upd(["remarques"], e.target.value); }} rows={4}
-                placeholder="Points en suspens, particularités, demandes client, points à signaler en réunion…"
-                style={{ width: "100%", resize: "vertical", boxSizing: "border-box" }} />
+              {(function(){
+                var lock = data.remarquesLock || null;
+                var isLocked = !!(lock && lock.locked);
+                return (
+                  <div>
+                    {isLocked ? (
+                      <div>
+                        <div style={{ background: "#fff8e8", border: "1.5px solid #f39c12", borderRadius: 8, padding: "8px 12px", marginBottom: 8, fontSize: 12, color: "#856404", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+                          <span>🔒 Texte verrouillé{lock.by ? " par " + lock.by : ""}{lock.at ? " le " + new Date(lock.at).toLocaleString("fr-BE", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) : ""}</span>
+                          <button onClick={function(){
+                              if (!window.confirm("Déverrouiller les remarques générales ?\nLe texte redeviendra modifiable.")) return;
+                              upd(["remarquesLock"], { locked: false, by: _userTag(user), at: new Date().toISOString() });
+                              if (ref && user) wcLogAudit(ref, user, "remarques_deverrouillees", "");
+                            }}
+                            style={{ background: "#fff", border: "1px solid #f39c12", color: "#856404", borderRadius: 6, padding: "5px 10px", fontSize: 12, fontWeight: 600, cursor: "pointer", minHeight: 0 }}>🔓 Déverrouiller</button>
+                        </div>
+                        <div style={{ whiteSpace: "pre-wrap", fontSize: 13, lineHeight: 1.6, background: "#fafaf8", border: "1px solid " + BORDER, borderRadius: 8, padding: "10px 12px", minHeight: 48 }}>
+                          {data.remarques || <span style={{ color: MUTED, fontStyle: "italic" }}>Aucune remarque.</span>}
+                        </div>
+                      </div>
+                    ) : (
+                      <div>
+                        <VoiceOrTextField value={data.remarques} onChange={function(v){ upd(["remarques"], v); }} rows={4}
+                          refChantier={ref}
+                          placeholder="Points en suspens, particularités, demandes client, matériel manquant, points à signaler en réunion…" />
+                        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 8 }}>
+                          <button onClick={function(){
+                              if (!data.remarques || !data.remarques.trim()) { alert("Rien à verrouiller : les remarques sont vides."); return; }
+                              if (!window.confirm("Verrouiller ce texte ?\nIl ne pourra plus être modifié ni écrasé par une autre version ouverte tant qu'il n'est pas déverrouillé.")) return;
+                              upd(["remarquesLock"], { locked: true, by: _userTag(user), at: new Date().toISOString() });
+                              if (ref && user) wcLogAudit(ref, user, "remarques_verrouillees", "");
+                            }}
+                            style={{ background: "#fff8e8", border: "1.5px solid #f39c12", color: "#856404", borderRadius: 7, padding: "8px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer", minHeight: 0 }}>🔒 Verrouiller ce texte</button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
             </Card>
           </div>
           )}
@@ -10475,7 +10876,7 @@ function App() {
 
       {/* Avancement (par jour / par intervenant) */}
       {showAvancement && ref && (
-        <WCProgressPanel data={data} onClose={function(){ setShowAvancement(false); }} />
+        <WCProgressPanel data={data} onToggleMateriel={toggleMateriel} onClose={function(){ setShowAvancement(false); }} />
       )}
     </div>
   );
