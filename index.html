@@ -386,100 +386,101 @@ function blobToDataURL(blob) {
   });
 }
 // Upload un data: URL (image ou fichier) vers Supabase Storage → retourne l'URL publique ou le data: original si échec
+// 3 tentatives (réseau mobile instable), timeout 90 s par tentative, même chemin à chaque essai (x-upsert).
 async function uploadFileToStorage(ref, catKey, dataUrl, fileName, mimeType) {
   if (!dataUrl || !dataUrl.startsWith("data:")) return dataUrl;
-  try {
-    var fetchRes = await fetch(dataUrl);
-    var blob = await fetchRes.blob();
-    var mime = mimeType || blob.type || "application/octet-stream";
-    var ext = mime === "image/jpeg" ? "jpg" : mime === "image/png" ? "png" : mime === "application/pdf" ? "pdf" :
-              mime.includes("excel") || mime.includes("spreadsheet") ? "xlsx" :
-              mime.includes("audio/webm") ? "webm" : mime.includes("audio/mp4") || mime === "audio/x-m4a" ? "m4a" :
-              mime.includes("audio/mpeg") ? "mp3" : mime.includes("audio/") ? "audio" : "bin";
-    var safeName = (fileName || "file").replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 60);
-    var path = encodeURIComponent(ref) + "/" + catKey + "/" + Date.now() + "-" + safeName + "." + ext;
-    var uploadRes = await fetch(SUPA_URL + "/storage/v1/object/" + SUPA_STORAGE_BUCKET + "/" + path, {
-      method: "POST",
-      headers: { "apikey": SUPA_KEY, "Authorization": "Bearer " + SUPA_KEY, "Content-Type": mime, "x-upsert": "true" },
-      body: blob
-    });
-    if (uploadRes.ok) return SUPA_URL + "/storage/v1/object/public/" + SUPA_STORAGE_BUCKET + "/" + path;
-    console.warn("[Storage] upload failed (" + uploadRes.status + "), keeping data URL");
-    return dataUrl;
-  } catch(e) {
-    console.warn("[Storage] upload error, keeping data URL:", e);
-    return dataUrl;
+  var blob;
+  try { blob = await (await fetch(dataUrl)).blob(); } catch(e) { console.warn("[Storage] lecture du fichier impossible:", e); return dataUrl; }
+  var mime = mimeType || blob.type || "application/octet-stream";
+  var ext = mime === "image/jpeg" ? "jpg" : mime === "image/png" ? "png" : mime === "application/pdf" ? "pdf" :
+            mime.includes("excel") || mime.includes("spreadsheet") ? "xlsx" :
+            mime.includes("audio/webm") ? "webm" : mime.includes("audio/mp4") || mime === "audio/x-m4a" ? "m4a" :
+            mime.includes("audio/mpeg") ? "mp3" : mime.includes("audio/") ? "audio" : "bin";
+  var safeName = (fileName || "file").replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 60);
+  var path = encodeURIComponent(ref) + "/" + catKey + "/" + Date.now() + "-" + Math.random().toString(36).slice(2,5) + "-" + safeName + "." + ext;
+  for (var attempt = 0; attempt < 3; attempt++) {
+    var ctrl = (typeof AbortController !== "undefined") ? new AbortController() : null;
+    var to = ctrl ? setTimeout(function(){ ctrl.abort(); }, 90000) : null;
+    try {
+      var uploadRes = await fetch(SUPA_URL + "/storage/v1/object/" + SUPA_STORAGE_BUCKET + "/" + path, {
+        method: "POST",
+        headers: { "apikey": SUPA_KEY, "Authorization": "Bearer " + SUPA_KEY, "Content-Type": mime, "x-upsert": "true" },
+        body: blob, signal: ctrl ? ctrl.signal : undefined
+      });
+      if (to) clearTimeout(to);
+      if (uploadRes.ok) return SUPA_URL + "/storage/v1/object/public/" + SUPA_STORAGE_BUCKET + "/" + path;
+      console.warn("[Storage] upload failed (" + uploadRes.status + "), essai " + (attempt+1) + "/3");
+      // Erreur définitive (ex : 400/401/403/413) : inutile de réessayer
+      if (uploadRes.status >= 400 && uploadRes.status < 500 && uploadRes.status !== 408 && uploadRes.status !== 429) break;
+    } catch(e) {
+      if (to) clearTimeout(to);
+      console.warn("[Storage] upload error, essai " + (attempt+1) + "/3:", e);
+    }
+    await new Promise(function(r){ setTimeout(r, 1500 * (attempt + 1)); });
   }
+  return dataUrl;
 }
 
-// Parcourt toutes les photos du rapport et upload les base64 vers Storage
-// Retourne { data: updatedData, changed: bool }
+// Photo "non envoyée" = encore en base64 volumineux (> 100 000 caractères)
+function wgeIsBigB64(v) { return typeof v === "string" && v.length > 100000 && v.startsWith("data:"); }
+function countUnsentPhotos(node) {
+  if (Array.isArray(node)) return node.reduce(function(n, x){ return n + countUnsentPhotos(x); }, 0);
+  if (!node || typeof node !== "object") return 0;
+  var n = 0;
+  Object.keys(node).forEach(function(k) {
+    var v = node[k];
+    if ((k === "url" || k === "drawingUrl") && wgeIsBigB64(v)) n++;
+    else if (v && typeof v === "object") n += countUnsentPhotos(v);
+  });
+  return n;
+}
+// Version "légère" envoyée à la base : retire les photos pas encore envoyées au Storage.
+// (elles restent à l'écran et dans la mémoire de la page, la prochaine sauvegarde les renverra.)
+// Sans ça, une feuille de plusieurs Mo dépasse le délai maximal (3 s) de la base et la sauvegarde échoue (erreur 500).
+function stripUnsentPhotos(node) {
+  if (Array.isArray(node)) {
+    return node.filter(function(x){ return !(x && typeof x === "object" && wgeIsBigB64(x.url)); }).map(stripUnsentPhotos);
+  }
+  if (!node || typeof node !== "object") return node;
+  var out = {};
+  Object.keys(node).forEach(function(k) {
+    var v = node[k];
+    if ((k === "url" || k === "drawingUrl") && wgeIsBigB64(v)) { if (k === "url") out[k] = ""; return; }
+    out[k] = (v && typeof v === "object") ? stripUnsentPhotos(v) : v;
+  });
+  return out;
+}
+
+// Parcourt TOUT le rapport (DC, AC, SAV, maintenance : onduleurs, strings, fiches…, admin) et envoie
+// vers Storage chaque image encore en base64 (champs url / drawingUrl). 3 envois en parallèle.
+// Retourne { data, changed, failed }
 async function uploadAllBase64ToStorage(ref, data) {
-  var changed = false;
   var d = JSON.parse(JSON.stringify(data)); // deep clone
-
-  async function processPhotoMap(map) {
-    var newMap = {};
-    for (var catKey of Object.keys(map || {})) {
-      var arr = map[catKey] || [];
-      newMap[catKey] = await Promise.all(arr.map(async function(p) {
-        if (!p || !p.url) return p;
-        var np = p;
-        if (p.url && p.url.startsWith("data:")) {
-          var u = await uploadFileToStorage(ref, catKey, p.url, p.name);
-          if (u !== p.url) { np = Object.assign({}, np, { url: u }); changed = true; }
-        }
-        if (p.drawingUrl && p.drawingUrl.startsWith("data:")) {
-          var du = await uploadFileToStorage(ref, "draw_" + catKey, p.drawingUrl, "draw-" + (p.name||"img"));
-          if (du !== p.drawingUrl) { np = Object.assign({}, np, { drawingUrl: du }); changed = true; }
-        }
-        return np;
-      }));
-    }
-    return newMap;
+  var jobs = [];
+  function walk(node, trail) {
+    if (Array.isArray(node)) { node.forEach(function(x){ walk(x, trail); }); return; }
+    if (!node || typeof node !== "object") return;
+    Object.keys(node).forEach(function(k) {
+      var v = node[k];
+      if (typeof v === "string") {
+        if ((k === "url" || k === "drawingUrl") && v.length > 1000 && v.startsWith("data:")) jobs.push({ obj: node, key: k, trail: trail });
+      } else if (v && typeof v === "object") walk(v, trail.concat(k));
+    });
   }
-
-  async function processPhotoArray(arr) {
-    return Promise.all((arr||[]).map(async function(p) {
-      if (!p || !p.url || !p.url.startsWith("data:")) return p;
-      var u = await uploadFileToStorage(ref, "general", p.url, p.name);
-      if (u !== p.url) { changed = true; return Object.assign({}, p, { url: u }); }
-      return p;
-    }));
-  }
-
-  // DC photos
-  if (d.dc && d.dc.photos) d.dc.photos = await processPhotoMap(d.dc.photos);
-  // AC photos
-  if (d.ac && d.ac.photos) d.ac.photos = await processPhotoMap(d.ac.photos);
-  // SAV photos
-  if (d.savPhotos) d.savPhotos = await processPhotoMap(d.savPhotos);
-  // Maintenance visits photos
-  if (d.maintenanceVisites) {
-    for (var vi = 0; vi < d.maintenanceVisites.length; vi++) {
-      var v = d.maintenanceVisites[vi];
-      if (v.photos) d.maintenanceVisites[vi].photos = await processPhotoMap(v.photos);
-      if (v.photosGenerales) d.maintenanceVisites[vi].photosGenerales = await processPhotoArray(v.photosGenerales);
+  walk(d, []);
+  var changed = false, failed = 0, next = 0;
+  async function worker() {
+    while (next < jobs.length) {
+      var j = jobs[next++];
+      var v = j.obj[j.key];
+      var cat = (j.trail.slice(-3).join("_") || "general").replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 60);
+      var isDraw = j.key === "drawingUrl";
+      var u = await uploadFileToStorage(ref, isDraw ? "draw_" + cat : cat, v, isDraw ? "draw-" + (j.obj.name || "img") : (j.obj.name || "photo"), isDraw ? undefined : j.obj.type);
+      if (u !== v) { j.obj[j.key] = u; changed = true; } else failed++;
     }
   }
-  // Photos générales du chantier
-  if (d.photosGenerales) d.photosGenerales = await processPhotoArray(d.photosGenerales);
-  // Admin docs (can be PDFs etc.)
-  if (d.admin && d.admin.sections) {
-    for (var sk of Object.keys(d.admin.sections)) {
-      var sec = d.admin.sections[sk];
-      if (sec && sec.docs) {
-        d.admin.sections[sk].docs = await Promise.all(sec.docs.map(async function(doc) {
-          if (!doc || !doc.url || !doc.url.startsWith("data:")) return doc;
-          var u = await uploadFileToStorage(ref, "admin_" + sk, doc.url, doc.name, doc.type);
-          if (u !== doc.url) { changed = true; return Object.assign({}, doc, { url: u }); }
-          return doc;
-        }));
-      }
-    }
-  }
-
-  return { data: d, changed: changed };
+  await Promise.all([worker(), worker(), worker()]);
+  return { data: d, changed: changed, failed: failed };
 }
 
 // ── Supabase multi-feuilles ──────────────────────────────
@@ -1478,18 +1479,34 @@ function PhotoZone({ catKey, label, items, onAdd, onDelete, onUpdate, onReorder,
     return compressImgCore(blob, isHiRes);
   };
   const compressImgCore = function(blob, isHiRes) { return new Promise(function(res) {
-    const img = new Image(); const objUrl = URL.createObjectURL(blob);
-    img.onload = function() {
-      const MAX = isHiRes ? 2400 : 1600; const QUALITY = isHiRes ? 0.92 : 0.82;
-      let w = img.width, h = img.height;
+    const MAX = isHiRes ? 2400 : 1600; const QUALITY = isHiRes ? 0.92 : 0.82;
+    const render = function(src, sw, sh) {
+      let w = sw, h = sh;
       if (w > h) { if (w > MAX) { h = Math.round(h*MAX/w); w = MAX; } }
       else { if (h > MAX) { w = Math.round(w*MAX/h); h = MAX; } }
       const canvas = document.createElement("canvas"); canvas.width = w; canvas.height = h;
       const ctx = canvas.getContext("2d");
-      ctx.fillStyle = "#fff"; ctx.fillRect(0,0,w,h); ctx.drawImage(img,0,0,w,h);
-      URL.revokeObjectURL(objUrl); res(canvas.toDataURL("image/jpeg", QUALITY));
+      ctx.fillStyle = "#fff"; ctx.fillRect(0,0,w,h); ctx.drawImage(src,0,0,w,h);
+      return canvas.toDataURL("image/jpeg", QUALITY);
     };
-    img.onerror = function() { URL.revokeObjectURL(objUrl); res(null); };
+    const img = new Image(); const objUrl = URL.createObjectURL(blob);
+    img.onload = function() {
+      let out = null;
+      try { out = render(img, img.width, img.height); } catch(e) { console.warn("[Photo] rendu impossible:", e); }
+      URL.revokeObjectURL(objUrl); res(out);
+    };
+    img.onerror = function() {
+      URL.revokeObjectURL(objUrl);
+      // Repli : certains formats/appareils échouent avec <img> mais passent avec createImageBitmap
+      if (typeof createImageBitmap === "function") {
+        createImageBitmap(blob).then(function(bmp) {
+          var out = null;
+          try { out = render(bmp, bmp.width, bmp.height); } catch(e) {}
+          if (bmp.close) bmp.close();
+          res(out);
+        }).catch(function() { res(null); });
+      } else res(null);
+    };
     img.src = objUrl;
   }); };
 
@@ -1631,11 +1648,11 @@ function PhotoZone({ catKey, label, items, onAdd, onDelete, onUpdate, onReorder,
         )}
         {/* Mobile capture buttons */}
         {isMobile ? (
-          <div style={{ display:"flex", gap:6, marginBottom:items.length>0?8:0 }}>
+          <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginBottom:items.length>0?8:0 }}>
             <button onClick={function(){ refCamera.current && refCamera.current.click(); }}
-              style={{ flex:"1 1 37.5%", background:GREEN, color:WHITE, border:"none", borderRadius:8, padding:"10px 6px", fontSize:13, fontWeight:600, display:"flex", alignItems:"center", justifyContent:"center", gap:5, minWidth:0 }}>📷 Photo</button>
+              style={{ flex:"1 1 84px", whiteSpace:"nowrap", background:GREEN, color:WHITE, border:"none", borderRadius:8, padding:"10px 6px", fontSize:13, fontWeight:600, display:"flex", alignItems:"center", justifyContent:"center", gap:5, minWidth:0 }}>📷 Photo</button>
             <button onClick={function(){ refFile.current && refFile.current.click(); }}
-              style={{ flex:"1 1 37.5%", background:WHITE, color:GREEN, border:"1.5px solid "+GREEN, borderRadius:8, padding:"10px 6px", fontSize:13, fontWeight:600, display:"flex", alignItems:"center", justifyContent:"center", gap:5, minWidth:0 }}>🖼 Galerie</button>
+              style={{ flex:"1 1 84px", whiteSpace:"nowrap", background:WHITE, color:GREEN, border:"1.5px solid "+GREEN, borderRadius:8, padding:"10px 6px", fontSize:13, fontWeight:600, display:"flex", alignItems:"center", justifyContent:"center", gap:5, minWidth:0 }}>🖼 Galerie</button>
             {allowVideo && (
               <button type="button" title="Filmer une vidéo" onClick={function(){ refVid.current && refVid.current.click(); }}
                 style={{ flex:"0 0 44px", width:44, background:WHITE, color:"#c0392b", border:"1.5px solid #c0392b", borderRadius:8, fontSize:17, display:"flex", alignItems:"center", justifyContent:"center" }}>🎥</button>
@@ -3944,6 +3961,35 @@ function mkOnd(n){
     erreur:{description:"",code:"",operations:""}};
 }
 
+// ── Durée d'intervention (obligatoire, par quart d'heure) ───────────────────────
+function fmtDuree(min) {
+  var m = parseInt(min, 10);
+  if (!m || m <= 0) return "";
+  var h = Math.floor(m / 60), r = m % 60;
+  return h === 0 ? r + " min" : h + "h" + (r ? (r < 10 ? "0" + r : r) : "00");
+}
+var DUREE_OPTIONS = (function(){ var o = []; for (var m = 15; m <= 720; m += 15) o.push(m); return o; })();
+function DureeIntervention({ value, onChange }) {
+  var missing = !value;
+  return (
+    <div style={{ background: missing ? "#fff5f4" : GREEN_LIGHT, border: "1.5px solid " + (missing ? "#e74c3c" : GREEN_MID),
+      borderRadius: 9, padding: "12px 14px", marginBottom: 14 }}>
+      <label style={{ fontSize: 13, fontWeight: 700, color: missing ? "#c0392b" : GREEN, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+        ⏱ Durée d'intervention <span style={{ color: "#c0392b" }}>*</span>
+        <span style={{ fontSize: 10, fontWeight: 700, background: missing ? "#e74c3c" : GREEN, color: WHITE, borderRadius: 4, padding: "1px 7px", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+          {missing ? "Obligatoire" : "Renseignée"}
+        </span>
+      </label>
+      <select value={value || ""} onChange={function(e){ onChange(e.target.value ? parseInt(e.target.value, 10) : ""); }}
+        style={{ fontSize: 16, minHeight: 44, width: "100%", maxWidth: 320 }}>
+        <option value="">— Choisir la durée —</option>
+        {DUREE_OPTIONS.map(function(m){ return <option key={m} value={m}>{fmtDuree(m)}</option>; })}
+      </select>
+      <div style={{ fontSize: 11, color: MUTED, marginTop: 6 }}>Temps total passé sur place (par tranche de 15 minutes), à renseigner avant de clôturer l'intervention.</div>
+    </div>
+  );
+}
+
 // ── SAV Tab ───────────────────────────────────────────────────────────────────
 const SAV_TYPES = ["Onduleur", "Câblage DC", "Câblage AC", "Panneau", "Batterie", "Borne de recharge", "Monitoring", "Autre"];
 const SAV_STATUTS = ["Résolu", "En attente de pièce", "Escaladé WGE", "Planifié"];
@@ -4014,6 +4060,9 @@ function SAVCard({ sav, idx, onChange, onDelete, photos, setPhotos, refChantier 
           padding: "1px 8px", color: MUTED }}>
           {sav.type}
         </span>
+        {sav.dureeMin
+          ? <span style={{ fontSize: 11, background: GREEN_LIGHT, border: "1px solid " + GREEN_MID, borderRadius: 5, padding: "1px 8px", color: GREEN, fontWeight: 600 }}>⏱ {fmtDuree(sav.dureeMin)}</span>
+          : <span style={{ fontSize: 11, background: "#fdecea", border: "1px solid #f1948a", borderRadius: 5, padding: "1px 8px", color: "#c0392b", fontWeight: 700 }}>⏱ durée manquante</span>}
         <span style={{ color: MUTED, fontSize: 12 }}>{open ? "▲" : "▼"}</span>
       </div>
 
@@ -4066,10 +4115,13 @@ function SAVCard({ sav, idx, onChange, onDelete, photos, setPhotos, refChantier 
           </div>
 
           {/* Photos */}
-          <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr)", gap: 12, marginBottom: 12 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 300px), 1fr))", gap: 12, marginBottom: 12 }}>
             <div style={{ minWidth:0 }}>{pz(photoAvantKey, "📷 Photos AVANT")}</div>
             <div style={{ minWidth:0 }}>{pz(photoApresKey, "📷 Photos APRÈS")}</div>
           </div>
+
+          {/* Durée d'intervention (obligatoire) — juste avant la clôture */}
+          <DureeIntervention value={sav.dureeMin} onChange={function(v){ onChange({...sav, dureeMin: v}); }} />
 
           {/* Delete */}
           <div style={{ textAlign: "right" }}>
@@ -4570,7 +4622,10 @@ function MaintenanceTab({ data, setData }) {
                   {" — " + onds.length + " onduleur(s)"}
                 </div>
               </div>
-              <div style={{ display:"flex", gap:6 }}>
+              <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+                {visite.dureeMin
+                  ? <span style={{ background:GREEN_LIGHT, border:"1px solid "+GREEN_MID, color:GREEN, borderRadius:5, padding:"2px 8px", fontSize:11, fontWeight:600 }}>⏱ {fmtDuree(visite.dureeMin)}</span>
+                  : <span style={{ background:"#fdecea", border:"1px solid #f1948a", color:"#c0392b", borderRadius:5, padding:"2px 8px", fontSize:11, fontWeight:700 }}>⏱ durée manquante</span>}
                 {ok > 0 && <span style={{ background:"#f0fff4", border:"1px solid #a8e6c0",
                   color:"#27ae60", borderRadius:5, padding:"2px 8px", fontSize:11, fontWeight:600 }}>
                   {ok} OK
@@ -4744,6 +4799,11 @@ function MaintenanceTab({ data, setData }) {
           onReceiveCross={function(){}} onMoveTo={function(){}}
         />
       </div>
+
+      {/* Durée d'intervention (obligatoire) — juste avant la clôture de la visite */}
+      <div style={{ marginTop:14 }}>
+        <DureeIntervention value={visite.dureeMin} onChange={function(v){ patchVisiteById(function(x){ return Object.assign({}, x, { dureeMin: v }); }); }} />
+      </div>
     </div>
   );
 }
@@ -4902,7 +4962,7 @@ function ProgressPanel({ data, onClose }) {
   (data.sav||[]).forEach(function(sv, si) {
     addActivity(String(sv.date||"").slice(0,10), { color:"#f39c12", bg:"#fffbf0", title:"🔧 SAV n°"+(si+1)+(sv.type?" — "+sv.type:""),
       who:sv.intervenant||"", badge:sv.statut||"",
-      lines:[["Problème", sv.description],["Actions", sv.actionsEffectuees],["Pièces", sv.piecesRemplacees]] });
+      lines:[["Durée", fmtDuree(sv.dureeMin)],["Problème", sv.description],["Actions", sv.actionsEffectuees],["Pièces", sv.piecesRemplacees]] });
   });
   (data.maintenanceVisites||[]).forEach(function(v, vi) {
     var onds = v.onduleurs||[]; var measured = 0, alerts = 0; var errs = [];
@@ -4919,7 +4979,7 @@ function ProgressPanel({ data, onClose }) {
     });
     addActivity(String(v.date||"").slice(0,10), { color:GREEN, bg:GREEN_LIGHT, title:"🔩 Visite de maintenance n°"+(vi+1),
       who:v.technicien||v.responsable||"", badge:onds.length+" onduleur"+(onds.length>1?"s":""),
-      lines:[["Strings mesurés", measured ? measured+(alerts?" — ⚠️ "+alerts+" en alerte":" — aucune alerte") : ""],["Onduleurs en erreur", errs.join(" ; ")],["Remarques", v.remarques]] });
+      lines:[["Durée", fmtDuree(v.dureeMin)],["Strings mesurés", measured ? measured+(alerts?" — ⚠️ "+alerts+" en alerte":" — aucune alerte") : ""],["Onduleurs en erreur", errs.join(" ; ")],["Remarques", v.remarques]] });
   });
 
   // Group by day
@@ -8138,7 +8198,7 @@ function WhatsAppNotify({ data, tab }) {
   if (todaySav.length > 0) {
     savLines.push("🔧 SAV (" + todaySav.length + " intervention" + (todaySav.length>1?"s":"") + ")");
     todaySav.forEach(function(s){
-      var head = "— " + (s.type||"Intervention") + (s.intervenant ? " · " + s.intervenant : "") + (s.statut ? " · " + s.statut : "");
+      var head = "— " + (s.type||"Intervention") + (s.intervenant ? " · " + s.intervenant : "") + (s.statut ? " · " + s.statut : "") + (s.dureeMin ? " · ⏱ " + fmtDuree(s.dureeMin) : "");
       savLines.push(head);
       if (s.description && s.description.trim()) savLines.push("   Problème : " + s.description.trim());
       if (s.actionsEffectuees && s.actionsEffectuees.trim()) savLines.push("   Actions : " + s.actionsEffectuees.trim());
@@ -8154,6 +8214,9 @@ function WhatsAppNotify({ data, tab }) {
   }
 
   var tabLabel = {dc:"DC", ac:"AC", sav:"SAV", maintenance:"Maintenance"}[tab] || tab;
+  // Durée d'intervention obligatoire avant de notifier la fin d'un SAV / d'une visite de maintenance
+  var missingDuree = (tab === "sav" && todaySav.some(function(s){ return !s.dureeMin; })) ||
+                     (tab === "maintenance" && todayMaint.some(function(v){ return !v.dureeMin; }));
 
   var nomTache = data.meta.nom_tache || "";
 
@@ -8206,6 +8269,12 @@ function WhatsAppNotify({ data, tab }) {
         {journeeStr ? "Notifier — journée clôturée" : "Notifier — fin de l'étape " + tabLabel}
       </div>
 
+      {missingDuree && (
+        <div style={{ background:"#fdecea", border:"1.5px solid #e74c3c", color:"#c0392b", borderRadius:8, padding:"9px 12px", fontSize:12, fontWeight:600, marginBottom:10 }}>
+          ⏱ Renseignez la durée d'intervention (obligatoire) avant de notifier la fin de l'étape.
+        </div>
+      )}
+
       {/* Preview toggle */}
       <button onClick={function(){ setShowPreview(function(v){ return !v; }); }}
         style={{ fontSize: 11, color: MUTED, background: "none", border: "none",
@@ -8223,7 +8292,7 @@ function WhatsAppNotify({ data, tab }) {
         </pre>
       )}
 
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", opacity: missingDuree ? 0.45 : 1, pointerEvents: missingDuree ? "none" : "auto" }}>
         {waUrlPM ? (
           <a href={waUrlPM} target="_blank" rel="noopener noreferrer"
             style={{ display: "inline-flex", alignItems: "center", gap: 7,
@@ -10967,6 +11036,8 @@ function App() {
   useEffect(function() { userRef.current = user; window._wgeCurrentUser = user; }, [user]);
 
   var [storageWarning, setStorageWarning] = useState(null); // message d'avertissement Storage
+  var [unsentCount, setUnsentCount] = useState(0);           // photos pas encore envoyées au Storage
+  var unsentRef = useRef(0);
 
   useEffect(function() {
     // Vérifier la table principale
@@ -10983,7 +11054,8 @@ function App() {
           "Content-Type": "application/json" },
         body: JSON.stringify({ limit: 1, offset: 0, prefix: "" }) })
     .then(function(res) {
-      if (!res.ok) {
+      // Uniquement si le serveur répond réellement « bucket inexistant » (pas pour un réseau lent / erreur temporaire)
+      if (res.status === 404 || res.status === 400) {
         setStorageWarning("⚠️ Le bucket Supabase Storage \"" + SUPA_STORAGE_BUCKET + "\" est introuvable. " +
           "Les photos resteront en base64 et les sauvegardes pourraient échouer pour les gros chantiers. " +
           "Créez ce bucket dans votre projet Supabase (Storage → New bucket → \"" + SUPA_STORAGE_BUCKET + "\" → Public).");
@@ -11013,61 +11085,31 @@ function App() {
   // On prend latestDataRef (texte à jour) et on y injecte uniquement les URL Storage.
   function mergeStorageUrls(latestData, dataWithUrls) {
     var result = JSON.parse(JSON.stringify(latestData));
-
-    function mergePhotoArr(latestArr, storageArr) {
-      return (latestArr||[]).map(function(p, i) {
-        if (!p) return p;
-        var sp = storageArr && storageArr[i];
-        if (!sp) return p;
-        var merged = Object.assign({}, p);
-        if (sp.url && !sp.url.startsWith("data:") && p.url && p.url.startsWith("data:"))
-          merged.url = sp.url;
-        if (sp.drawingUrl && !sp.drawingUrl.startsWith("data:") && p.drawingUrl && p.drawingUrl.startsWith("data:"))
-          merged.drawingUrl = sp.drawingUrl;
-        return merged;
-      });
+    // Retrouve l'élément correspondant dans la version uploadée (par id, sinon position + nom + date d'ajout)
+    function pick(u, x, i) {
+      if (x.id !== undefined && x.id !== null) { for (var a = 0; a < u.length; a++) { if (u[a] && u[a].id === x.id) return u[a]; } return null; }
+      var c = u[i];
+      if (c && typeof c === "object" && c.name === x.name && c.addedAt === x.addedAt) return c;
+      for (var b = 0; b < u.length; b++) {
+        var y = u[b];
+        if (y && typeof y === "object" && y.name === x.name && y.addedAt === x.addedAt && typeof y.url === "string" && !y.url.startsWith("data:")) return y;
+      }
+      return null;
     }
-    function mergePhotoMap(latestMap, storageMap) {
-      var m = Object.assign({}, latestMap);
-      Object.keys(storageMap||{}).forEach(function(k) {
-        m[k] = mergePhotoArr(m[k]||[], storageMap[k]||[]);
-      });
-      return m;
+    function inject(l, u) {
+      if (Array.isArray(l)) {
+        if (!Array.isArray(u)) return;
+        l.forEach(function(x, i) { if (x && typeof x === "object") { var m = pick(u, x, i); if (m) inject(x, m); } });
+      } else if (l && typeof l === "object" && u && typeof u === "object" && !Array.isArray(u)) {
+        Object.keys(l).forEach(function(k) {
+          var lv = l[k], uv = u[k];
+          if ((k === "url" || k === "drawingUrl") && typeof lv === "string" && lv.startsWith("data:") &&
+              typeof uv === "string" && uv && !uv.startsWith("data:")) l[k] = uv;
+          else if (lv && typeof lv === "object") inject(lv, uv);
+        });
+      }
     }
-    function mergeDocArr(latestArr, storageArr) {
-      return (latestArr||[]).map(function(d, i) {
-        if (!d) return d;
-        var sd = storageArr && storageArr[i];
-        if (sd && sd.url && !sd.url.startsWith("data:") && d.url && d.url.startsWith("data:"))
-          return Object.assign({}, d, { url: sd.url });
-        return d;
-      });
-    }
-
-    if (dataWithUrls.dc && result.dc)
-      result.dc.photos = mergePhotoMap(result.dc.photos, (dataWithUrls.dc||{}).photos);
-    if (dataWithUrls.ac && result.ac)
-      result.ac.photos = mergePhotoMap(result.ac.photos, (dataWithUrls.ac||{}).photos);
-    if (dataWithUrls.savPhotos)
-      result.savPhotos = mergePhotoMap(result.savPhotos, dataWithUrls.savPhotos);
-    if (dataWithUrls.maintenanceVisites) {
-      (dataWithUrls.maintenanceVisites||[]).forEach(function(sv, vi) {
-        if (!result.maintenanceVisites||!result.maintenanceVisites[vi]) return;
-        result.maintenanceVisites[vi].photos = mergePhotoMap(
-          result.maintenanceVisites[vi].photos, sv.photos||{});
-        result.maintenanceVisites[vi].photosGenerales = mergePhotoArr(
-          result.maintenanceVisites[vi].photosGenerales, sv.photosGenerales);
-      });
-    }
-    if (dataWithUrls.photosGenerales)
-      result.photosGenerales = mergePhotoArr(result.photosGenerales, dataWithUrls.photosGenerales);
-    if (dataWithUrls.admin && dataWithUrls.admin.sections && result.admin && result.admin.sections) {
-      Object.keys(dataWithUrls.admin.sections||{}).forEach(function(sk) {
-        if (!result.admin.sections[sk]) return;
-        result.admin.sections[sk].docs = mergeDocArr(
-          result.admin.sections[sk].docs, (dataWithUrls.admin.sections[sk]||{}).docs);
-      });
-    }
+    inject(result, dataWithUrls);
     return result;
   }
 
@@ -11179,6 +11221,11 @@ function App() {
         dataToSave = latestDataRef.current; // toujours le plus récent
       }
 
+      // Photos qui n'ont pas pu partir vers Storage (réseau) : on le signale et on réessaie
+      var unsentNow = countUnsentPhotos(dataToSave);
+      unsentRef.current = unsentNow;
+      setUnsentCount(unsentNow);
+
       // ③ Lire la version DB uniquement si quelqu'un d'autre a sauvegardé
       //    depuis notre dernier save. La sauvegarde finale est conditionnelle
       //    sur updated_at pour éviter l'écrasement silencieux multi-utilisateurs.
@@ -11219,14 +11266,14 @@ function App() {
           }
         }
 
-        var updateResult = await supaUpdate(sheetId, dataToSave, expectedUpdatedAt);
+        var updateResult = await supaUpdate(sheetId, stripUnsentPhotos(dataToSave), expectedUpdatedAt);
         if (updateResult.conflict) {
           var latestRow = await supaLoadById(sheetId);
           if (latestRow && latestRow.data) {
             dataToSave = mergePhotosFromDB(dataToSave, latestRow.data);
             setData(function(prev) { return mergePhotosFromDB(prev, latestRow.data); });
             latestDataRef.current = dataToSave;
-            updateResult = await supaUpdate(sheetId, dataToSave, latestRow.updated_at);
+            updateResult = await supaUpdate(sheetId, stripUnsentPhotos(dataToSave), latestRow.updated_at);
           }
         }
         ok = !!(updateResult && updateResult.ok);
@@ -11236,7 +11283,7 @@ function App() {
         }
       } else {
         var label = "Rapport " + new Date().toLocaleDateString("fr-BE", { day:"2-digit", month:"2-digit", year:"numeric" });
-        var created = await supaCreate(ref, label, dataToSave);
+        var created = await supaCreate(ref, label, stripUnsentPhotos(dataToSave));
         if (created) {
           setCurrentSheetId(created.id);
           currentSheetIdRef.current = created.id;
@@ -11265,7 +11312,12 @@ function App() {
       }
 
       setSaveStatus(ok ? "saved" : "error");
-      if (ok) {
+      if (ok && unsentNow > 0) {
+        // Texte sauvegardé, mais des photos attendent encore : nouvel essai automatique dans 10 s
+        setPendingChanges(true);
+        if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = setTimeout(doSave, 10000);
+      } else if (ok) {
         setPendingChanges(false);
         setTimeout(function(){ setSaveStatus("idle"); }, 4000);
       } else {
@@ -11322,7 +11374,7 @@ function App() {
     function onBeforeUnload(e) {
       flushPendingSave();
       // Si des modifications ne sont pas encore sauvegardées, demander confirmation
-      if (pendingChanges || saveTimerRef.current || isSavingRef.current) {
+      if (pendingChanges || saveTimerRef.current || isSavingRef.current || unsentRef.current > 0) {
         e.preventDefault();
         e.returnValue = "Des modifications sont en cours de sauvegarde. Voulez-vous vraiment quitter ?";
         return e.returnValue;
@@ -11524,6 +11576,17 @@ function App() {
           </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          {/* ── Photos en attente d'envoi (réseau) ── */}
+          {unsentCount > 0 && (
+            <div style={{ position:"fixed", top:0, left:0, right:0, zIndex:99998,
+              background:"#e67e22", color:WHITE, padding:"9px 14px", fontSize:12, lineHeight:1.5, display:"flex", gap:10, alignItems:"center" }}>
+              <span style={{ fontSize:16, flexShrink:0 }}>⏳</span>
+              <span style={{ flex:1 }}><b>{unsentCount} photo{unsentCount>1?"s":""} en cours d'envoi.</b> Restez sur la page avec du réseau : nouvelle tentative automatique.</span>
+              <button onClick={function(){ if (saveTimerRef.current) clearTimeout(saveTimerRef.current); doSave(); }}
+                style={{ background:"rgba(255,255,255,0.25)", border:"none", color:WHITE, borderRadius:4, padding:"4px 10px", cursor:"pointer", flexShrink:0, fontWeight:700 }}>Réessayer</button>
+            </div>
+          )}
+
           {/* ── Avertissement Storage manquant ── */}
           {storageWarning && (
             <div style={{ position:"fixed", top:0, left:0, right:0, zIndex:99999,
