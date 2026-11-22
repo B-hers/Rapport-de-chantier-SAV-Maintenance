@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/>
 <meta http-equiv="Pragma" content="no-cache"/>
 <meta http-equiv="Expires" content="0"/>
-<title>Rapport de Chantier — We Green Energy</title>
+<title>Rapport de Chantier · We Green Energy</title>
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script src="https://unpkg.com/@babel/standalone@7.23.10/babel.min.js"></script>
@@ -53,6 +53,16 @@ button { font-family: inherit; cursor: pointer; }
   .string-block { break-inside: avoid; }
 }
 .print-only { display: none; }
+@media (max-width: 640px) {
+  .check-item button { min-width: 44px !important; min-height: 44px !important; font-size: 14px !important; }
+  .wge-hdr-actions { flex: 0 0 100% !important; flex-wrap: nowrap !important; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; padding-bottom: 2px; }
+  .wge-hdr-actions::-webkit-scrollbar { display: none; }
+  .wge-hdr-actions > * { flex-shrink: 0; white-space: nowrap; }
+  .wge-hdr-actions button { min-height: 36px; }
+  .wge-hdr-userpill { display: none !important; }
+  input[type=date], input[type=time] { width: auto !important; min-width: 150px; max-width: 100%; flex: 0 0 auto !important; align-self: flex-start; justify-self: start; }
+  select { width: auto !important; min-width: 160px; max-width: 100%; }
+}
 /* Locked section: disable form controls but keep photos interactive */
 .locked-section input,
 .locked-section select,
@@ -115,11 +125,11 @@ button { font-family: inherit; cursor: pointer; }
       <div>
         <label style="font-size:12px; color:#666; font-weight:500; display:block; margin-bottom:5px">Nom / Société</label>
         <select id="st-select" onchange="wgeStSelectChange()" style="width:100%; padding:9px 12px; border:1px solid #d0d0c8; border-radius:8px; font-size:14px; font-family:inherit; background:#fff; color:#1a1a1a; appearance:none; -webkit-appearance:none; background-image:url('data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2212%22 height=%228%22 viewBox=%220 0 12 8%22%3E%3Cpath d=%22M1 1l5 5 5-5%22 stroke=%22%23666%22 stroke-width=%221.5%22 fill=%22none%22/%3E%3C/svg%3E'); background-repeat:no-repeat; background-position:right 12px center; padding-right:32px;">
-          <option value="">— Sélectionner —</option>
-          <option value="Sildjan (Green Future)">Sildjan — Green Future</option>
-          <option value="Ronaldo (Instasol)">Ronaldo — Instasol</option>
-          <option value="Manu (DM Électricité)">Manu — DM Électricité</option>
-          <option value="Fast-Elec (Christophe)">Fast-Elec — Christophe &amp; team</option>
+          <option value="">Sélectionner</option>
+          <option value="Sildjan (Green Future)">Sildjan · Green Future</option>
+          <option value="Ronaldo (Instasol)">Ronaldo · Instasol</option>
+          <option value="Manu (DM Électricité)">Manu · DM Électricité</option>
+          <option value="Fast-Elec (Christophe)">Fast-Elec · Christophe &amp; team</option>
           <option value="Oscar Campos">Oscar Campos</option>
           <option value="Damien - Daktoit">Damien - Daktoit</option>
           <option value="Leimir">Leimir</option>
@@ -127,7 +137,7 @@ button { font-family: inherit; cursor: pointer; }
           <option value="Lohan">Lohan</option>
           <option value="L&amp;V Renovation">L&amp;V Renovation</option>
           <option value="Éco Gevel">Éco Gevel</option>
-          <option value="__autre__">Autre — saisir le nom</option>
+          <option value="__autre__">Autre · saisir le nom</option>
         </select>
         <input id="st-name-input" type="text" placeholder="Votre nom ou société…" style="width:100%; padding:9px 12px; border:1px solid #d0d0c8; border-radius:8px; font-size:14px; font-family:inherit; margin-top:8px; display:none; box-sizing:border-box;" />
       </div>
@@ -182,7 +192,7 @@ document.addEventListener('click', function(e) {
   var GOOGLE_CLIENT_ID_PLAIN = "765677431332-2leuvo90bvhnmid77hml6cj230av8eao.apps.googleusercontent.com";
   var ALLOWED_DOMAIN_PLAIN = "we-green.be";
   var ALLOWED_DOMAINS_PLAIN = ["we-green.be", "we-green.fr", "we-cover.be"];
-  // Codes d'accès sous-traitants — identification uniquement, pas de protection de données sensibles
+  // Codes d'accès sous-traitants · identification uniquement, pas de protection de données sensibles
   var ST_CODES = ["0479627511", "Wegreen001!", "Megreen001"];
 
   function parseJwtPlain(token) {
@@ -522,7 +532,7 @@ async function supaCreate(ref, label, payload) {
     });
     if (!res.ok) {
       var errTxt = await res.text();
-      console.error("[Rapport] supaCreate FAILED — HTTP " + res.status + " — " + errTxt);
+      console.error("[Rapport] supaCreate FAILED · HTTP " + res.status + " · " + errTxt);
       return null;
     }
     var rows = await res.json();
@@ -554,7 +564,7 @@ async function supaUpdate(id, payload, expectedUpdatedAt) {
     });
     if (!res.ok) {
       var errTxt = await res.text();
-      console.error("[Rapport] supaUpdate FAILED — HTTP " + res.status + " — " + errTxt);
+      console.error("[Rapport] supaUpdate FAILED · HTTP " + res.status + " · " + errTxt);
       return { ok: false, conflict: false, row: null };
     }
     var rows = await res.json();
@@ -741,7 +751,7 @@ const DC_SECTIONS = [
       { title: "Crochets", items: ["Espacement max 80–100 cm", "Minimum 3 vis par crochet", "Dernier crochet à max 40 cm du rail", "Rebord de tuile disqué (crochet ne soulève pas la tuile)"] },
       { title: "Rails", items: ["Placés à max 20 cm des extrémités des PV", "Horizontaux si panneaux en paysage (croisé si nécessaire)", "Planitude vérifiée", "Boulons crochet-rail bien serrés (pince M10)"] },
       { title: "Finition", items: ["Bouts de rail coupés à 5 cm de la clame de fin (ni plus ni moins)", "Bouchons de rails posés"] },
-      { title: "Interdits ❌", items: ["Aucun tirefond sur ardoise — joint en plomb obligatoire", "Morceaux de rails non lancés depuis la toiture", "Bouts de rails non abandonnés sous les panneaux"] },
+      { title: "Interdits ❌", items: ["Aucun tirefond sur ardoise · joint en plomb obligatoire", "Morceaux de rails non lancés depuis la toiture", "Bouts de rails non abandonnés sous les panneaux"] },
     ],
     photoCats: [
       { key: "structures_all", label: "📷 Photos structures", merged: true,
@@ -751,14 +761,14 @@ const DC_SECTIONS = [
   {
     key: "cablage_dc", label: "2 · Câblage DC, Tubage & Chemin de câbles", icon: "🔌",
     rules: [
-      { title: "Câbles DC", items: ["Câbles tirés par strings (toiture → onduleur)", "Câble de terre tiré", "Tubes de protection posés + étanchéité vérifiée (pas d'eau dans la gaine)", "Câbles colsonnés sous les rails — aucun contact crochet/tuile", "Étanchéité de tous les percements (façade + toiture) vérifiée"] },
+      { title: "Câbles DC", items: ["Câbles tirés par strings (toiture → onduleur)", "Câble de terre tiré", "Tubes de protection posés + étanchéité vérifiée (pas d'eau dans la gaine)", "Câbles colsonnés sous les rails · aucun contact crochet/tuile", "Étanchéité de tous les percements (façade + toiture) vérifiée"] },
       { title: "MC4", items: ["Câble dénudé à 6 cm", "Cosse sertie avec la bonne pince (attention cosse femelle/mâle)", "Chaque MC4 bien serré et verrouillé"] },
       { title: "Tubage", items: ["Forage effectué de l'extérieur vers l'intérieur", "Boucle réalisée à l'entrée dans la maison (écoulement des eaux)"] },
       { title: "Interdits ❌", items: ["Aucun câble ne pend sous les PV", "Aucun contact câble-toiture ou câble-crochet", "Aucun câble enroulé autour des rails"] },
     ],
     photoCats: [
       { key: "cablage_dc_all", label: "📷 Photos câblage DC", merged: true,
-        hints: ["Câblage DC sous les panneaux (colsonnage)", "Chemin de câbles — tubage — entrée maison", "Arrivée des câbles DC (onduleur / local technique)"] },
+        hints: ["Câblage DC sous les panneaux (colsonnage)", "Chemin de câbles · tubage · entrée maison", "Arrivée des câbles DC (onduleur / local technique)"] },
     ]
   },
   {
@@ -795,7 +805,7 @@ const DC_SECTIONS = [
     key: "clotureDC", label: "5 · Clôture chantier DC", icon: "🔒",
     items: [
       { key: "materielRecupere", label: "Tout le matériel et outils récupérés (rien laissé sur le chantier)" },
-      { key: "nettoyage", label: "Nettoyage effectué — aucun déchet laissé (rails, câbles, colsons, cartons, plastiques, cigarettes)" },
+      { key: "nettoyage", label: "Nettoyage effectué · aucun déchet laissé (rails, câbles, colsons, cartons, plastiques, cigarettes)" },
       { key: "clientOK", label: "Client informé / site rendu propre" },
     ]
   },
@@ -1179,7 +1189,7 @@ function AnnotationModal({ imageUrl, onSave, onClose }) {
     var img = new Image();
     img.crossOrigin = "anonymous"; // nécessaire pour getImageData sur images Supabase Storage
     img.onload = function() {
-      // Canvas at FULL image resolution — CSS handles display scaling
+      // Canvas at FULL image resolution · CSS handles display scaling
       canvas.width = img.width;
       canvas.height = img.height;
       var ctx = canvas.getContext("2d");
@@ -1449,7 +1459,7 @@ function PhotoZone({ catKey, label, items, onAdd, onDelete, onUpdate, onReorder,
   const zoneRef = React.useRef();
   const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
-  // Compression: DC 1600px/0.82 — AC + strings + schémas 2400px/0.92
+  // Compression: DC 1600px/0.82 · AC + strings + schémas 2400px/0.92
   // HEIC/HEIF (photos iPhone / certains Android) : non décodable par Chrome/Firefox/Edge.
   // On les convertit en JPEG avant compression ; sinon la photo restait sans image (url null)
   // et s'affichait comme un "PDF" illisible.
@@ -1675,10 +1685,10 @@ function PhotoZone({ catKey, label, items, onAdd, onDelete, onUpdate, onReorder,
           )
         )}
 
-        {/* Thumbnails — défilement horizontal (plus de ligne qui s'allonge avec beaucoup de photos) */}
+        {/* Thumbnails · défilement horizontal (plus de ligne qui s'allonge avec beaucoup de photos) */}
         {items.length>0 && (
           <div style={{ display:"flex", flexWrap:"nowrap", gap:6, overflowX:"auto", WebkitOverflowScrolling:"touch", scrollSnapType:"x proximity", paddingBottom:4 }}>
-            {/* "+" toujours accessible en premier (pas besoin de défiler jusqu'au bout) — masqué sur mobile où Photo/Galerie font déjà le travail */}
+            {/* "+" toujours accessible en premier (pas besoin de défiler jusqu'au bout) · masqué sur mobile où Photo/Galerie font déjà le travail */}
             {!isMobile && (
               <div onClick={function(){ refFile.current && refFile.current.click(); }} title="Ajouter des photos"
                 style={{ width:44, height:108, flexShrink:0, scrollSnapAlign:"start", display:"flex", alignItems:"center", justifyContent:"center",
@@ -1707,15 +1717,15 @@ function PhotoZone({ catKey, label, items, onAdd, onDelete, onUpdate, onReorder,
                     </div>
                 : item.url
                   ? <img src={item.url} alt={item.name} style={{ width:"100%", height:isMobile?90:75, objectFit:"cover", display:"block", cursor:"pointer" }} onClick={function(e){ e.stopPropagation(); setPreviewIdx(i); setPreviewZoomed(false); }} />
-                  : <div style={{ width:"100%", height:isMobile?90:75, display:"flex", alignItems:"center", justifyContent:"center", textAlign:"center", background:(item.type||"").indexOf("image")===0?"#fdecea":"#f4f0f0", fontSize:11, color:(item.type||"").indexOf("image")===0?"#c0392b":MUTED, padding:4 }}>{(item.type||"").indexOf("image")===0 ? "⚠️ Image illisible — à supprimer et rajouter" : "PDF"}</div>}
+                  : <div style={{ width:"100%", height:isMobile?90:75, display:"flex", alignItems:"center", justifyContent:"center", textAlign:"center", background:(item.type||"").indexOf("image")===0?"#fdecea":"#f4f0f0", fontSize:11, color:(item.type||"").indexOf("image")===0?"#c0392b":MUTED, padding:4 }}>{(item.type||"").indexOf("image")===0 ? "⚠️ Image illisible · à supprimer et rajouter" : "PDF"}</div>}
                 {/* Uploader name */}
                 {item.uploadedBy && (
                   <div style={{ fontSize:10, color:MUTED, textAlign:"center", padding:"3px 4px", background:"#f8f8f6", borderTop:"1px solid "+BORDER, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}
-                    title={"Uploadé par "+item.uploadedBy+(item.addedAt ? " — "+new Date(item.addedAt).toLocaleDateString("fr-BE",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"}) : "")}>
+                    title={"Uploadé par "+item.uploadedBy+(item.addedAt ? " · "+new Date(item.addedAt).toLocaleDateString("fr-BE",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"}) : "")}>
                     👤 {item.uploadedBy.split(" ")[0]}
                   </div>
                 )}
-                {/* Action bar — row 1: 4 main actions */}
+                {/* Action bar · row 1: 4 main actions */}
                 <div style={{ display:"flex", borderTop:"1px solid "+BORDER }}>
                   {item.url && <button className="photo-action" title="Agrandir" onClick={function(e){ e.stopPropagation(); setPreviewIdx(i); setPreviewZoomed(false); }}
                     style={{ flex:1, background:"none", border:"none", borderRight:"1px solid "+BORDER, cursor:"pointer", fontSize:isMobile?18:15, padding:"6px 0", color:"#555" }}>🔍</button>}
@@ -1726,7 +1736,7 @@ function PhotoZone({ catKey, label, items, onAdd, onDelete, onUpdate, onReorder,
                   <button title="Supprimer cette photo" onClick={function(e){ e.stopPropagation(); if(window.confirm("Supprimer cette photo ?\nCette action est irréversible.")) onDelete(i); }}
                     style={{ flex:1, background:"#fdecea", border:"none", cursor:"pointer", fontSize:isMobile?15:13, padding:"6px 0", color:"#c0392b", fontWeight:700 }}>×</button>
                 </div>
-                {/* Action bar — row 2: move to another section */}
+                {/* Action bar · row 2: move to another section */}
                 <div style={{ borderTop:"1px solid "+BORDER }}>
                   <select key={"mv-"+i+"-"+items.length} title="Déplacer vers une autre section"
                     onChange={function(e){ e.stopPropagation(); var tk=e.target.value; if(tk&&tk!=="0") onMoveTo(i,tk); }}
@@ -1744,7 +1754,7 @@ function PhotoZone({ catKey, label, items, onAdd, onDelete, onUpdate, onReorder,
 
       {hasNote && <textarea value={note||""} onChange={function(e){ onNoteChange(e.target.value); }} placeholder="Notes…" rows={2} style={{ width:"100%", marginTop:6, fontSize:13, resize:"vertical", boxSizing:"border-box" }} />}
 
-      {/* ── Vue "Tout voir" — grille scrollable pour vérifier rapidement toutes les photos ── */}
+      {/* ── Vue "Tout voir" · grille scrollable pour vérifier rapidement toutes les photos ── */}
       {galleryOpen && (
         <div onClick={function(e){ if(e.target===e.currentTarget) setGalleryOpen(false); }}
           style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.88)", zIndex:9997, display:"flex", flexDirection:"column" }}>
@@ -1901,7 +1911,7 @@ function StringRow({ idx, row, onChange, onRemove, maxOnd }) {
 }
 
 function PreviewDoc({ data }) {
-  const tv = v => v || "—";
+  const tv = v => v || "·";
   const strLabel = s => `${s.count || "?"} × PV ${s.orient === "Libre" ? (s.orientLibre || "?") : s.orient || "?"}`;
   // groupedStrings moved into installations.map in preview
   return (
@@ -1938,8 +1948,8 @@ function PreviewDoc({ data }) {
           <div style={{ fontSize: 11, fontWeight: 700, color: GREEN, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>Logistique</div>
           <table className="preview-table"><tbody>
             <tr><th>Parking</th><td>{tv(data.logistique.parking)}</td></tr>
-            <tr><th>Haut. corniche</th><td>{data.logistique.hauteurCorniche ? data.logistique.hauteurCorniche + " m" : "—"}</td></tr>
-            <tr><th>Haut. toit plat</th><td>{data.logistique.hauteurToitPlat ? data.logistique.hauteurToitPlat + " m" : "—"}</td></tr>
+            <tr><th>Haut. corniche</th><td>{data.logistique.hauteurCorniche ? data.logistique.hauteurCorniche + " m" : "·"}</td></tr>
+            <tr><th>Haut. toit plat</th><td>{data.logistique.hauteurToitPlat ? data.logistique.hauteurToitPlat + " m" : "·"}</td></tr>
             <tr><th>Accès toiture</th><td>{data.logistique.acces === "Autre" ? (data.logistique.autreAcces || "Autre") : tv(data.logistique.acces)}</td></tr>
             {[["lift","LIFT"],["nacelle","Nacelle"],["manitou","Manitou"],["grue","Grue"]].filter(([k]) => data.logistique[k] === "OUI").length > 0 && <tr><th>Engins</th><td>{[["lift","LIFT"],["nacelle","Nacelle"],["manitou","Manitou"],["grue","Grue"]].filter(function(p){ return data.logistique[p[0]] === "OUI"; }).map(function(p){ return p[1]; }).join(", ")}</td></tr>}
             <tr><th>Tuiles réserve</th><td>{tv(data.logistique.tuileReserve)}</td></tr>
@@ -1950,7 +1960,7 @@ function PreviewDoc({ data }) {
             {data.installations.map(function(inst, instIdx) {
         var t = inst.tech;
         var strs = inst.strings;
-        var tv2 = function(v){ return v || "—"; };
+        var tv2 = function(v){ return v || "·"; };
         return (
           <div key={instIdx} style={{ marginBottom: 18, pageBreakBefore: instIdx === 0 ? "always" : "avoid", breakBefore: instIdx === 0 ? "always" : "avoid" }}>
             {data.installations.length > 1 && (
@@ -1960,12 +1970,12 @@ function PreviewDoc({ data }) {
             )}
             <div style={{ fontSize: 11, fontWeight: 700, color: GREEN, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>Informations techniques</div>
             <table className="preview-table"><tbody>
-              <tr><th>Panneaux</th><td>{[t.panneaux.type, t.panneaux.nbr && t.panneaux.nbr + " pcs", t.panneaux.kWc && t.panneaux.kWc + " kWc"].filter(Boolean).join(" — ") || "—"}</td></tr>
+              <tr><th>Panneaux</th><td>{[t.panneaux.type, t.panneaux.nbr && t.panneaux.nbr + " pcs", t.panneaux.kWc && t.panneaux.kWc + " kWc"].filter(Boolean).join(" · ") || "·"}</td></tr>
               {t.panneaux2 && t.panneaux2.active && (t.panneaux2.type || t.panneaux2.nbr) && (
-                <tr><th>Panneaux 2</th><td>{[t.panneaux2.type, t.panneaux2.nbr && t.panneaux2.nbr + " pcs", t.panneaux2.kWc && t.panneaux2.kWc + " kWc"].filter(Boolean).join(" — ") || "—"}</td></tr>
+                <tr><th>Panneaux 2</th><td>{[t.panneaux2.type, t.panneaux2.nbr && t.panneaux2.nbr + " pcs", t.panneaux2.kWc && t.panneaux2.kWc + " kWc"].filter(Boolean).join(" · ") || "·"}</td></tr>
               )}
-              <tr><th>Toiture</th><td>{[t.toiture.main, t.toiture.main === "Plat" && t.toiture.orientPlat, t.toiture.main === "Incliné" && t.toiture.sub.join(", ")].filter(Boolean).join(" — ") || "—"}{t.toiture2 && t.toiture2.active && t.toiture2.main ? (" + " + [t.toiture2.main, t.toiture2.main === "Plat" && t.toiture2.orientPlat, t.toiture2.main === "Incliné" && (t.toiture2.sub||[]).join(", ")].filter(Boolean).join(" — ")) : ""}</td></tr>
-              {t.onduleurs.map(function(o, i) { return <tr key={i}><th>Onduleur {i + 1}</th><td>{[o.type, o.kva && o.kva + " kVA"].filter(Boolean).join(" — ") || "—"}</td></tr>; })}
+              <tr><th>Toiture</th><td>{[t.toiture.main, t.toiture.main === "Plat" && t.toiture.orientPlat, t.toiture.main === "Incliné" && t.toiture.sub.join(", ")].filter(Boolean).join(" · ") || "·"}{t.toiture2 && t.toiture2.active && t.toiture2.main ? (" + " + [t.toiture2.main, t.toiture2.main === "Plat" && t.toiture2.orientPlat, t.toiture2.main === "Incliné" && (t.toiture2.sub||[]).join(", ")].filter(Boolean).join(" · ")) : ""}</td></tr>
+              {t.onduleurs.map(function(o, i) { return <tr key={i}><th>Onduleur {i + 1}</th><td>{[o.type, o.kva && o.kva + " kVA"].filter(Boolean).join(" · ") || "·"}</td></tr>; })}
               <tr><th>Energy meter</th><td>{tv2(t.energyMeter)}</td></tr>
               <tr><th>Batterie</th><td>{t.batterie.inclus === "OUI" ? [t.batterie.qty && t.batterie.qty + "×", t.batterie.kwh && t.batterie.kwh + " kWh", t.batterie.type].filter(Boolean).join(" ") || "OUI" : tv2(t.batterie.inclus)}</td></tr>
               <tr><th>Borne recharge</th><td>{t.borne.inclus === "OUI" ? [t.borne.qty && t.borne.qty + "×", t.borne.type].filter(Boolean).join(" ") || "OUI" : tv2(t.borne.inclus)}</td></tr>
@@ -1974,10 +1984,10 @@ function PreviewDoc({ data }) {
               {t.compteurVert === "OUI" && <tr><th>Compteur vert</th><td>OUI</td></tr>}
               {t.greenbox === "OUI" && <tr><th>Greenbox</th><td>OUI</td></tr>}
               <tr><th>Réseau</th><td>{tv2(t.reseau)}</td></tr>
-              <tr><th>Disjoncteur général</th><td>{t.amperageDisj ? t.amperageDisj + " A" : "—"}</td></tr>
-              <tr><th>Compteur réseau</th><td>{[t.compteur.serie && "N° " + t.compteur.serie, t.compteur.ean && "EAN: " + t.compteur.ean].filter(Boolean).join(" — ") || "—"}</td></tr>
+              <tr><th>Disjoncteur général</th><td>{t.amperageDisj ? t.amperageDisj + " A" : "·"}</td></tr>
+              <tr><th>Compteur réseau</th><td>{[t.compteur.serie && "N° " + t.compteur.serie, t.compteur.ean && "EAN: " + t.compteur.ean].filter(Boolean).join(" · ") || "·"}</td></tr>
               <tr><th>Branchement onduleur</th><td>{tv2(t.branchementOnduleur)}</td></tr>
-              <tr><th>Distances</th><td>{[t.distances.onduleurTGBT && "Ond→TGBT: " + t.distances.onduleurTGBT + "m", t.distances.onduleurTD && "Ond→TD: " + t.distances.onduleurTD + "m", t.distances.borneTGBT && "Borne→TGBT: " + t.distances.borneTGBT + "m"].filter(Boolean).join(" | ") || "—"}</td></tr>
+              <tr><th>Distances</th><td>{[t.distances.onduleurTGBT && "Ond→TGBT: " + t.distances.onduleurTGBT + "m", t.distances.onduleurTD && "Ond→TD: " + t.distances.onduleurTD + "m", t.distances.borneTGBT && "Borne→TGBT: " + t.distances.borneTGBT + "m"].filter(Boolean).join(" | ") || "·"}</td></tr>
             </tbody></table>
             {strs.length > 0 && (
               <div style={{ marginTop: 10 }}>
@@ -1985,7 +1995,7 @@ function PreviewDoc({ data }) {
                 <table className="preview-table">
                   <thead><tr>{["String","Onduleur","Panneaux","Orientation"].map(function(h){ return <th key={h} style={{ background: GREEN, color: WHITE }}>{h}</th>; })}</tr></thead>
                   <tbody>
-                    {strs.map(function(s, i) { return <tr key={i}><td style={{ fontWeight: 600 }}>STR {i+1}</td><td>Onduleur {s.onduleur}</td><td>{s.count || "—"}</td><td>{s.orient === "Libre" ? (s.orientLibre || "—") : (s.orient || "—")}</td></tr>; })}
+                    {strs.map(function(s, i) { return <tr key={i}><td style={{ fontWeight: 600 }}>STR {i+1}</td><td>Onduleur {s.onduleur}</td><td>{s.count || "·"}</td><td>{s.orient === "Libre" ? (s.orientLibre || "·") : (s.orient || "·")}</td></tr>; })}
                   </tbody>
                 </table>
               </div>
@@ -2194,7 +2204,7 @@ function InstallationBlock(props) {
             </div>
             {tech.onduleurs.map(function(ond, i) { return (
               <div key={i} style={{ display: "grid", gridTemplateColumns: "1fr 130px 24px", gap: 8, alignItems: "flex-end", marginTop: 6 }}>
-                <Field label={"Onduleur " + (i+1) + " — Type / Modèle"} value={ond.type} onChange={function(v){ setTech(function(p){ return Object.assign({}, p, { onduleurs: p.onduleurs.map(function(o,idx){ return idx===i ? Object.assign({},o,{type:v}) : o; }) }); }); }} placeholder="Ex: Deye SUN-8K" />
+                <Field label={"Onduleur " + (i+1) + " · Type / Modèle"} value={ond.type} onChange={function(v){ setTech(function(p){ return Object.assign({}, p, { onduleurs: p.onduleurs.map(function(o,idx){ return idx===i ? Object.assign({},o,{type:v}) : o; }) }); }); }} placeholder="Ex: Deye SUN-8K" />
                 <Field label="Puissance" value={ond.kva} onChange={function(v){ setTech(function(p){ return Object.assign({}, p, { onduleurs: p.onduleurs.map(function(o,idx){ return idx===i ? Object.assign({},o,{kva:v}) : o; }) }); }); }} type="number" unit="kVA" />
                 {tech.onduleurs.length > 1 && <button onClick={function(){ setTech(function(p){ return Object.assign({}, p, { onduleurs: p.onduleurs.filter(function(_,idx){ return idx!==i; }) }); }); }} style={{ fontSize: 20, color: MUTED, background: "none", border: "none", cursor: "pointer", paddingBottom: 4 }}>×</button>}
               </div>
@@ -2229,7 +2239,7 @@ function InstallationBlock(props) {
                 <Toggle value={tech.ems.inclus} onChange={function(v){ setT("ems.inclus", v); }} />
                 {tech.ems.inclus === "OUI" && (
                   <select value={tech.ems.modele} onChange={function(e){ setT("ems.modele", e.target.value); }} style={{ fontSize: 13, padding: "5px 8px", borderRadius: 6, border: "1px solid " + BORDER }}>
-                    <option value="">— Choisir un EMS —</option>
+                    <option value="">Choisir un EMS</option>
                     {["Nexxtlab Smart Master Home", "Nexxtlab Smart Master Pro", "Huawei EMMA", "Eniris Home", "Autre"].map(function(o){ return <option key={o} value={o}>{o}</option>; })}
                   </select>
                 )}
@@ -2255,7 +2265,7 @@ function InstallationBlock(props) {
           </div>
 
           <div style={G2}>
-            <Field label="Compteur réseau — N° de série (optionnel)" value={tech.compteur.serie} onChange={function(v){ setT("compteur.serie", v); }} />
+            <Field label="Compteur réseau · N° de série (optionnel)" value={tech.compteur.serie} onChange={function(v){ setT("compteur.serie", v); }} />
             <Field label="EAN (optionnel)" value={tech.compteur.ean} onChange={function(v){ setT("compteur.ean", v); }} />
           </div>
 
@@ -2282,7 +2292,7 @@ function InstallationBlock(props) {
           <div style={SH}><span>📊</span> Configuration de strings</div>
           <button onClick={function(){ onAddString(instIdx); }} style={{ fontSize: 12, color: GREEN, background: "none", border: "1px dashed " + GREEN_MID, borderRadius: 6, padding: "4px 12px", cursor: "pointer", marginBottom: 14 }}>+ Ajouter un string</button>
         </div>
-        {strings.length === 0 && <div style={{ textAlign: "center", padding: "20px 0", fontSize: 13, color: "#aaa" }}>Aucun string — cliquez sur + Ajouter</div>}
+        {strings.length === 0 && <div style={{ textAlign: "center", padding: "20px 0", fontSize: 13, color: "#aaa" }}>Aucun string · cliquez sur + Ajouter</div>}
         {strings.map(function(row, i) { return <StringRow key={i} idx={i} row={row} onChange={function(r){ onUpdString(instIdx, i, r); }} onRemove={function(){ onDelString(instIdx, i); }} maxOnd={Math.max(1, tech.onduleurs.length)} />; })}
         {strings.length > 0 && (
           <div style={{ marginTop: 12, padding: "8px 12px", background: GREEN_LIGHT, borderRadius: 6, fontSize: 12, color: MUTED }}>
@@ -2352,7 +2362,7 @@ function CompletionBar({ done, total, nokCount, color }) {
   return (
     <div style={{ padding: "12px 14px", background: WHITE, borderRadius: 10, border: "1px solid "+BORDER, marginBottom: 14 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 7 }}>
-        <span style={{ fontSize: 13, fontWeight: 600, color: "#1a1a1a" }}>{done}/{total} items vérifiés — <strong style={{ color: barColor }}>{pct}%</strong></span>
+        <span style={{ fontSize: 13, fontWeight: 600, color: "#1a1a1a" }}>{done}/{total} items vérifiés · <strong style={{ color: barColor }}>{pct}%</strong></span>
         {nokCount > 0 && (
           <span style={{ background: "#e74c3c", color: WHITE, borderRadius: 12, padding: "2px 10px", fontSize: 12, fontWeight: 700 }}>⚠️ {nokCount} NOK</span>
         )}
@@ -2403,7 +2413,7 @@ function SelectField({ label, value, onChange, options }) {
     <div style={{ flex: 1, minWidth: 160 }}>
       <label style={{ fontSize: 12, color: MUTED, fontWeight: 500, marginBottom: 4, display: "block" }}>{label}</label>
       <select value={value||""} onChange={function(e){ onChange(e.target.value); }}>
-        <option value="">— Sélectionner —</option>
+        <option value="">Sélectionner</option>
         {options.map(function(o){ return <option key={o} value={o}>{o}</option>; })}
       </select>
     </div>
@@ -2687,7 +2697,7 @@ function DCTab({ data, setData, locked, isWGE, onUnlock }) {
       return n;
     });
   }
-  // Import des strings depuis le Briefing de Chantier — ne remplit QUE les champs
+  // Import des strings depuis le Briefing de Chantier · ne remplit QUE les champs
   // vides côté rapport (nom, nb PV, tension). Ne réduit jamais le nombre de strings,
   // ne touche jamais aux photos déjà prises sur chantier.
   async function importStringsFromBriefing() {
@@ -2700,7 +2710,7 @@ function DCTab({ data, setData, locked, isWGE, onUnlock }) {
     } else if (briefingData.installations) {
       pvArr = briefingData.installations;
     }
-    // Résolution du nom de chaque MPPT — doit se faire par installation, car un id
+    // Résolution du nom de chaque MPPT · doit se faire par installation, car un id
     // de MPPT n'a de sens que dans le contexte de l'installation PV qui le contient.
     var briefingStrings = [];
     pvArr.forEach(function(inst){
@@ -2735,11 +2745,11 @@ function DCTab({ data, setData, locked, isWGE, onUnlock }) {
       briefingStrings.forEach(function(s, i) {
         var orientLabel = s.orient === "Libre" ? (s.orientLibre||"") : (s.orient||"");
         var briefName = (s.name && s.name.trim()) ? s.name.trim()
-          : [s._mpptName, "Ond. "+(s.onduleur||"?"), orientLabel].filter(Boolean).join(" — ");
+          : [s._mpptName, "Ond. "+(s.onduleur||"?"), orientLabel].filter(Boolean).join(" · ");
         var briefCount    = s.count   || "";
         var briefTension  = s.tension || "";
 
-        // Ne remplit que les champs VIDES — ne jamais écraser une donnée déjà saisie sur chantier
+        // Ne remplit que les champs VIDES · ne jamais écraser une donnée déjà saisie sur chantier
         if (curNames[i])  { preservedCount++; } else if (briefName)    { curNames[i]  = briefName;  filledCount++; }
         if (!curCounts[i] && briefCount)   curCounts[i] = briefCount;
         if (!curTens[i]   && briefTension) curTens[i]   = briefTension;
@@ -2844,7 +2854,7 @@ function DCTab({ data, setData, locked, isWGE, onUnlock }) {
                   </div>
                   {isWGE && (
                     <button onClick={importStringsFromBriefing}
-                      title="Complète les strings vides avec les données du Briefing — ne modifie jamais les strings déjà renseignées"
+                      title="Complète les strings vides avec les données du Briefing · ne modifie jamais les strings déjà renseignées"
                       style={{ fontSize:11, color:DC_COLOR, background:DC_LIGHT, border:"1px solid "+DC_BORDER,
                         borderRadius:6, padding:"5px 10px", fontWeight:600, cursor:"pointer" }}>
                       📥 Importer les strings du Briefing
@@ -3084,7 +3094,7 @@ function BorneCard({ index, item, onChange, onRemove, canRemove, photos, setPhot
 
 
 // ── ACTab ─────────────────────────────────────────────
-// ── ACTab helpers (defined at TOP LEVEL — critical: defining inside ACTab
+// ── ACTab helpers (defined at TOP LEVEL · critical: defining inside ACTab
 //    creates a new function reference on every render → React unmounts/remounts
 //    children including <input> fields → focus lost after every keystroke) ───
 function ACGrandTitre({ title, emoji, children }) {
@@ -3259,7 +3269,7 @@ function ACTab({ data, setData, locked, isWGE, onUnlock }) {
                 )}
               </div>
               <ACPZ acPhotos={acPhotos} setPhotos={setPhotos} catKey={photoKey}
-                label={"📷 Fiche signalétique — "+(app.type||"Onduleur")+(app.nom?" ("+app.nom+")":"")}
+                label={"📷 Fiche signalétique · "+(app.type||"Onduleur")+(app.nom?" ("+app.nom+")":"")}
                 hiRes={true} />
             </div>
           );
@@ -3304,7 +3314,7 @@ function ACTab({ data, setData, locked, isWGE, onUnlock }) {
                 )}
               </div>
               <ACPZ acPhotos={acPhotos} setPhotos={setPhotos} catKey={photoKey}
-                label={"📷 "+(tab.type)+(tab.nom?" — "+tab.nom:"")}
+                label={"📷 "+(tab.type)+(tab.nom?" · "+tab.nom:"")}
                 hiRes={true} />
             </div>
           );
@@ -3555,7 +3565,7 @@ function MaintChip({label,selected,color,onClick}){
 
 /* ── PhotoZone ── */
 
-// Seuil d'alerte d'écart de tension (en %) — à ajuster selon la fréquence des alertes terrain.
+// Seuil d'alerte d'écart de tension (en %) · à ajuster selon la fréquence des alertes terrain.
 // La tension varie avec l'ensoleillement : on compare à la valeur théorique ET à la 1re mesure réelle (installation).
 const STRING_ALERT_PCT = 10;
 
@@ -3565,7 +3575,7 @@ function MaintStringTable({strings,onUpdate,onAdd,onDelete,getHistory,ondIdx,ond
   const upd=(i,patch)=>onUpdate(strRef.current.map((r,idx)=>idx===i?{...r,...patch}:r));
   const toNum=v=>{const n=parseFloat(String(v==null?"":v).replace(",",".")); return isNaN(n)?null:n;};
   const pctOf=(a,b)=>(a!=null&&b!=null&&b!==0)?((a-b)/b*100):null;
-  const fmtP=p=>p==null?"—":(p>0?"+":"")+p.toFixed(1)+"%";
+  const fmtP=p=>p==null?"·":(p>0?"+":"")+p.toFixed(1)+"%";
   const inp={width:"100%",fontSize:16,padding:"7px 8px",textAlign:"right",boxSizing:"border-box"};
   const lbl={fontSize:11,color:MUTED,marginBottom:2,display:"block"};
   return(
@@ -3597,13 +3607,13 @@ function MaintStringTable({strings,onUpdate,onAdd,onDelete,getHistory,ondIdx,ond
               <button onClick={()=>onDelete(i)} title="Supprimer ce string" style={{fontSize:18,color:MUTED,background:"none",border:"none",cursor:"pointer",padding:"0 6px",minHeight:36}}>×</button>
             </div>
             <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(96px,1fr))",gap:8}}>
-              <div><label style={lbl}>Théorique (V)</label><input type="number" inputMode="decimal" step="any" value={s.voltEst||""} onChange={e=>upd(i,{voltEst:e.target.value})} style={inp} placeholder="—"/></div>
-              <div><label style={lbl}>Installation (V)</label><input type="number" inputMode="decimal" step="any" value={s.voltInstall||""} onChange={e=>upd(i,{voltInstall:e.target.value})} style={inp} placeholder="—"/></div>
-              <div><label style={{...lbl,color:GREEN,fontWeight:700}}>Mesuré aujourd'hui (V)</label><input type="number" inputMode="decimal" step="any" value={s.voltMes||""} onChange={e=>upd(i,{voltMes:e.target.value})} style={{...inp,borderColor:alert1?"#e74c3c":undefined,fontWeight:700}} placeholder="—"/></div>
+              <div><label style={lbl}>Théorique (V)</label><input type="number" inputMode="decimal" step="any" value={s.voltEst||""} onChange={e=>upd(i,{voltEst:e.target.value})} style={inp} placeholder="·"/></div>
+              <div><label style={lbl}>Installation (V)</label><input type="number" inputMode="decimal" step="any" value={s.voltInstall||""} onChange={e=>upd(i,{voltInstall:e.target.value})} style={inp} placeholder="·"/></div>
+              <div><label style={{...lbl,color:GREEN,fontWeight:700}}>Mesuré aujourd'hui (V)</label><input type="number" inputMode="decimal" step="any" value={s.voltMes||""} onChange={e=>upd(i,{voltMes:e.target.value})} style={{...inp,borderColor:alert1?"#e74c3c":undefined,fontWeight:700}} placeholder="·"/></div>
               {["isolNeg","isolPos"].map(k=>{
                 const val=s[k], ok=val&&parseFloat(val)>=0.5;
                 return(<div key={k}><label style={lbl}>{k==="isolNeg"?"PE/− (MΩ)":"PE/+ (MΩ)"} {val?<b style={{color:ok?GREEN:"#e74c3c"}}>{ok?"✓":"⚠"}</b>:null}</label>
-                  <input type="number" inputMode="decimal" step="any" value={val||""} onChange={e=>upd(i,{[k]:e.target.value})} style={inp} placeholder="—"/></div>);
+                  <input type="number" inputMode="decimal" step="any" value={val||""} onChange={e=>upd(i,{[k]:e.target.value})} style={inp} placeholder="·"/></div>);
               })}
             </div>
             {alert1&&(
@@ -3623,23 +3633,23 @@ function MaintStringTable({strings,onUpdate,onAdd,onDelete,getHistory,ondIdx,ond
                       <th style={{padding:"5px 8px",textAlign:"left"}}>Relevé</th><th style={{padding:"5px 8px"}}>Tension (V)</th><th style={{padding:"5px 8px"}}>vs install.</th><th style={{padding:"5px 8px"}}>PE−/PE+ (MΩ)</th>
                     </tr></thead>
                     <tbody>
-                      <tr><td style={{padding:"4px 8px",border:"1px solid "+BORDER}}>Théorique (briefing)</td><td style={{padding:"4px 8px",border:"1px solid "+BORDER,textAlign:"center"}}>{theo!=null?theo:"—"}</td><td style={{border:"1px solid "+BORDER}}/><td style={{border:"1px solid "+BORDER}}/></tr>
-                      <tr><td style={{padding:"4px 8px",border:"1px solid "+BORDER}}>Installation (1re mesure)</td><td style={{padding:"4px 8px",border:"1px solid "+BORDER,textAlign:"center",fontWeight:700}}>{inst!=null?inst:"—"}</td><td style={{border:"1px solid "+BORDER}}/><td style={{border:"1px solid "+BORDER}}/></tr>
+                      <tr><td style={{padding:"4px 8px",border:"1px solid "+BORDER}}>Théorique (briefing)</td><td style={{padding:"4px 8px",border:"1px solid "+BORDER,textAlign:"center"}}>{theo!=null?theo:"·"}</td><td style={{border:"1px solid "+BORDER}}/><td style={{border:"1px solid "+BORDER}}/></tr>
+                      <tr><td style={{padding:"4px 8px",border:"1px solid "+BORDER}}>Installation (1re mesure)</td><td style={{padding:"4px 8px",border:"1px solid "+BORDER,textAlign:"center",fontWeight:700}}>{inst!=null?inst:"·"}</td><td style={{border:"1px solid "+BORDER}}/><td style={{border:"1px solid "+BORDER}}/></tr>
                       {hist.map((h,hi)=>{const hv=toNum(h.volt); const he=pctOf(hv,inst); const bad=he!=null&&Math.abs(he)>STRING_ALERT_PCT;
                         return(<tr key={hi}><td style={{padding:"4px 8px",border:"1px solid "+BORDER}}>{h.label}</td>
-                          <td style={{padding:"4px 8px",border:"1px solid "+BORDER,textAlign:"center"}}>{hv!=null?hv:"—"}</td>
+                          <td style={{padding:"4px 8px",border:"1px solid "+BORDER,textAlign:"center"}}>{hv!=null?hv:"·"}</td>
                           <td style={{padding:"4px 8px",border:"1px solid "+BORDER,textAlign:"center",color:bad?"#c0392b":GREEN,fontWeight:700}}>{fmtP(he)}</td>
-                          <td style={{padding:"4px 8px",border:"1px solid "+BORDER,textAlign:"center"}}>{(h.isolNeg||"—")+" / "+(h.isolPos||"—")}</td></tr>);})}
+                          <td style={{padding:"4px 8px",border:"1px solid "+BORDER,textAlign:"center"}}>{(h.isolNeg||"·")+" / "+(h.isolPos||"·")}</td></tr>);})}
                       <tr style={{background:GREEN_LIGHT}}><td style={{padding:"4px 8px",border:"1px solid "+BORDER,fontWeight:700}}>Aujourd'hui</td>
-                        <td style={{padding:"4px 8px",border:"1px solid "+BORDER,textAlign:"center",fontWeight:700}}>{mes!=null?mes:"—"}</td>
+                        <td style={{padding:"4px 8px",border:"1px solid "+BORDER,textAlign:"center",fontWeight:700}}>{mes!=null?mes:"·"}</td>
                         <td style={{padding:"4px 8px",border:"1px solid "+BORDER,textAlign:"center",color:alertInst?"#c0392b":GREEN,fontWeight:700}}>{fmtP(eInst)}</td>
-                        <td style={{padding:"4px 8px",border:"1px solid "+BORDER,textAlign:"center"}}>{(s.isolNeg||"—")+" / "+(s.isolPos||"—")}</td></tr>
+                        <td style={{padding:"4px 8px",border:"1px solid "+BORDER,textAlign:"center"}}>{(s.isolNeg||"·")+" / "+(s.isolPos||"·")}</td></tr>
                     </tbody>
                   </table>
                 </div>
                 {prev!=null&&mes!=null&&<div style={{fontSize:11,color:MUTED,marginTop:4}}>Évolution depuis le relevé précédent : <b>{fmtP(ePrev)}</b></div>}
                 <div style={{marginTop:8}}>
-                  <PhotoZone catKey={"maint_strmes_"+(ondId||ondIdx)+"_"+(s.num||i)} label={"📷 Photos de la mesure — STR "+(s.num||i+1)}
+                  <PhotoZone catKey={"maint_strmes_"+(ondId||ondIdx)+"_"+(s.num||i)} label={"📷 Photos de la mesure · STR "+(s.num||i+1)}
                     items={s.photos||[]} hiRes={true}
                     onAdd={arr=>upd(i,{photos:((strRef.current[i]&&strRef.current[i].photos)||[]).concat(arr)})}
                     onDelete={idx=>{ if(!window.confirm("Supprimer cette photo ?")) return; upd(i,{photos:((strRef.current[i]&&strRef.current[i].photos)||[]).filter((_,j)=>j!==idx)}); }}
@@ -3706,7 +3716,7 @@ function MaintOnduleurCard({idx,ond,onChange,onDelete,refChantier,getHistory,dcS
           <div style={{display:"flex",gap:8,alignItems:"center",marginTop:2,flexWrap:"wrap"}}>
             {ond.etat&&<span style={{fontSize:11,fontWeight:700,color:WHITE,background:statusColor,borderRadius:4,padding:"0px 6px"}}>{ond.etat}</span>}
             {ond.erreur&&ond.erreur.code&&<span style={{fontSize:11,color:"#e67e22"}}>Code: {ond.erreur.code}</span>}
-            {ond.majFirmware==="OUI"&&<span style={{fontSize:11,color:"#3498db"}}>MAJ: {ond.firmwareVersion||"—"}</span>}
+            {ond.majFirmware==="OUI"&&<span style={{fontSize:11,color:"#3498db"}}>MAJ: {ond.firmwareVersion||"·"}</span>}
             {ond.erreur&&ond.erreur.redemarrage&&<span style={{fontSize:11,color:GREEN}}>✓ Reboot</span>}
             {ond.stringsOk&&<span style={{fontSize:11,color:GREEN}}>✓ Strings OK</span>}
           </div>
@@ -3807,11 +3817,11 @@ function MaintOnduleurCard({idx,ond,onChange,onDelete,refChantier,getHistory,dcS
             </div>
             <div>
               <div style={{fontSize:13,fontWeight:600,color:ond.redemarrage?GREEN:"#1a1a1a"}}>Redémarrage complet attesté</div>
-              <div style={{fontSize:11,color:MUTED,marginTop:1}}>Commutateur DC OFF pendant AC déconnecté — durée &gt; 15 min</div>
+              <div style={{fontSize:11,color:MUTED,marginTop:1}}>Commutateur DC OFF pendant AC déconnecté · durée &gt; 15 min</div>
             </div>
           </div>
 
-          {/* Rapport d'erreur — visible seulement si état = Erreur */}
+          {/* Rapport d'erreur · visible seulement si état = Erreur */}
           {ond.etat==="Erreur"&&(
             <div style={{background:"#fff8f5",border:`1px solid ${"#e74c3c"}33`,borderRadius:8,padding:14,display:"flex",flexDirection:"column",gap:12}}>
               <div style={{fontSize:12,fontWeight:700,color:"#e74c3c",textTransform:"uppercase",letterSpacing:"0.06em"}}>Rapport d'erreur</div>
@@ -3858,7 +3868,7 @@ function MaintOnduleurCard({idx,ond,onChange,onDelete,refChantier,getHistory,dcS
                           <td style={{fontWeight:500,padding:"5px 8px",border:`1px solid ${BORDER}`,width:"30%",fontSize:12}}>{lbl}</td>
                           <td style={{padding:"3px 8px",border:`1px solid ${BORDER}`}}>
                             <div style={{display:"flex",alignItems:"center",gap:5}}>
-                              <input type="number" step="any" value={val} onChange={e=>set("ac",{...(ond.ac||{}),[k]:e.target.value})} placeholder="—" style={{width:74,textAlign:"right"}}/>
+                              <input type="number" step="any" value={val} onChange={e=>set("ac",{...(ond.ac||{}),[k]:e.target.value})} placeholder="·" style={{width:74,textAlign:"right"}}/>
                               <span style={{fontSize:11,color:MUTED}}>MΩ</span>
                               {val&&<span style={{fontSize:10,fontWeight:700,color:WHITE,background:ok?GREEN:"#e74c3c",borderRadius:3,padding:"0 4px"}}>{ok?"OK":"⚠"}</span>}
                             </div>
@@ -3880,7 +3890,7 @@ function MaintOnduleurCard({idx,ond,onChange,onDelete,refChantier,getHistory,dcS
                           <td style={{fontWeight:500,padding:"4px 8px",border:`1px solid ${BORDER}`,width:"30%",fontSize:12}}>{lbl}</td>
                           <td style={{padding:"3px 8px",border:`1px solid ${BORDER}`}}>
                             <div style={{display:"flex",alignItems:"center",gap:5}}>
-                              <input type="number" step="any" value={val} onChange={e=>set("ac",{...(ond.ac||{}),[k]:e.target.value})} placeholder="—" style={{width:74,textAlign:"right"}}/>
+                              <input type="number" step="any" value={val} onChange={e=>set("ac",{...(ond.ac||{}),[k]:e.target.value})} placeholder="·" style={{width:74,textAlign:"right"}}/>
                               <span style={{fontSize:11,color:MUTED}}>V</span>
                             </div>
                           </td>
@@ -3909,7 +3919,7 @@ function MaintOnduleurCard({idx,ond,onChange,onDelete,refChantier,getHistory,dcS
           {/* Strings DC */}
           <div>
             <div style={{fontSize:12,fontWeight:700,color:GREEN,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:10,paddingBottom:6,borderBottom:`1px solid ${GREEN_MID}`}}>
-              Mesures DC — Strings
+              Mesures DC · Strings
             </div>
             <MaintStringTable
               strings={allStr} getHistory={getHistory} ondIdx={idx} ondId={ond.id} onImport={importFromDC}
@@ -3939,7 +3949,7 @@ function MaintOnduleurCard({idx,ond,onChange,onDelete,refChantier,getHistory,dcS
                 {ond.stringsOk&&<span style={{color:WHITE,fontSize:13,fontWeight:700}}>✓</span>}
               </div>
               <div style={{fontSize:13,fontWeight:ond.stringsOk?700:500,color:ond.stringsOk?GREEN:"#1a1a1a"}}>
-                Strings OK — toutes les mesures DC sont conformes
+                Strings OK · toutes les mesures DC sont conformes
               </div>
             </div>
           </div>
@@ -3982,7 +3992,7 @@ function DureeIntervention({ value, onChange }) {
       </label>
       <select value={value || ""} onChange={function(e){ onChange(e.target.value ? parseInt(e.target.value, 10) : ""); }}
         style={{ fontSize: 16, minHeight: 44, width: "100%", maxWidth: 320 }}>
-        <option value="">— Choisir la durée —</option>
+        <option value="">Choisir la durée</option>
         {DUREE_OPTIONS.map(function(m){ return <option key={m} value={m}>{fmtDuree(m)}</option>; })}
       </select>
       <div style={{ fontSize: 11, color: MUTED, marginTop: 6 }}>Temps total passé sur place (par tranche de 15 minutes), à renseigner avant de clôturer l'intervention.</div>
@@ -4050,7 +4060,7 @@ function SAVCard({ sav, idx, onChange, onDelete, photos, setPhotos, refChantier 
         </span>
         <span style={{ fontSize: 12, color: MUTED }}>
           {sav.date || "Sans date"}
-          {sav.intervenant && " — " + sav.intervenant}
+          {sav.intervenant && " · " + sav.intervenant}
         </span>
         <span style={{ fontSize: 11, fontWeight: 700, background: sc.border,
           color: WHITE, borderRadius: 5, padding: "1px 8px", marginLeft: "auto" }}>
@@ -4111,7 +4121,7 @@ function SAVCard({ sav, idx, onChange, onDelete, photos, setPhotos, refChantier 
             <label style={{ fontSize: 12, color: MUTED, fontWeight: 500, marginBottom: 4, display: "block" }}>Pièces remplacées</label>
             <input type="text" value={sav.piecesRemplacees||""}
               onChange={function(e){ onChange({...sav, piecesRemplacees: e.target.value}); }}
-              placeholder="ex: Onduleur Fronius Primo 6.0 — réf. 12345" />
+              placeholder="ex: Onduleur Fronius Primo 6.0 · réf. 12345" />
           </div>
 
           {/* Photos */}
@@ -4120,7 +4130,7 @@ function SAVCard({ sav, idx, onChange, onDelete, photos, setPhotos, refChantier 
             <div style={{ minWidth:0 }}>{pz(photoApresKey, "📷 Photos APRÈS")}</div>
           </div>
 
-          {/* Durée d'intervention (obligatoire) — juste avant la clôture */}
+          {/* Durée d'intervention (obligatoire) · juste avant la clôture */}
           <DureeIntervention value={sav.dureeMin} onChange={function(v){ onChange({...sav, dureeMin: v}); }} />
 
           {/* Delete */}
@@ -4376,7 +4386,7 @@ function AdminTab({ data, setData }) {
         </div>
         {conformite === "non_conforme" && (
           <div style={{ marginTop: 10, padding: "8px 11px", background: "#fdecea", borderRadius: 7, fontSize: 12, color: "#c0392b", border: "1px solid #f1948a" }}>
-            ⚠️ Non-conformité RGIE — assurez-vous de joindre le rapport et les documents GRD correspondants.
+            ⚠️ Non-conformité RGIE · assurez-vous de joindre le rapport et les documents GRD correspondants.
           </div>
         )}
       </div>
@@ -4541,7 +4551,7 @@ function SAVTab({ data, setData }) {
   );
 }
 
-// ── Maintenance Tab — stocké dans data.maintenanceVisites (comme SAV) ─────────
+// ── Maintenance Tab · stocké dans data.maintenanceVisites (comme SAV) ─────────
 function makeDefaultVisite() {
   return {
     id: Date.now(),
@@ -4586,7 +4596,7 @@ function MaintenanceTab({ data, setData }) {
   }
 
   function fmtDate(iso) {
-    if (!iso) return "—";
+    if (!iso) return "·";
     return new Date(iso).toLocaleDateString("fr-BE", { day:"2-digit", month:"2-digit", year:"numeric" });
   }
 
@@ -4618,8 +4628,8 @@ function MaintenanceTab({ data, setData }) {
                 </div>
                 <div style={{ fontSize:11, color:MUTED, marginTop:3 }}>
                   {fmtDate(visite.date)}
-                  {visite.responsable && " — " + visite.responsable}
-                  {" — " + onds.length + " onduleur(s)"}
+                  {visite.responsable && " · " + visite.responsable}
+                  {" · " + onds.length + " onduleur(s)"}
                 </div>
               </div>
               <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
@@ -4800,7 +4810,7 @@ function MaintenanceTab({ data, setData }) {
         />
       </div>
 
-      {/* Durée d'intervention (obligatoire) — juste avant la clôture de la visite */}
+      {/* Durée d'intervention (obligatoire) · juste avant la clôture de la visite */}
       <div style={{ marginTop:14 }}>
         <DureeIntervention value={visite.dureeMin} onChange={function(v){ patchVisiteById(function(x){ return Object.assign({}, x, { dureeMin: v }); }); }} />
       </div>
@@ -4906,7 +4916,7 @@ function ProgressPanel({ data, onClose }) {
   // Maintenance : photos rattachées aux onduleurs (fiche, erreur, AC, DC) et aux mesures de strings
   (data.maintenanceVisites||[]).forEach(function(v, vi){
     (v.onduleurs||[]).forEach(function(o, oi){
-      var sec = "Visite "+(vi+1)+" — Onduleur "+(oi+1);
+      var sec = "Visite "+(vi+1)+" · Onduleur "+(oi+1);
       function pushP(p, cat) {
         if (!p || !p.url || wgeIsVideo(p)) return;
         allPhotos.push({ url:p.url, name:p.name||"", addedAt:p.addedAt||null, uploadedBy:p.uploadedBy||"",
@@ -4960,7 +4970,7 @@ function ProgressPanel({ data, onClose }) {
   var dayActivities = {};
   function addActivity(day, a) { if (!day) return; (dayActivities[day] = dayActivities[day] || []).push(a); }
   (data.sav||[]).forEach(function(sv, si) {
-    addActivity(String(sv.date||"").slice(0,10), { color:"#f39c12", bg:"#fffbf0", title:"🔧 SAV n°"+(si+1)+(sv.type?" — "+sv.type:""),
+    addActivity(String(sv.date||"").slice(0,10), { color:"#f39c12", bg:"#fffbf0", title:"🔧 SAV n°"+(si+1)+(sv.type?" · "+sv.type:""),
       who:sv.intervenant||"", badge:sv.statut||"",
       lines:[["Durée", fmtDuree(sv.dureeMin)],["Problème", sv.description],["Actions", sv.actionsEffectuees],["Pièces", sv.piecesRemplacees]] });
   });
@@ -4979,7 +4989,7 @@ function ProgressPanel({ data, onClose }) {
     });
     addActivity(String(v.date||"").slice(0,10), { color:GREEN, bg:GREEN_LIGHT, title:"🔩 Visite de maintenance n°"+(vi+1),
       who:v.technicien||v.responsable||"", badge:onds.length+" onduleur"+(onds.length>1?"s":""),
-      lines:[["Durée", fmtDuree(v.dureeMin)],["Strings mesurés", measured ? measured+(alerts?" — ⚠️ "+alerts+" en alerte":" — aucune alerte") : ""],["Onduleurs en erreur", errs.join(" ; ")],["Remarques", v.remarques]] });
+      lines:[["Durée", fmtDuree(v.dureeMin)],["Strings mesurés", measured ? measured+(alerts?" · ⚠️ "+alerts+" en alerte":" · aucune alerte") : ""],["Onduleurs en erreur", errs.join(" ; ")],["Remarques", v.remarques]] });
   });
 
   // Group by day
@@ -5011,7 +5021,7 @@ function ProgressPanel({ data, onClose }) {
       background:WHITE, boxShadow:"-4px 0 28px rgba(0,0,0,0.15)", zIndex:9990,
       display:"flex", flexDirection:"column", fontFamily:"inherit" }}>
 
-      {/* ── Zoom lightbox — navigable, avec les infos de la photo en tête ── */}
+      {/* ── Zoom lightbox · navigable, avec les infos de la photo en tête ── */}
       {zoomPhoto && (
         <div className="photo-lightbox-overlay"
           onClick={function(e){ if(e.target===e.currentTarget) closeZoom(); }}
@@ -5033,7 +5043,7 @@ function ProgressPanel({ data, onClose }) {
               )}
               {(zoomPhoto.tab||zoomPhoto.section) && (
                 <span style={{ background:"rgba(255,255,255,0.14)", color:"#ddd", borderRadius:20, padding:"3px 11px", fontSize:11.5 }}>
-                  🏷 {[zoomPhoto.tab, zoomPhoto.section].filter(Boolean).join(" — ")}
+                  🏷 {[zoomPhoto.tab, zoomPhoto.section].filter(Boolean).join(" · ")}
                 </span>
               )}
               {zoomList && zoomList.length>1 && (
@@ -5082,7 +5092,7 @@ function ProgressPanel({ data, onClose }) {
         <div>
           <div style={{ fontWeight:700, fontSize:14 }}>📅 Avancement par jour</div>
           <div style={{ fontSize:11, opacity:0.75, marginTop:2 }}>
-            {data.meta.ref} — {data.meta.client || ""}
+            {data.meta.ref} · {data.meta.client || ""}
             {totalPhotos > 0 && <span style={{ marginLeft:8 }}>{totalPhotos} photo{totalPhotos>1?"s":""}</span>}
           </div>
         </div>
@@ -5152,7 +5162,7 @@ function ProgressPanel({ data, onClose }) {
             // Group this person's photos by section
             var secMap = {}; var secOrder = [];
             actor.photos.forEach(function(p) {
-              var k = (p.tab||"?")+" — "+(p.section||"?");
+              var k = (p.tab||"?")+" · "+(p.section||"?");
               if (!secMap[k]) { secMap[k] = { tab:p.tab, tabColor:p.tabColor, section:p.section, photos:[] }; secOrder.push(k); }
               secMap[k].photos.push(p);
             });
@@ -5179,7 +5189,7 @@ function ProgressPanel({ data, onClose }) {
                       return (
                         <div key={ji} style={{ marginBottom:8, background:"#fff8e8",
                           border:"1px solid #f39c1244", borderRadius:7, padding:"8px 10px", fontSize:11, color:"#856404" }}>
-                          ✅ Journée clôturée ({j.tab}) — {dateStr} {j.heure?"à "+j.heure:""}
+                          ✅ Journée clôturée ({j.tab}) · {dateStr} {j.heure?"à "+j.heure:""}
                           {j.note && <div style={{ marginTop:3, color:"#555", fontStyle:"italic" }}>{j.note}</div>}
                           {j.audioUrl && <audio controls src={j.audioUrl} style={{ width:"100%", marginTop:5, height:32 }} />}
                         </div>
@@ -5196,7 +5206,7 @@ function ProgressPanel({ data, onClose }) {
                               cursor:"pointer", background:secOpen2?(sec.tabColor||"#888")+"12":"#f8f8f6",
                               border:"1px solid "+((secOpen2 ? sec.tabColor||"#888" : "#e8e8e4")+"44") }}>
                             <span style={{ width:8, height:8, borderRadius:"50%", background:sec.tabColor||"#888", flexShrink:0 }} />
-                            <span style={{ flex:1, fontWeight:600, fontSize:12 }}>{sec.tab} — {sec.section}</span>
+                            <span style={{ flex:1, fontWeight:600, fontSize:12 }}>{sec.tab} · {sec.section}</span>
                             <span style={{ fontSize:11, color:sec.tabColor||"#888", fontWeight:700 }}>{sec.photos.length} photo{sec.photos.length>1?"s":""}</span>
                             <span style={{ fontSize:10, color:MUTED, transform:secOpen2?"rotate(180deg)":"none" }}>▼</span>
                           </div>
@@ -5228,7 +5238,7 @@ function ProgressPanel({ data, onClose }) {
           });
         })()}
 
-        {/* ── VUE PAR JOUR — liste verticale, tous les jours visibles d'un coup d'œil ── */}
+        {/* ── VUE PAR JOUR · liste verticale, tous les jours visibles d'un coup d'œil ── */}
         {viewMode === "byDay" && days.map(function(day, dIdx) {
           var dayPhotos   = byDay[day];
           var dayJournees = allJourneesMap[day] || [];
@@ -5249,7 +5259,7 @@ function ProgressPanel({ data, onClose }) {
 
           return (
             <div key={day} style={{ marginBottom:8, borderRadius:9, border:"1px solid #e8e8e4", overflow:"hidden" }}>
-              {/* Day header — cliquable, toujours visible pour une vue d'ensemble de toutes les journées */}
+              {/* Day header · cliquable, toujours visible pour une vue d'ensemble de toutes les journées */}
               <div onClick={function(){ setExpandedDay(isOpen ? "" : day); }}
                 style={{ padding:"11px 14px", background:isOpen?GREEN_LIGHT:"#fafaf8", cursor:"pointer",
                   display:"flex", alignItems:"center", justifyContent:"space-between", gap:8 }}>
@@ -5280,7 +5290,7 @@ function ProgressPanel({ data, onClose }) {
                         border:"1.5px solid #f39c12", borderRadius:8, padding:"9px 12px" }}>
                         <div style={{ fontWeight:700, fontSize:11, color:"#856404",
                           display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
-                          ✅ Journée clôturée — {j.tab}
+                          ✅ Journée clôturée · {j.tab}
                           {j.heure && <span style={{ fontWeight:400, color:MUTED }}>à {j.heure}</span>}
                           {j.auteur && <span style={{ color:"#6c3483" }}>· 👤 {j.auteur}</span>}
                         </div>
@@ -5322,7 +5332,7 @@ function ProgressPanel({ data, onClose }) {
                     </div>
                   )}
 
-                  {/* Sections avec photos — photos en défilement horizontal */}
+                  {/* Sections avec photos · photos en défilement horizontal */}
                   {daySections.map(function(s, si) {
                     var secKey = day+"|"+s.tab+"|"+s.section;
                     var secOpen = expandedSection === secKey;
@@ -5335,7 +5345,7 @@ function ProgressPanel({ data, onClose }) {
                             background:secOpen?s.tabColor+"12":"#f8f8f6",
                             border:"1px solid "+(secOpen?s.tabColor+"44":"#e8e8e4") }}>
                           <span style={{ width:8, height:8, borderRadius:"50%", background:s.tabColor, flexShrink:0 }} />
-                          <span style={{ flex:1, fontWeight:600, fontSize:12 }}>{s.tab} — {s.section}</span>
+                          <span style={{ flex:1, fontWeight:600, fontSize:12 }}>{s.tab} · {s.section}</span>
                           <span style={{ fontSize:11, color:s.tabColor, fontWeight:700 }}>{s.photos.length} photo{s.photos.length>1?"s":""}</span>
                           <span style={{ fontSize:10, color:MUTED, transform:secOpen?"rotate(180deg)":"none", transition:"0.2s" }}>▼</span>
                         </div>
@@ -5431,7 +5441,7 @@ function HistoryPanel({ refChantier, sheetId, sheetLabel, onRestore, onClose }) 
   }, [refChantier, sheetId]);
 
   function fmtDate(iso) {
-    if (!iso) return "—";
+    if (!iso) return "·";
     var d = new Date(iso);
     return d.toLocaleDateString("fr-BE", { day:"2-digit", month:"2-digit", year:"numeric" }) + " " +
            d.toLocaleTimeString("fr-BE", { hour:"2-digit", minute:"2-digit" });
@@ -5450,9 +5460,9 @@ function HistoryPanel({ refChantier, sheetId, sheetLabel, onRestore, onClose }) 
         display:"flex", alignItems:"center", justifyContent:"space-between",
         background:GREEN, color:WHITE, flexShrink:0 }}>
         <div>
-          <div style={{ fontWeight:700, fontSize:13 }}>📋 Historique — {refChantier}</div>
+          <div style={{ fontWeight:700, fontSize:13 }}>📋 Historique · {refChantier}</div>
           {sheetLabel && <div style={{ fontSize:11, opacity:0.75, marginTop:2 }}>{sheetLabel}</div>}
-          {!sheetId && <div style={{ fontSize:11, opacity:0.6, marginTop:2 }}>Aucune feuille ouverte — journal global seulement</div>}
+          {!sheetId && <div style={{ fontSize:11, opacity:0.6, marginTop:2 }}>Aucune feuille ouverte · journal global seulement</div>}
         </div>
         <button onClick={onClose} style={{ background:"rgba(255,255,255,0.18)", border:"none",
           color:WHITE, borderRadius:6, padding:"3px 9px", cursor:"pointer", fontSize:15 }}>✕</button>
@@ -5560,7 +5570,7 @@ function HistoryPanel({ refChantier, sheetId, sheetLabel, onRestore, onClose }) 
 }
 
 
-// ── ChantierPanel (lecture seule — fiche complète) ─────────────────────────
+// ── ChantierPanel (lecture seule · fiche complète) ─────────────────────────
 function ChantierPanel({ refChantier, onClose }) {
   var [chData, setChData] = useState(null);
   var [loading, setLoading] = useState(true);
@@ -5577,7 +5587,7 @@ function ChantierPanel({ refChantier, onClose }) {
     });
   }, [refChantier]);
 
-  function tv(v) { return v || "—"; }
+  function tv(v) { return v || "·"; }
 
   function Section({ id, title, children }) {
     var open = openSection === id;
@@ -5596,7 +5606,7 @@ function ChantierPanel({ refChantier, onClose }) {
   }
 
   function Row({ label, value }) {
-    if (!value || value === "—") return null;
+    if (!value || value === "·") return null;
     return (
       <div style={{ display:"flex", gap:8, padding:"5px 0",
         borderBottom:"1px solid #f5f5f0", fontSize:13, alignItems:"flex-start" }}>
@@ -5624,7 +5634,7 @@ function ChantierPanel({ refChantier, onClose }) {
         <div>
           <div style={{ fontWeight:700, fontSize:14 }}>📋 Briefing de Chantier</div>
           <div style={{ fontSize:11, opacity:0.75, marginTop:2 }}>
-            {refChantier} — Lecture seule
+            {refChantier} · Lecture seule
           </div>
         </div>
         <button onClick={onClose} style={{ background:"rgba(255,255,255,0.2)", border:"none",
@@ -5635,7 +5645,7 @@ function ChantierPanel({ refChantier, onClose }) {
       <div style={{ background:"#fff8e1", borderBottom:"1px solid #ffe082",
         padding:"6px 14px", fontSize:11, color:"#856404", flexShrink:0,
         display:"flex", alignItems:"center", gap:6 }}>
-        👁️ Données du briefing — modifications uniquement dans l'app Briefing de Chantier
+        👁️ Données du briefing · modifications uniquement dans l'app Briefing de Chantier
       </div>
 
       <div style={{ flex:1, overflow:"auto", padding:"10px 12px" }}>
@@ -5680,14 +5690,14 @@ function ChantierPanel({ refChantier, onClose }) {
                 <div key={instIdx}>
                   <Section id={"tech"+instIdx} title={"🔧 Technique" + pfx}>
                     {t.panneaux && (t.panneaux.type || t.panneaux.nbr) && (
-                      <Row label="Panneaux" value={[t.panneaux.type, t.panneaux.nbr && t.panneaux.nbr+" pcs", t.panneaux.kWc && t.panneaux.kWc+" kWc"].filter(Boolean).join(" — ")} />
+                      <Row label="Panneaux" value={[t.panneaux.type, t.panneaux.nbr && t.panneaux.nbr+" pcs", t.panneaux.kWc && t.panneaux.kWc+" kWc"].filter(Boolean).join(" · ")} />
                     )}
                     {t.panneaux2 && t.panneaux2.active && (t.panneaux2.type || t.panneaux2.nbr) && (
-                      <Row label="Panneaux 2" value={[t.panneaux2.type, t.panneaux2.nbr && t.panneaux2.nbr+" pcs", t.panneaux2.kWc && t.panneaux2.kWc+" kWc"].filter(Boolean).join(" — ")} />
+                      <Row label="Panneaux 2" value={[t.panneaux2.type, t.panneaux2.nbr && t.panneaux2.nbr+" pcs", t.panneaux2.kWc && t.panneaux2.kWc+" kWc"].filter(Boolean).join(" · ")} />
                     )}
-                    <Row label="Toiture" value={[t.toiture && t.toiture.main, t.toiture && t.toiture.main==="Incliné" && (t.toiture.sub||[]).join(", "), t.toiture && t.toiture.main==="Plat" && t.toiture.orientPlat].filter(Boolean).join(" — ")} />
+                    <Row label="Toiture" value={[t.toiture && t.toiture.main, t.toiture && t.toiture.main==="Incliné" && (t.toiture.sub||[]).join(", "), t.toiture && t.toiture.main==="Plat" && t.toiture.orientPlat].filter(Boolean).join(" · ")} />
                     {(t.onduleurs||[]).map(function(o, i) {
-                      return <Row key={i} label={"Onduleur " + (i+1)} value={[o.type, o.kva && o.kva+" kVA"].filter(Boolean).join(" — ")} />;
+                      return <Row key={i} label={"Onduleur " + (i+1)} value={[o.type, o.kva && o.kva+" kVA"].filter(Boolean).join(" · ")} />;
                     })}
                     {t.batterie && t.batterie.inclus === "OUI" && (
                       <Row label="Batterie" value={[t.batterie.qty && t.batterie.qty+"×", t.batterie.kwh && t.batterie.kwh+" kWh", t.batterie.type].filter(Boolean).join(" ")} />
@@ -5704,7 +5714,7 @@ function ChantierPanel({ refChantier, onClose }) {
                     <Row label="Ond→TGBT" value={t.distances && t.distances.onduleurTGBT && (t.distances.onduleurTGBT + " m")} />
                     <Row label="Ond→TD" value={t.distances && t.distances.onduleurTD && (t.distances.onduleurTD + " m")} />
                     <Row label="Borne→TGBT" value={t.distances && t.distances.borneTGBT && (t.distances.borneTGBT + " m")} />
-                    <Row label="Compteur réseau" value={t.compteur && [t.compteur.serie && "N° "+t.compteur.serie, t.compteur.ean && "EAN: "+t.compteur.ean].filter(Boolean).join(" — ")} />
+                    <Row label="Compteur réseau" value={t.compteur && [t.compteur.serie && "N° "+t.compteur.serie, t.compteur.ean && "EAN: "+t.compteur.ean].filter(Boolean).join(" · ")} />
                     {t.accessoires && <Row label="Accessoires" value={t.accessoires} />}
                   </Section>
 
@@ -5840,14 +5850,14 @@ function ChantierPanel({ refChantier, onClose }) {
 
               return allBlocks.map(function(b, idx) {
                 var tech = b.tech, elec = b.elec;
-                var pfx = (b.nbSites > 1 ? " — Site "+(b.si+1) : "") + (b.total > 1 ? " — Inst. "+(b.ii+1) : "");
+                var pfx = (b.nbSites > 1 ? " · Site "+(b.si+1) : "") + (b.total > 1 ? " · Inst. "+(b.ii+1) : "");
                 var rows = [
                   tech.panneaux && tech.panneaux.nbr && ["Panneaux",
-                    [tech.panneaux.nbr+" pcs", tech.panneaux.type, tech.panneaux.kWc&&tech.panneaux.kWc+" kWc"].filter(Boolean).join(" — ")],
+                    [tech.panneaux.nbr+" pcs", tech.panneaux.type, tech.panneaux.kWc&&tech.panneaux.kWc+" kWc"].filter(Boolean).join(" · ")],
                   tech.panneaux2 && tech.panneaux2.active && (tech.panneaux2.type||tech.panneaux2.nbr) && ["Panneaux 2",
-                    [tech.panneaux2.nbr&&tech.panneaux2.nbr+" pcs", tech.panneaux2.type, tech.panneaux2.kWc&&tech.panneaux2.kWc+" kWc"].filter(Boolean).join(" — ")],
+                    [tech.panneaux2.nbr&&tech.panneaux2.nbr+" pcs", tech.panneaux2.type, tech.panneaux2.kWc&&tech.panneaux2.kWc+" kWc"].filter(Boolean).join(" · ")],
                   tech.onduleurs && tech.onduleurs.length > 0 && ["Onduleur(s)",
-                    tech.onduleurs.map(function(o){ return [o.type, o.kva&&o.kva+" kVA"].filter(Boolean).join(" "); }).filter(Boolean).join(", ")||"—"],
+                    tech.onduleurs.map(function(o){ return [o.type, o.kva&&o.kva+" kVA"].filter(Boolean).join(" "); }).filter(Boolean).join(", ")||"·"],
                   tech.batterie && tech.batterie.inclus && ["Batterie",
                     tech.batterie.inclus==="OUI"
                       ? [tech.batterie.qty&&tech.batterie.qty+"×", tech.batterie.kwh&&tech.batterie.kwh+" kWh", tech.batterie.type].filter(Boolean).join(" ")||"OUI"
@@ -5856,7 +5866,7 @@ function ChantierPanel({ refChantier, onClose }) {
                     [tech.borne.qty&&tech.borne.qty+"×", tech.borne.type].filter(Boolean).join(" ")||"OUI"],
                   elec.amperageDisj && ["Disj. général", elec.amperageDisj+" A"],
                   elec.compteur && (elec.compteur.serie||elec.compteur.ean) && ["Compteur",
-                    [elec.compteur.serie&&"N° "+elec.compteur.serie, elec.compteur.ean&&"EAN: "+elec.compteur.ean].filter(Boolean).join(" — ")],
+                    [elec.compteur.serie&&"N° "+elec.compteur.serie, elec.compteur.ean&&"EAN: "+elec.compteur.ean].filter(Boolean).join(" · ")],
                   elec.reseau && ["Réseau", elec.reseau],
                 ].filter(Boolean);
 
@@ -5881,7 +5891,7 @@ function ChantierPanel({ refChantier, onClose }) {
         )}
       </div>
 
-      {/* Lightbox interne — remplace window.open pour revenir facilement */}
+      {/* Lightbox interne · remplace window.open pour revenir facilement */}
       {lightboxUrl && (
         <div onClick={function(){ setLightboxUrl(null); }}
           style={{ position:"fixed", inset:0, zIndex:9999, background:"rgba(0,0,0,0.92)",
@@ -5982,7 +5992,7 @@ function SheetSelector({ refChantier, currentId, onSelect, onNew, onDelete, isWG
           });
           setOrdered(result);
         } else {
-          // Fallback localStorage — et migration automatique vers Supabase
+          // Fallback localStorage · et migration automatique vers Supabase
           var localOrder = getSheetOrder(refChantier);
           setOrdered(applySortOrder(rows || [], refChantier));
           // Si localStorage a des données (sections déjà créées avant cette version),
@@ -6083,7 +6093,7 @@ function SheetSelector({ refChantier, currentId, onSelect, onNew, onDelete, isWG
       {/* Header row */}
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:8 }}>
         <div style={{ fontWeight:700, fontSize:12, color:GREEN, textTransform:"uppercase", letterSpacing:"0.06em" }}>
-          📋 Rapports de chantier — {refChantier}
+          📋 Rapports de chantier · {refChantier}
           {loadingList && <span style={{ fontWeight:400, color:MUTED, marginLeft:8 }}>⏳</span>}
           {!loadingList && sheets.length>0 && <span style={{ fontWeight:400, color:MUTED, marginLeft:6 }}>({sheets.length})</span>}
         </div>
@@ -6163,7 +6173,7 @@ function SheetSelector({ refChantier, currentId, onSelect, onNew, onDelete, isWG
 
       {!loadingList && sheets.length===0 && !showNew && (
         <div style={{ fontSize:12, color:MUTED, fontStyle:"italic" }}>
-          Aucune feuille — créez-en une avec le bouton ci-dessus.
+          Aucune feuille · créez-en une avec le bouton ci-dessus.
         </div>
       )}
 
@@ -6274,7 +6284,7 @@ function SheetSelector({ refChantier, currentId, onSelect, onNew, onDelete, isWG
                     ouverte
                   </span>
                 )}
-                {/* ⋯ menu — Renommer uniquement, pas de Supprimer */}
+                {/* ⋯ menu · Renommer uniquement, pas de Supprimer */}
                 {isWGE && !isEditing && (
                   <div style={{ position:"relative", flexShrink:0 }} onClick={function(e){ e.stopPropagation(); }}>
                     <button onClick={function(e){ e.stopPropagation(); setMenuOpenId(menuOpenId===sheet.id?null:sheet.id); }}
@@ -6331,7 +6341,7 @@ function SheetSelector({ refChantier, currentId, onSelect, onNew, onDelete, isWG
 // ── LockBanner ──────────────────────────────────────────────────────────────
 function LockBanner({ tab, onUnlock, isWGE }) {
   var color = tab === "dc" ? DC_COLOR : AC_COLOR;
-  var label = tab === "dc" ? "DC — Couverture & Câblage" : "AC — Électricité";
+  var label = tab === "dc" ? "DC · Couverture & Câblage" : "AC · Électricité";
   return (
     <div style={{ background: "#fff3cd", border: "1.5px solid #ffc107",
       borderRadius: 10, padding: "12px 16px", marginBottom: 14,
@@ -6341,7 +6351,7 @@ function LockBanner({ tab, onUnlock, isWGE }) {
         <span style={{ fontSize: 20 }}>🔒</span>
         <div>
           <div style={{ fontWeight: 700, fontSize: 13, color: "#856404" }}>
-            Chantier clôturé — page {label} verrouillée
+            Chantier clôturé · page {label} verrouillée
           </div>
           <div style={{ fontSize: 11, color: "#856404", opacity: 0.8, marginTop: 2 }}>
             Les modifications sont désactivées sur cette page
@@ -6362,7 +6372,7 @@ function LockBanner({ tab, onUnlock, isWGE }) {
 
 
 // ── CloturJourneeBlock ────────────────────────────────────────────────────────
-// Section "Clôture de journée" — affichée au-dessus de la clôture de chantier.
+// Section "Clôture de journée" · affichée au-dessus de la clôture de chantier.
 // Auteur = utilisateur connecté (auto), heure = moment de confirmation (auto),
 // date = aujourd'hui par défaut (modifiable), commentaire libre.
 // ═══════════════════════════════════════════════════════════════════════════
@@ -6457,7 +6467,7 @@ function NoteVocaleRecorder({ refChantier, onResult, onCancel, aiMode }) {
     var blob = new Blob(chunksRef.current, { type: chunksRef.current[0] ? chunksRef.current[0].type : "audio/webm" });
     var finalDuree = dureeSec;
     try {
-      // 1) Upload Storage (comme les photos) — si échec, on garde quand même transcript+résumé
+      // 1) Upload Storage (comme les photos) · si échec, on garde quand même transcript+résumé
       var audioUrl = null;
       try {
         var dataUrl = await blobToDataURL(blob);
@@ -6468,7 +6478,7 @@ function NoteVocaleRecorder({ refChantier, onResult, onCancel, aiMode }) {
       var transcriptionRes = await noteVocaleTranscrire(blob);
       var transcript = transcriptionRes.transcript;
 
-      // 3) Résumé + traduction en français (Claude) — si la transcription est vide/trop
+      // 3) Résumé + traduction en français (Claude) · si la transcription est vide/trop
       // courte, on n'appelle pas inutilement. Si cet appel échoue (ex: note dans une
       // langue étrangère), on ne doit JAMAIS faire passer le texte brut non traduit
       // pour un résumé final silencieusement : on le signale explicitement.
@@ -6508,7 +6518,7 @@ function NoteVocaleRecorder({ refChantier, onResult, onCancel, aiMode }) {
         <div style={{ textAlign:"center" }}>
           <div style={{ fontSize:13, fontWeight:700, color: recording ? "#c0392b" : "#1a1a1a" }}>
             {status==="traitement" ? "Transcription en cours…"
-              : recording ? "● " + fmtDuree(dureeSec) + " — Enregistrement…"
+              : recording ? "● " + fmtDuree(dureeSec) + " · Enregistrement…"
               : idle ? "Appuyez sur le micro pour enregistrer"
               : fmtDuree(dureeSec)}
           </div>
@@ -6521,7 +6531,7 @@ function NoteVocaleRecorder({ refChantier, onResult, onCancel, aiMode }) {
   );
 }
 
-// ── VoiceOrTextField — textarea générique avec option "note vocale" (transcription + résumé) ──
+// ── VoiceOrTextField · textarea générique avec option "note vocale" (transcription + résumé) ──
 function VoiceOrTextField({ value, onChange, placeholder, rows, refChantier, aiMode }) {
   var [mode, setMode] = useState("texte"); // "texte" | "vocal"
   var [voiceData, setVoiceData] = useState(null);
@@ -6548,7 +6558,7 @@ function VoiceOrTextField({ value, onChange, placeholder, rows, refChantier, aiM
             setVoiceData(res);
             var texte = res.resume || res.transcript || "";
             if (aiMode === "materiel" && (res.resume || "").trim().toUpperCase() === "AUCUN") texte = "";
-            if (res.resumeFailed && texte) texte = "⚠️ Traduction indisponible — texte brut (langue d'origine) :\n" + texte;
+            if (res.resumeFailed && texte) texte = "⚠️ Traduction indisponible · texte brut (langue d'origine) :\n" + texte;
             onChange(value && value.trim() ? value.trim() + "\n\n" + texte : texte);
           }}
         />
@@ -6556,11 +6566,11 @@ function VoiceOrTextField({ value, onChange, placeholder, rows, refChantier, aiM
       {mode === "vocal" && voiceData && (
         <div style={{ background:"#f0f7f2", border:"1px solid #d4ead9", borderRadius:8, padding:"8px 10px", marginBottom:6 }}>
           <div style={{ fontSize:11, color:"#1a1a1a", fontWeight:700, marginBottom:4 }}>
-            🎙️ Note vocale ajoutée{voiceData.langue ? " — " + voiceData.langue : ""}
+            🎙️ Note vocale ajoutée{voiceData.langue ? " · " + voiceData.langue : ""}
           </div>
           {voiceData.resumeFailed && (
             <div style={{ fontSize:11, color:"#c0392b", fontWeight:600, marginBottom:4 }}>
-              ⚠️ Traduction en français indisponible — le texte inséré est brut, dans la langue parlée.
+              ⚠️ Traduction en français indisponible · le texte inséré est brut, dans la langue parlée.
             </div>
           )}
           {voiceData.audioUrl && <audio controls src={voiceData.audioUrl} style={{ width:"100%", marginBottom:6 }} />}
@@ -6659,7 +6669,7 @@ function CloturJourneeBlock({ tab, tabColor, journees, setJournees, locked, refC
         {/* ── Sous-titre ── */}
         <div style={{ padding:"7px 14px", fontSize:12, color:"#856404",
           borderBottom: (sortedJournees.length>0||showForm) ? "1px solid #fdd98a" : "none" }}>
-          À compléter <strong>en fin de journée</strong> — votre clôture sera visible dans la feuille d'avancement.
+          À compléter <strong>en fin de journée</strong> · votre clôture sera visible dans la feuille d'avancement.
         </div>
 
         {/* ── Formulaire ── */}
@@ -6667,7 +6677,7 @@ function CloturJourneeBlock({ tab, tabColor, journees, setJournees, locked, refC
           <div style={{ padding:"14px", background:"#fffdf0",
             borderBottom: sortedJournees.length>0 ? "1px solid #fdd98a" : "none" }}>
 
-            {/* Date (modifiable) + heure de clôture — côte à côte pour gagner de la place */}
+            {/* Date (modifiable) + heure de clôture · côte à côte pour gagner de la place */}
             <div style={{ display:"flex", gap:10, flexWrap:"wrap", marginBottom:12 }}>
               <div style={{ flex:"1 1 150px" }}>
                 <label style={{ fontSize:11, color:MUTED, fontWeight:500, marginBottom:4, display:"block" }}>
@@ -6712,7 +6722,7 @@ function CloturJourneeBlock({ tab, tabColor, journees, setJournees, locked, refC
                   onResult={function(res){
                     setVoiceData(res);
                     var texte = res.resume || res.transcript || "";
-                    if (res.resumeFailed && texte) texte = "⚠️ Traduction indisponible — texte brut (langue d'origine) :\n" + texte;
+                    if (res.resumeFailed && texte) texte = "⚠️ Traduction indisponible · texte brut (langue d'origine) :\n" + texte;
                     setFormNote(texte);
                   }}
                 />
@@ -6720,11 +6730,11 @@ function CloturJourneeBlock({ tab, tabColor, journees, setJournees, locked, refC
               {inputMode === "vocal" && voiceData && (
                 <div style={{ background:"#fff8e8", border:"1px solid #fdd98a", borderRadius:8, padding:"8px 10px", marginBottom:8 }}>
                   <div style={{ fontSize:11, color:"#856404", fontWeight:700, marginBottom:4 }}>
-                    🎙️ Note vocale enregistrée{voiceData.langue ? " — " + voiceData.langue : ""}
+                    🎙️ Note vocale enregistrée{voiceData.langue ? " · " + voiceData.langue : ""}
                   </div>
                   {voiceData.resumeFailed && (
                     <div style={{ fontSize:11, color:"#c0392b", fontWeight:600, marginBottom:4 }}>
-                      ⚠️ Traduction en français indisponible — le texte inséré est brut, dans la langue parlée.
+                      ⚠️ Traduction en français indisponible · le texte inséré est brut, dans la langue parlée.
                     </div>
                   )}
                   {voiceData.audioUrl && <audio controls src={voiceData.audioUrl} style={{ width:"100%", marginBottom:6 }} />}
@@ -6740,7 +6750,7 @@ function CloturJourneeBlock({ tab, tabColor, journees, setJournees, locked, refC
                 style={{ width:"100%", minHeight:80, resize:"vertical" }} />
               {voiceData && (
                 <div style={{ fontSize:10.5, color:MUTED, marginTop:3 }}>
-                  Texte généré à partir de la note vocale ci-dessus — modifiable avant d'envoyer.
+                  Texte généré à partir de la note vocale ci-dessus · modifiable avant d'envoyer.
                 </div>
               )}
             </div>
@@ -6775,7 +6785,7 @@ function CloturJourneeBlock({ tab, tabColor, journees, setJournees, locked, refC
                       background: isOpen ? "#fffbf0" : "#fff", userSelect:"none" }}>
                     <div>
                       <div style={{ fontWeight:700, fontSize:12, color:"#856404", textTransform:"capitalize" }}>
-                        📅 {fmtDate(j.date)} {j.heure ? "— "+j.heure : ""}
+                        📅 {fmtDate(j.date)} {j.heure ? "· "+j.heure : ""}
                       </div>
                       <div style={{ fontSize:11, color:MUTED, marginTop:2 }}>
                         👤 {j.auteur}
@@ -6861,13 +6871,13 @@ function buildPhotoLabel(catKey, stringsMeta) {
       if (nm) parts.push(nm);
       if (pv) parts.push(pv + " PV");
       if (tv) parts.push(tv + (String(tv).match(/v$/i) ? "" : "V"));
-      if (parts.length) return base + " — " + parts.join(" · ");
+      if (parts.length) return base + " · " + parts.join(" · ");
     }
     return base;
   }
-  var m = { ac_pre_general:"Pré-chantier — Vue générale", ac_pre_tgbt:"Pré-chantier — TGBT",
-    ac_pre_compteur:"Pré-chantier — Compteur", ac_post_tubages:"Post-chantier — Tubages",
-    ac_post_tgbt:"Post-chantier — TGBT", ac_config_ph:"Configuration onduleur",
+  var m = { ac_pre_general:"Pré-chantier · Vue générale", ac_pre_tgbt:"Pré-chantier · TGBT",
+    ac_pre_compteur:"Pré-chantier · Compteur", ac_post_tubages:"Post-chantier · Tubages",
+    ac_post_tgbt:"Post-chantier · TGBT", ac_config_ph:"Configuration onduleur",
     ac_schema_ph:"Schéma électrique", mesure_terre_ph:"Mesure de terre" };
   if (m[catKey]) return m[catKey];
   return catKey.replace(/^(ac|dc)_/,"").replace(/_ph$/,"").replace(/_/g," ");
@@ -6892,11 +6902,11 @@ function collectAllSectionPhotos(photosMap, sectionDefs, tabLabel, stringsMeta) 
 }
 
 function generateAsBuilt(data, logoSrc, sheetLabel) {
-  var ref     = data.meta.ref    || "—";
-  var client  = data.meta.client || "—";
-  var adresse = data.meta.adresse|| "—";
+  var ref     = data.meta.ref    || "·";
+  var client  = data.meta.client || "·";
+  var adresse = data.meta.adresse|| "·";
   var date    = data.meta.dateControle || new Date().toISOString().slice(0,10);
-  var pm      = data.meta.pm     || "—";
+  var pm      = data.meta.pm     || "·";
   var sheetName = sheetLabel || "";
 
 // ── Helper partagé : collecte toutes les photos (clés statiques + dynamiques)
@@ -6915,7 +6925,7 @@ function generateAsBuilt(data, logoSrc, sheetLabel) {
   var dcSections = collectAllSectionPhotos(data.dc.photos||{}, DC_SECTIONS, "DC");
   var acSections = collectAllSectionPhotos(data.ac.photos||{}, AC_SECTIONS, "AC");
 
-  // String photos — skip empty
+  // String photos · skip empty
   var stringPhotos = [];
   for (var i=0; i<20; i++) {
     var sp = (data.dc.photos||{})["string_ph_"+i];
@@ -6925,7 +6935,7 @@ function generateAsBuilt(data, logoSrc, sheetLabel) {
 
   var generalPhotos = (data.photosGenerales||[]).filter(function(p){ return p&&p.url; });
 
-  // Admin docs — skip empty sections
+  // Admin docs · skip empty sections
   var adminSections = [];
   var adminSecDefs = [
     { key:"rgie",      label:"Rapport de conformité RGIE" },
@@ -6942,8 +6952,8 @@ function generateAsBuilt(data, logoSrc, sheetLabel) {
 
   // TOC
   var tocItems = [];
-  if (dcSections.length > 0) tocItems.push({ title:"DC — Couverture & Câblage", anchor:"sec-dc" });
-  if (acSections.length > 0) tocItems.push({ title:"AC — Installation électrique", anchor:"sec-ac" });
+  if (dcSections.length > 0) tocItems.push({ title:"DC · Couverture & Câblage", anchor:"sec-dc" });
+  if (acSections.length > 0) tocItems.push({ title:"AC · Installation électrique", anchor:"sec-ac" });
   if (generalPhotos.length > 0) tocItems.push({ title:"Photos générales du chantier", anchor:"sec-general" });
   if (adminSections.length > 0) tocItems.push({ title:"Documents administratifs", anchor:"sec-admin" });
 
@@ -6966,7 +6976,7 @@ function generateAsBuilt(data, logoSrc, sheetLabel) {
     return sections.map(function(s){
       return '<div style="page-break-inside:avoid;break-inside:avoid;margin-bottom:28px">'
         + '<h3 style="font-size:13px;font-weight:700;color:#1B6B3A;margin:0 0 6px;padding-bottom:4px;border-bottom:1px solid #d4ead9">'
-        + s.tab+' — '+s.section+' <span style="font-weight:400;color:#888;font-size:11px">('+s.photos.length+' photo'+( s.photos.length>1?'s':'')+')</span></h3>'
+        + s.tab+' · '+s.section+' <span style="font-weight:400;color:#888;font-size:11px">('+s.photos.length+' photo'+( s.photos.length>1?'s':'')+')</span></h3>'
         + photoGrid(s.photos, s.photos.length === 1 ? 1 : 2)
         + '</div>';
     }).join("");
@@ -6997,7 +7007,7 @@ function generateAsBuilt(data, logoSrc, sheetLabel) {
   }
 
   var html = '<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8">'
-    + '<title>AS-Built — '+ref+(sheetName?' — '+sheetName:'')+'</title>'
+    + '<title>AS-Built · '+ref+(sheetName?' · '+sheetName:'')+'</title>'
     + '<style>'
     + 'body{margin:0;padding:0;font-family:Arial,Helvetica,sans-serif;color:#1a1a1a;background:#fff;font-size:13px}'
     + '.page{width:210mm;min-height:290mm;padding:16mm 18mm;box-sizing:border-box}'
@@ -7036,14 +7046,14 @@ function generateAsBuilt(data, logoSrc, sheetLabel) {
     // DC
     + (dcSections.length > 0
       ? '<div class="page section-page" id="sec-dc">'
-        + '<div class="section-title">🟦 DC — Couverture &amp; Câblage</div>'
+        + '<div class="section-title">🟦 DC · Couverture &amp; Câblage</div>'
         + sectionHTML(dcSections)+'</div>'
       : "")
 
     // AC
     + (acSections.length > 0
       ? '<div class="page section-page" id="sec-ac">'
-        + '<div class="section-title">🟥 AC — Installation électrique</div>'
+        + '<div class="section-title">🟥 AC · Installation électrique</div>'
         + sectionHTML(acSections)+'</div>'
       : "")
 
@@ -7253,7 +7263,7 @@ function AsBuiltViewer({ wgeUser }) {
   }
 
   // Sauvegarde directe d'un champ de meta (client, adresse…) sur la ligne principale
-  // de la feuille de contrôle — modifie la vraie donnée source, visible aussi
+  // de la feuille de contrôle · modifie la vraie donnée source, visible aussi
   // depuis le Rapport de Chantier lui-même, pas une couche séparée propre à l'AS-Built.
   var metaSaveTimer = useRef(null);
   function saveMetaField(field, value) {
@@ -7328,7 +7338,7 @@ function AsBuiltViewer({ wgeUser }) {
             })}
             {t.battery&&t.battery.installed&&(
               <tr><td style={{ padding:"4px 14px 4px 0", color:"#555", fontWeight:600, whiteSpace:"nowrap" }}>Batterie</td>
-              <td>{t.battery.brand} {t.battery.model} {t.battery.capacity?"— "+t.battery.capacity:""}</td></tr>
+              <td>{t.battery.brand} {t.battery.model} {t.battery.capacity?"· "+t.battery.capacity:""}</td></tr>
             )}
             {(pro.disjAC||pro.disjPV||pro.differentiel||pro.miseTerre)&&(
               <tr><td style={{ padding:"4px 14px 4px 0", color:"#555", fontWeight:600, whiteSpace:"nowrap", verticalAlign:"top" }}>Protections</td>
@@ -7353,7 +7363,7 @@ function AsBuiltViewer({ wgeUser }) {
         <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:6 }}>
           <div>
             <span style={{ fontWeight:700, fontSize:13, color:"#1B6B3A" }}>⚡ Informations techniques</span>
-            <span style={{ marginLeft:8, fontSize:11, color:"#999", fontWeight:400 }}>— champs vides = non affichés côté client</span>
+            <span style={{ marginLeft:8, fontSize:11, color:"#999", fontWeight:400 }}>· champs vides non affichés côté client</span>
           </div>
           <div style={{ display:"flex", gap:8 }}>
             {!techEditing && (
@@ -7427,7 +7437,7 @@ function AsBuiltViewer({ wgeUser }) {
                   }
 
                   saveTechInfo(imported);
-                  setTechEditing(false); // fermer le formulaire — données sauvegardées
+                  setTechEditing(false); // fermer le formulaire · données sauvegardées
                   alert("✅ Informations importées et sauvegardées.\nCliquez ✏️ Modifier pour ajuster si nécessaire.");
                 }).catch(function(e){ alert("Impossible d'accéder à la fiche chantier ("+e+")."); });
               }}
@@ -7450,14 +7460,14 @@ function AsBuiltViewer({ wgeUser }) {
             {t.panels&&t.panels.count&&<div>🔋 <strong>Panneaux :</strong> {t.panels.count} × {t.panels.power?t.panels.power+"Wc ":""}{t.panels.type} {t.panels.total_kwp?"("+t.panels.total_kwp+" kWc)":""}</div>}
             {t.panels2&&t.panels2.active&&t.panels2.count&&<div>🔋 <strong>Panneaux 2 :</strong> {t.panels2.count} × {t.panels2.power?t.panels2.power+"Wc ":""}{t.panels2.type} {t.panels2.total_kwp?"("+t.panels2.total_kwp+" kWc)":""}</div>}
             {inv.brand&&<div>⚡ <strong>Onduleur :</strong> {inv.count&&inv.count>"1"?inv.count+"× ":""}{inv.brand} {inv.model} {inv.serial?"S/N: "+inv.serial:""}</div>}
-            {t.battery&&t.battery.installed&&<div>🔋 <strong>Batterie :</strong> {t.battery.brand} {t.battery.model} {t.battery.capacity?"— "+t.battery.capacity:""}</div>}
+            {t.battery&&t.battery.installed&&<div>🔋 <strong>Batterie :</strong> {t.battery.brand} {t.battery.model} {t.battery.capacity?"· "+t.battery.capacity:""}</div>}
             {(pro.disjAC||pro.disjPV||pro.parafoudre||pro.differentiel||pro.miseTerre)&&<div>🛡 <strong>Protections :</strong> {[pro.disjAC&&"Disj.AC "+pro.disjAC+"A", pro.disjPV&&"Disj.PV "+pro.disjPV+"A", pro.parafoudre&&"Parafoudre", pro.differentiel&&"Diff. "+pro.differentiel, pro.miseTerre&&"Terre: "+pro.miseTerre].filter(Boolean).join(" · ")}</div>}
             {(cpt.serie||cpt.ean||cpt.type)&&<div>🔌 <strong>Compteur :</strong> {[cpt.type, cpt.serie&&"N° "+cpt.serie, cpt.ean&&"EAN: "+cpt.ean].filter(Boolean).join(" · ")}</div>}
             {t.notes&&<div>📝 <em>{t.notes}</em></div>}
           </div>
         )}
         {!techEditing && !hasTechInfo(techInfo) && (
-          <div style={{ fontSize:11, color:"#aaa", fontStyle:"italic" }}>Aucune info renseignée — cliquez "Modifier" ou "📥 Importer fiche chantier"</div>
+          <div style={{ fontSize:11, color:"#aaa", fontStyle:"italic" }}>Aucune info renseignée · cliquez "Modifier" ou "📥 Importer fiche chantier"</div>
         )}
 
         {/* Formulaire d'édition */}
@@ -7749,7 +7759,7 @@ function AsBuiltViewer({ wgeUser }) {
           style={{ display:"flex", alignItems:"center", gap:8, padding:"8px 12px", borderRadius:7, cursor:"pointer",
             background: open ? tabColor+"18" : "#f8f8f6", border:"1px solid "+(open ? tabColor+"44" : "#e8e8e4") }}>
           <span style={{ width:8, height:8, borderRadius:"50%", background:tabColor, flexShrink:0 }} />
-          <span style={{ flex:1, fontWeight:600, fontSize:13 }}>{tab} — {section}</span>
+          <span style={{ flex:1, fontWeight:600, fontSize:13 }}>{tab} · {section}</span>
           <span style={{ fontSize:11, color:tabColor, fontWeight:700 }}>
             {isWGE ? photos.length : visibleCount} photo{photos.length>1?"s":""}
             {isWGE && photos.length>visibleCount && (
@@ -7854,7 +7864,7 @@ function AsBuiltViewer({ wgeUser }) {
           {/* Bandeau "Mode édition" */}
           <div style={{ background:"#f39c12", color:"#1a1a1a", padding:"4px 20px",
             fontSize:11, fontWeight:700, display:"flex", alignItems:"center", gap:8 }}>
-            ✏️ MODE ÉDITION — Page de travail interne (non visible par le client)
+            ✏️ MODE ÉDITION · Page de travail interne (non visible par le client)
           </div>
           {/* Note explicative */}
           <div style={{ background:"rgba(255,255,255,0.08)", padding:"6px 20px", fontSize:11, color:"rgba(255,255,255,0.85)", borderBottom:"1px solid rgba(255,255,255,0.1)" }}>
@@ -7864,7 +7874,7 @@ function AsBuiltViewer({ wgeUser }) {
           </div>
           <div style={{ padding:"10px 20px", display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:8 }}>
             <div>
-              <div style={{ fontWeight:700, fontSize:15 }}>📋 AS-Built — {ref}</div>
+              <div style={{ fontWeight:700, fontSize:15 }}>📋 AS-Built · {ref}</div>
               {meta.client && <div style={{ fontSize:12, opacity:0.8 }}>{meta.client}{meta.adresse?" · "+meta.adresse:""}</div>}
             </div>
             <div style={{ display:"flex", gap:8, flexWrap:"wrap", alignItems:"center" }}>
@@ -7887,7 +7897,7 @@ function AsBuiltViewer({ wgeUser }) {
                   "?client=1&ref=" + encodeURIComponent(ref) +
                   (activeId ? "&sheet=" + activeId : "");
                 var email = [
-                  "Objet : Votre dossier AS-Built — " + ref,
+                  "Objet : Votre dossier AS-Built · " + ref,
                   "",
                   "Cher(e) " + (meta.client || "Client") + ",",
                   "",
@@ -7942,7 +7952,7 @@ function AsBuiltViewer({ wgeUser }) {
           display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:8,
           position:"sticky", top:0, zIndex:100 }}>
           <div>
-            <div style={{ fontWeight:700, fontSize:15 }}>📋 Dossier AS-Built — {ref}</div>
+            <div style={{ fontWeight:700, fontSize:15 }}>📋 Dossier AS-Built · {ref}</div>
             {meta.client && <div style={{ fontSize:12, opacity:0.8 }}>{meta.client}{meta.adresse?" · "+meta.adresse:""}</div>}
           </div>
           <div style={{ display:"flex", gap:8 }}>
@@ -7965,7 +7975,7 @@ function AsBuiltViewer({ wgeUser }) {
 
       <div style={{ maxWidth:900, margin:"0 auto", padding:"20px 16px" }}>
 
-        {/* Sheet selector — avec sections organisationnelles */}
+        {/* Sheet selector · avec sections organisationnelles */}
         {orderedItems.length > 1 && (
           <div className="ab-no-print" style={{ background:"#fff", border:"1px solid #e8e8e4", borderRadius:10, padding:"12px 16px", marginBottom:20 }}>
             <div style={{ fontSize:11, fontWeight:700, color:"#666", textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:10 }}>
@@ -8062,7 +8072,7 @@ function AsBuiltViewer({ wgeUser }) {
             {/* Informations techniques */}
             <TechInfoPanel />
 
-            {/* Documents administratifs (PDF) — affichés en premier, avant les photos */}
+            {/* Documents administratifs (PDF) · affichés en premier, avant les photos */}
             {adminSecs.length > 0 && (
               <div className="ab-page" style={{ background:"#fff", borderRadius:12, border:"1px solid #d7bde2", padding:"20px", marginBottom:16 }}>
                 <div style={{ fontWeight:700, fontSize:15, color:"#8e44ad", marginBottom:14,
@@ -8076,7 +8086,7 @@ function AsBuiltViewer({ wgeUser }) {
               </div>
             )}
 
-            {/* Séparateur Annexes — marque le début des photos, après les documents */}
+            {/* Séparateur Annexes · marque le début des photos, après les documents */}
             {(dcSecs.length > 0 || acSecs.length > 0 || genPh.length > 0) && (
               <div className="ab-annexe-title" style={{ display:"flex", alignItems:"center", gap:10, margin:"22px 0 14px" }}>
                 <span style={{ fontSize:12, fontWeight:700, color:"#888", textTransform:"uppercase", letterSpacing:"0.08em", whiteSpace:"nowrap" }}>📎 Annexes photographiques</span>
@@ -8088,7 +8098,7 @@ function AsBuiltViewer({ wgeUser }) {
             {dcSecs.length > 0 && (
               <div className="ab-page" style={{ background:"#fff", borderRadius:12, border:"1px solid #aed6f1", padding:"20px", marginBottom:16 }}>
                 <div style={{ fontWeight:700, fontSize:15, color:"#2980b9", marginBottom:14,
-                  paddingBottom:8, borderBottom:"2px solid #aed6f1" }}>🟦 DC — Couverture &amp; Câblage</div>
+                  paddingBottom:8, borderBottom:"2px solid #aed6f1" }}>🟦 DC · Couverture &amp; Câblage</div>
                 {dcSecs.map(function(s, i){ return <SectionBlock key={i} {...s} isWGE={isViewerWGE} hiddenPhotos={hiddenPhotos} onTogglePhoto={onTogglePhoto} />; })}
               </div>
             )}
@@ -8097,7 +8107,7 @@ function AsBuiltViewer({ wgeUser }) {
             {acSecs.length > 0 && (
               <div className="ab-page" style={{ background:"#fff", borderRadius:12, border:"1px solid #f1948a", padding:"20px", marginBottom:16 }}>
                 <div style={{ fontWeight:700, fontSize:15, color:"#c0392b", marginBottom:14,
-                  paddingBottom:8, borderBottom:"2px solid #f1948a" }}>🟥 AC — Installation électrique</div>
+                  paddingBottom:8, borderBottom:"2px solid #f1948a" }}>🟥 AC · Installation électrique</div>
                 {acSecs.map(function(s, i){ return <SectionBlock key={i} {...s} isWGE={isViewerWGE} hiddenPhotos={hiddenPhotos} onTogglePhoto={onTogglePhoto} />; })}
               </div>
             )}
@@ -8136,14 +8146,14 @@ function WhatsAppNotify({ data, tab }) {
   var [pmPhone, setPmPhone] = useState(null);
   var [pmLoading, setPmLoading] = useState(true);
 
-  var ref     = data.meta.ref || "—";
+  var ref     = data.meta.ref || "·";
   var client  = data.meta.client || "Client inconnu";
   var adresse = data.meta.adresse || "";
   var pm      = data.meta.pm || "";
 
   // Load PM phone from briefing
   useEffect(function() {
-    if (!ref || ref === "—") { setPmLoading(false); return; }
+    if (!ref || ref === "·") { setPmLoading(false); return; }
     setPmLoading(true);
     supaLoadChantier(ref).then(function(d) {
       if (d && d.weGreen && d.weGreen.tel) {
@@ -8160,7 +8170,7 @@ function WhatsAppNotify({ data, tab }) {
 
   var reportUrl = "https://b-hers.github.io/Rapport-de-chantier-SAV-Maintenance/?ref=" + encodeURIComponent(ref);
 
-  // ── Statut DC / AC — basé sur une activité réelle (checklist OU photos), sans % ──
+  // ── Statut DC / AC · basé sur une activité réelle (checklist OU photos), sans % ──
   var dcComp = calcDCCompletion(data);
   var acComp = calcACCompletion(data);
   var dcPhotoCount = countPhotosInMap(data.dc.photos);
@@ -8180,7 +8190,7 @@ function WhatsAppNotify({ data, tab }) {
 
   var today = new Date().toISOString().slice(0,10);
 
-  // ── Journées clôturées aujourd'hui (DC/AC) — note/résumé complet, pas tronqué ──
+  // ── Journées clôturées aujourd'hui (DC/AC) · note/résumé complet, pas tronqué ──
   var allJournees = [];
   (data.dc.journeesCloturees||[]).forEach(function(j){ allJournees.push(Object.assign({},j,{tab:"DC"})); });
   (data.ac.journeesCloturees||[]).forEach(function(j){ allJournees.push(Object.assign({},j,{tab:"AC"})); });
@@ -8192,13 +8202,13 @@ function WhatsAppNotify({ data, tab }) {
     .filter(function(j){ return j.note && j.note.trim(); })
     .map(function(j){ return (j.audioUrl ? "🎙️ " : "💬 ") + j.tab + " : " + j.note.trim(); });
 
-  // ── SAV du jour — texte complet (description + actions) ──
+  // ── SAV du jour · texte complet (description + actions) ──
   var todaySav = (data.sav||[]).filter(function(s){ return s.date === today; });
   var savLines = [];
   if (todaySav.length > 0) {
     savLines.push("🔧 SAV (" + todaySav.length + " intervention" + (todaySav.length>1?"s":"") + ")");
     todaySav.forEach(function(s){
-      var head = "— " + (s.type||"Intervention") + (s.intervenant ? " · " + s.intervenant : "") + (s.statut ? " · " + s.statut : "") + (s.dureeMin ? " · ⏱ " + fmtDuree(s.dureeMin) : "");
+      var head = "· " + (s.type||"Intervention") + (s.intervenant ? " · " + s.intervenant : "") + (s.statut ? " · " + s.statut : "") + (s.dureeMin ? " · ⏱ " + fmtDuree(s.dureeMin) : "");
       savLines.push(head);
       if (s.description && s.description.trim()) savLines.push("   Problème : " + s.description.trim());
       if (s.actionsEffectuees && s.actionsEffectuees.trim()) savLines.push("   Actions : " + s.actionsEffectuees.trim());
@@ -8210,7 +8220,7 @@ function WhatsAppNotify({ data, tab }) {
   var maintLines = [];
   if (todayMaint.length > 0) {
     maintLines.push("🔩 Maintenance (" + todayMaint.length + " visite" + (todayMaint.length>1?"s":"") + ")" +
-      (todayMaint[0].responsable ? " — " + todayMaint.map(function(v){ return v.responsable; }).filter(Boolean).join(", ") : ""));
+      (todayMaint[0].responsable ? " · " + todayMaint.map(function(v){ return v.responsable; }).filter(Boolean).join(", ") : ""));
   }
 
   var tabLabel = {dc:"DC", ac:"AC", sav:"SAV", maintenance:"Maintenance"}[tab] || tab;
@@ -8266,7 +8276,7 @@ function WhatsAppNotify({ data, tab }) {
       <div style={{ fontWeight: 700, fontSize: 13, color: GREEN, marginBottom: 10,
         display: "flex", alignItems: "center", gap: 8 }}>
         <span style={{ fontSize: 18 }}>📤</span>
-        {journeeStr ? "Notifier — journée clôturée" : "Notifier — fin de l'étape " + tabLabel}
+        {journeeStr ? "Notifier · journée clôturée" : "Notifier · fin de l'étape " + tabLabel}
       </div>
 
       {missingDuree && (
@@ -8299,7 +8309,7 @@ function WhatsAppNotify({ data, tab }) {
               padding: "10px 18px", background: "#25D366", color: WHITE,
               borderRadius: 8, fontSize: 13, fontWeight: 700,
               textDecoration: "none", whiteSpace: "nowrap" }}>
-            💬 PM — {pm.split(" ")[0]}
+            💬 PM · {pm.split(" ")[0]}
           </a>
         ) : (
           <div style={{ fontSize: 11, color: "#856404", background: "#fff8e1",
@@ -8327,10 +8337,211 @@ function WhatsAppNotify({ data, tab }) {
 
       {copied && (
         <div style={{ fontSize: 11, color: "#27ae60", marginTop: 8 }}>
-          ✅ Message copié — collez-le (Ctrl+V / appui long) dans la conversation WhatsApp
+          ✅ Message copié · collez-le (Ctrl+V / appui long) dans la conversation WhatsApp
         </div>
       )}
     </div>
+  );
+}
+
+// ── Recherche de rapports de chantier (membres We Green et We Cover uniquement) ─────────────
+// 1) liste légère (id, ref, date) sans les données, 2) client / adresse / tâche lus par petits lots d'id
+// (évite la lecture groupée de données lourdes qui dépasse le délai Supabase),
+// 3) index gardé dans le navigateur : affichage instantané aux ouvertures suivantes.
+var _rapportsCache = null;
+var RAPPORT_IDX_KEY = "wge_rapports_idx_v1";
+function rsNorm(s) { return (s || "").toString().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, ""); }
+function rsIdxRead() {
+  try { var j = JSON.parse(localStorage.getItem(RAPPORT_IDX_KEY) || "null"); return (j && Array.isArray(j.rows)) ? j.rows : []; } catch(e) { return []; }
+}
+function rsIdxWrite(rows) { try { localStorage.setItem(RAPPORT_IDX_KEY, JSON.stringify({ at: Date.now(), rows: rows })); } catch(e) {} }
+// Regroupe les feuilles par référence : un résultat par chantier, le texte cherché couvre toutes ses feuilles
+function rsGroup(rows) {
+  var byRef = {}, order = [];
+  rows.slice().sort(function(a, b){ return (b.updated_at || "") < (a.updated_at || "") ? -1 : 1; }).forEach(function(r){
+    if (!r.ref) return;
+    if (!byRef[r.ref]) { byRef[r.ref] = []; order.push(r.ref); }
+    byRef[r.ref].push(r);
+  });
+  return order.map(function(ref){
+    var list = byRef[ref];
+    function first(k) { for (var i = 0; i < list.length; i++) { if (list[i][k] && String(list[i][k]).trim()) return String(list[i][k]).trim(); } return ""; }
+    var parts = [ref];
+    list.forEach(function(r){ [r.client, r.adresse, r.adresseChantier, r.task, r.cmd].forEach(function(v){ if (v) parts.push(v); }); });
+    return { ref: ref, n: list.length, updated_at: list[0].updated_at || "",
+      client: first("client"), adresse: first("adresse") || first("adresseChantier"), task: first("task"),
+      _s: rsNorm(parts.join(" ")) };
+  });
+}
+var RS_TEXT = "#1a1a1a";
+function SearchRapports({ onClose, currentRef }) {
+  var [q, setQ] = useState("");
+  var [rows, setRows] = useState(function(){ return _rapportsCache || rsIdxRead(); });
+  var [loading, setLoading] = useState(true);
+  var [progress, setProgress] = useState(null);
+  var [error, setError] = useState("");
+  var [active, setActive] = useState(0);
+  var [narrow, setNarrow] = useState(function(){ return window.innerWidth < 640; });
+  var inputRef = useRef(null);
+  var listRef = useRef(null);
+
+  useEffect(function(){
+    function onR() { setNarrow(window.innerWidth < 640); }
+    window.addEventListener("resize", onR);
+    return function(){ window.removeEventListener("resize", onR); };
+  }, []);
+  useEffect(function(){ if (inputRef.current) inputRef.current.focus(); }, []);
+
+  useEffect(function(){
+    var cancelled = false;
+    var H = { headers: { apikey: SUPA_KEY, Authorization: "Bearer " + SUPA_KEY } };
+    function getJSON(url) { return fetch(url, H).then(function(r){ if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); }); }
+    var known = {};
+    (rows || []).forEach(function(r){ known[r.id] = r; });
+    (async function(){
+      // 1) Liste légère (pagination : la limite par défaut est de 1000 lignes)
+      var list = [], off = 0, PAGE = 500;
+      try {
+        while (true) {
+          var chunk = await getJSON(SUPA_URL + "/rest/v1/feuilles_controle?select=id,ref,updated_at&order=id.asc&limit=" + PAGE + "&offset=" + off);
+          list = list.concat(chunk);
+          if (chunk.length < PAGE) break;
+          off += PAGE;
+        }
+      } catch(e) { if (!cancelled) { setError("Liste indisponible (" + e.message + ")"); setLoading(false); } return; }
+      if (cancelled) return;
+      var map = {}, todo = [];
+      list.forEach(function(r){
+        var prev = known[r.id];
+        var fresh = prev && prev.ok && prev.updated_at === r.updated_at;
+        map[r.id] = fresh ? prev : { id: r.id, ref: r.ref, updated_at: r.updated_at || "", client: prev ? prev.client : "", adresse: prev ? prev.adresse : "", adresseChantier: prev ? prev.adresseChantier : "", task: prev ? prev.task : "", cmd: prev ? prev.cmd : "", ok: false };
+        if (!fresh) todo.push(r.id);
+      });
+      function publish() { var arr = list.map(function(r){ return map[r.id]; }); _rapportsCache = arr; setRows(arr); return arr; }
+      publish();
+      // 2) Détails des feuilles nouvelles ou modifiées, les plus récentes d'abord
+      todo.sort(function(a, b){ return (map[b].updated_at || "") < (map[a].updated_at || "") ? -1 : 1; });
+      var total = todo.length, done = 0, failed = 0;
+      if (total) setProgress({ done: 0, total: total });
+      var SEL = "&select=id,client:data->meta->>client,adresse:data->meta->>adresse,adresseChantier:data->meta->>adresseChantier,task:data->meta->>nom_tache,cmd:data->meta->>commandeRef";
+      async function fetchIds(ids) {
+        var res = await getJSON(SUPA_URL + "/rest/v1/feuilles_controle?id=in.(" + ids.join(",") + ")" + SEL);
+        res.forEach(function(x){
+          var m = map[x.id]; if (!m) return;
+          m.client = x.client || ""; m.adresse = x.adresse || ""; m.adresseChantier = x.adresseChantier || ""; m.task = x.task || ""; m.cmd = x.cmd || ""; m.ok = true;
+        });
+      }
+      var BATCH = 8, batches = [];
+      for (var i = 0; i < todo.length; i += BATCH) batches.push(todo.slice(i, i + BATCH));
+      async function worker() {
+        while (batches.length && !cancelled) {
+          var ids = batches.shift();
+          try { await fetchIds(ids); }
+          catch(e) {
+            // Lot trop lourd : on reprend ligne par ligne
+            for (var k = 0; k < ids.length && !cancelled; k++) { try { await fetchIds([ids[k]]); } catch(e2) { failed++; } }
+          }
+          done += ids.length;
+          if (!cancelled) { publish(); setProgress({ done: done, total: total }); }
+        }
+      }
+      await Promise.all([worker(), worker(), worker()]);
+      if (cancelled) return;
+      rsIdxWrite(publish());
+      setProgress(null); setLoading(false);
+      if (failed) setError(failed + " feuille(s) trop lourde(s) pour être indexées");
+    })();
+    return function(){ cancelled = true; };
+  }, []);
+
+  var all = rsGroup(rows);
+  // Filtrage local instantané : chaque mot tapé doit apparaître (sans accents ni majuscules)
+  var words = rsNorm(q).split(/\s+/).filter(Boolean);
+  var results = words.length === 0 ? all.slice(0, 30) : all.filter(function(r){
+    for (var i = 0; i < words.length; i++) { if (r._s.indexOf(words[i]) === -1) return false; }
+    return true;
+  }).slice(0, 50);
+
+  useEffect(function(){ setActive(0); }, [q]);
+  useEffect(function(){
+    if (!listRef.current) return;
+    var el = listRef.current.children[active];
+    if (el && el.scrollIntoView) el.scrollIntoView({ block: "nearest" });
+  }, [active]);
+
+  function go(r) {
+    if (!r || !r.ref) return;
+    if (r.ref === currentRef) { onClose(); return; }
+    window.location.search = "?ref=" + encodeURIComponent(r.ref) + (r.task ? "&task=" + encodeURIComponent(r.task) : "");
+  }
+  function fmtDate(iso) { if (!iso) return ""; var d = new Date(iso); return isNaN(d) ? "" : d.toLocaleDateString("fr-BE", { day: "2-digit", month: "2-digit", year: "numeric" }); }
+  function onKey(e) {
+    if (e.key === "ArrowDown") { e.preventDefault(); setActive(function(a){ return Math.min(a + 1, results.length - 1); }); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); setActive(function(a){ return Math.max(a - 1, 0); }); }
+    else if (e.key === "Enter") { e.preventDefault(); if (results[active]) go(results[active]); }
+    else if (e.key === "Escape") { onClose(); }
+  }
+
+  var panel = narrow
+    ? { position: "fixed", left: 0, right: 0, bottom: 0, maxHeight: "88dvh", borderRadius: "14px 14px 0 0", paddingBottom: "env(safe-area-inset-bottom)" }
+    : { position: "fixed", top: "10vh", left: "50%", transform: "translateX(-50%)", width: "min(560px, 94vw)", maxHeight: "78vh", borderRadius: 14 };
+
+  return (
+    <>
+      <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)", zIndex: 9994 }} />
+      <div role="dialog" aria-label="Rechercher un rapport" style={Object.assign({ background: WHITE, boxShadow: "0 18px 50px rgba(0,0,0,0.28)", zIndex: 9995, display: "flex", flexDirection: "column", overflow: "hidden", fontFamily: "inherit" }, panel)}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 14px", borderBottom: "1px solid " + BORDER }}>
+          <span style={{ fontSize: 18 }}>🔍</span>
+          <input ref={inputRef} value={q} onChange={function(e){ setQ(e.target.value); }} onKeyDown={onKey}
+            placeholder="Contact, adresse, tâche ou référence"
+            autoComplete="off" autoCorrect="off" spellCheck={false} enterKeyHint="search"
+            style={{ flex: 1, minWidth: 0, border: "none", outline: "none", boxShadow: "none", fontSize: 16, fontFamily: "inherit", background: "transparent", color: RS_TEXT, padding: 0, minHeight: 0 }} />
+          {q && <button onClick={function(){ setQ(""); if (inputRef.current) inputRef.current.focus(); }} title="Effacer" aria-label="Effacer"
+            style={{ background: "#eee", border: "none", color: MUTED, cursor: "pointer", fontSize: 11, borderRadius: 999, width: 24, height: 24, minWidth: 24, minHeight: 24, padding: 0, lineHeight: 1, flexShrink: 0, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>✕</button>}
+          <button onClick={onClose} title="Fermer" aria-label="Fermer"
+            style={{ background: "none", border: "none", color: MUTED, cursor: "pointer", fontSize: 22, lineHeight: 1, padding: "0 4px", minWidth: 32, minHeight: 32, flexShrink: 0 }}>×</button>
+        </div>
+        <div style={{ padding: "6px 14px", fontSize: 11, color: MUTED, borderBottom: "1px solid #f0efe9", display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+          <span>{all.length + " chantier" + (all.length > 1 ? "s" : "")}{progress ? " · indexation " + progress.done + "/" + progress.total : (loading && !all.length ? " · chargement…" : "")}{error ? " · ⚠ " + error : ""}</span>
+          <span>{words.length ? results.length + (results.length === 50 ? "+" : "") + " résultat" + (results.length > 1 ? "s" : "") : "Récents"}</span>
+        </div>
+        <div ref={listRef} style={{ overflow: "auto", flex: 1, WebkitOverflowScrolling: "touch" }}>
+          {results.length === 0 && !loading && (
+            <div style={{ padding: "26px 16px", textAlign: "center", color: MUTED, fontSize: 13 }}>
+              <div style={{ fontWeight: 700, color: RS_TEXT, marginBottom: 4 }}>Aucun rapport trouvé</div>
+              <div>Essayez avec le nom du contact, une partie de l'adresse ou le nom de la tâche.</div>
+            </div>
+          )}
+          {results.length === 0 && loading && (
+            <div style={{ padding: "26px 16px", textAlign: "center", color: MUTED, fontSize: 13 }}>⏳ Chargement…</div>
+          )}
+          {results.map(function(r, i){
+            var isWC = /^WC[-_]/i.test(r.ref);
+            var col = isWC ? "#2980b9" : GREEN;
+            var isCur = r.ref === currentRef;
+            return (
+              <div key={r.ref} onClick={function(){ go(r); }} onMouseEnter={function(){ setActive(i); }}
+                style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", minHeight: 56, cursor: "pointer", background: i === active ? GREEN_LIGHT : "transparent", borderBottom: "1px solid #f0efe9" }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: RS_TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.client || "(contact non renseigné)"}</div>
+                  {r.adresse && <div style={{ fontSize: 12, color: MUTED, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>📍 {r.adresse}</div>}
+                  {r.task && <div style={{ fontSize: 12, color: MUTED, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>🧾 {r.task}</div>}
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3, flexShrink: 0 }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: col, border: "1px solid " + col + "55", background: col + "12", borderRadius: 5, padding: "1px 7px", whiteSpace: "nowrap" }}>{r.ref}</span>
+                  <span style={{ fontSize: 10, color: "#999", whiteSpace: "nowrap" }}>{isCur ? "ouvert · " : ""}{r.n > 1 ? r.n + " feuilles · " : ""}{fmtDate(r.updated_at)}</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        {!narrow && (
+          <div style={{ padding: "7px 14px", borderTop: "1px solid " + BORDER, fontSize: 11, color: "#aaa", display: "flex", gap: 14 }}>
+            <span>↑↓ naviguer</span><span>↵ ouvrir</span><span>Échap fermer</span>
+          </div>
+        )}
+      </div>
+    </>
   );
 }
 
@@ -8376,7 +8587,7 @@ function HeaderSection({ data, setData, onLoad, onPrefill, prefillMsg, loading }
         <div>
           <label style={{ fontSize: 12, color: MUTED, fontWeight: 500, marginBottom: 4, display: "block" }}>Project Manager</label>
           <select value={data.meta.pm||""} onChange={function(e){ setMeta("pm",e.target.value); }}>
-            <option value="">— Sélectionner —</option>
+            <option value="">Sélectionner</option>
             {PM_LIST.map(function(pm){ return <option key={pm} value={pm}>{pm}</option>; })}
           </select>
         </div>
@@ -8396,7 +8607,7 @@ function HeaderSection({ data, setData, onLoad, onPrefill, prefillMsg, loading }
 // ── App ───────────────────────────────────────────────
 
 /* ─────────────────────────────────────────────────────────────────────────
-   WE COVER — Mode rapport activé sur référence WC-*
+   WE COVER · Mode rapport activé sur référence WC-*
    Code isolé dans une IIFE pour zéro pollution de l'espace de noms global.
    Le rapport We Green ci-dessous reste totalement intact.
    ─────────────────────────────────────────────────────────────────────── */
@@ -8499,7 +8710,7 @@ async function wcUploadAllPhotos(ref, data) {
   return { data: Object.assign({}, data, { facade: newFacade, toitures: newToitures }), changed: true };
 }
 
-/* ── Chargement / sauvegarde — réutilise "feuilles_controle", la table déjà
+/* ── Chargement / sauvegarde · réutilise "feuilles_controle", la table déjà
       existante et éprouvée en production pour We Green. Les lignes We Cover sont
       distinguées par label="wecover" ; une seule ligne active par référence
       (identifiée par son id Supabase, suivi côté App). ── */
@@ -8516,7 +8727,7 @@ async function wcLoad(ref) {
 }
 
 /* rowId : id Supabase de la ligne We Cover déjà créée pour ce ref (null si c'est
-   le tout premier enregistrement). Retourne { ok, id } — l'id doit être conservé
+   le tout premier enregistrement). Retourne { ok, id } · l'id doit être conservé
    côté App (state) et repassé aux sauvegardes suivantes, sinon une nouvelle ligne
    serait créée à chaque fois au lieu de mettre à jour la même. */
 async function wcSave(ref, data, rowId) {
@@ -8716,7 +8927,7 @@ function snapshotSignature(data) {
   return { passages: Object.keys(days).length, photos: photos };
 }
 
-/* ── Snapshots (historique) — réutilise la table générique "versions" de We Green.
+/* ── Snapshots (historique) · réutilise la table générique "versions" de We Green.
       ref distinctif "<ref>_wc" pour ne jamais entrer en collision avec les
       versions du contrôle-qualité We Green sur la même référence chantier. ── */
 function wcVersionRef(ref) { return ref + "_wc"; }
@@ -8766,7 +8977,7 @@ async function wcLoadSnapshotById(id) {
   } catch(e) { return null; }
 }
 
-/* ── Journal d'activité — réutilise la table générique "audit_log" de We Green.
+/* ── Journal d'activité · réutilise la table générique "audit_log" de We Green.
       Même convention de ref distinctif "<ref>_wc". ── */
 function wcAuditRef(ref) { return ref + "_wc"; }
 
@@ -8855,7 +9066,7 @@ async function parseBonDeCommande(file) {
     if (m) { out.commande_ref = m[1].replace(/[_ ]/g, "-"); break; }
   }
 
-  // Vendeur / Project Manager — match flexible sur PM_DATA
+  // Vendeur / Project Manager · match flexible sur PM_DATA
   for (var i = 0; i < lines.length; i++) {
     if (/^Vendeur\s*:/i.test(lines[i].text)) {
       var same = lines[i].text.replace(/^Vendeur\s*:\s*/i, "").trim();
@@ -9073,7 +9284,7 @@ function migrateSectionData(sec) {
   sec.passages.forEach(function(p){
     if (!p) return;
     (p.photos || []).forEach(function(ph){ allPhotos.push(ph); });
-    var head = [p.date || "date inconnue", p.intervenants ? "— " + p.intervenants : ""].filter(Boolean).join(" ");
+    var head = [p.date || "date inconnue", p.intervenants ? "· " + p.intervenants : ""].filter(Boolean).join(" ");
     var bodyParts = [];
     if (p.quantite) bodyParts.push("Quantité : " + p.quantite);
     if (p.notes) bodyParts.push(p.notes);
@@ -9308,10 +9519,10 @@ function PreviewDoc({ data }) {
         <img src={LOGO_SRC} style={{ height: 46 }} alt="We Cover" />
         <div>
           <div style={{ fontWeight: 700, fontSize: 18, color: GREEN }}>We Cover</div>
-          <div style={{ fontSize: 13, color: MUTED }}>Rapport de chantier — suivi d'avancement</div>
+          <div style={{ fontSize: 13, color: MUTED }}>Rapport de chantier · suivi d'avancement</div>
         </div>
         <div style={{ marginLeft: "auto", textAlign: "right", fontSize: 12, color: MUTED }}>
-          <div style={{ fontWeight: 700, color: TEXT, fontSize: 14 }}>{data.ref || "—"}</div>
+          <div style={{ fontWeight: 700, color: TEXT, fontSize: 14 }}>{data.ref || "·"}</div>
           <div>{m.dateDebut ? "début : " + m.dateDebut : ""}</div>
         </div>
       </div>
@@ -9358,7 +9569,7 @@ function PreviewDoc({ data }) {
           {data.journeesCloturees.slice().sort(function(a,b){ var ka=(a.date||"")+" "+(a.heure||""); var kb=(b.date||"")+" "+(b.heure||""); return kb.localeCompare(ka); }).map(function(j){
             return (
               <div key={j.id} className="photo-section" style={{ borderLeft: "3px solid #f39c12", paddingLeft: 8, marginBottom: 8 }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: "#856404", textTransform: "capitalize" }}>{j.date}{j.heure ? " — " + j.heure : ""} <span style={{ fontWeight: 400, color: MUTED }}>· {j.auteur}</span></div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: "#856404", textTransform: "capitalize" }}>{j.date}{j.heure ? " · " + j.heure : ""} <span style={{ fontWeight: 400, color: MUTED }}>· {j.auteur}</span></div>
                 {j.note && <div style={{ fontSize: 12, color: TEXT, whiteSpace: "pre-wrap", marginTop: 2 }}>{j.note}</div>}
                 {j.materiel && j.materiel.length > 0 && (
                   <div style={{ fontSize: 12, marginTop: 4 }}>
@@ -9507,7 +9718,7 @@ function WCProgressPanel({ data, onClose, onToggleMateriel }) {
             <span style={{ fontSize: 18 }}>📊</span>
             <div style={{ flex: 1 }}>
               <div style={{ fontWeight: 700, fontSize: 15 }}>Avancement</div>
-              <div style={{ fontSize: 11, opacity: 0.85 }}>{data.ref || "—"} · {totalPhotos} photo{totalPhotos > 1 ? "s" : ""}</div>
+              <div style={{ fontSize: 11, opacity: 0.85 }}>{data.ref || "·"} · {totalPhotos} photo{totalPhotos > 1 ? "s" : ""}</div>
             </div>
             <button onClick={onClose} style={{ background: "rgba(255,255,255,0.2)", color: WHITE, border: "none", borderRadius: 8, padding: "6px 10px", fontSize: 16, cursor: "pointer" }}>✕</button>
           </div>
@@ -9564,7 +9775,7 @@ function WCProgressPanel({ data, onClose, onToggleMateriel }) {
                         return (
                           <span key={gi} style={{ fontSize: 10, background: g.scopeColor + "22",
                             color: g.scopeColor, borderRadius: 4, padding: "1px 7px", fontWeight: 600 }}>
-                            {g.scope} — {g.sectionLabel} ({g.photos.length})
+                            {g.scope} · {g.sectionLabel} ({g.photos.length})
                           </span>
                         );
                       })}
@@ -9612,7 +9823,7 @@ function WCProgressPanel({ data, onClose, onToggleMateriel }) {
                               background: gOpen ? g.scopeColor + "12" : "#f8f8f6",
                               border: "1px solid " + (gOpen ? g.scopeColor + "44" : "#e8e8e4") }}>
                             <span style={{ width: 8, height: 8, borderRadius: "50%", background: g.scopeColor, flexShrink: 0 }} />
-                            <span style={{ flex: 1, fontWeight: 600, fontSize: 12 }}>{g.scope} — {g.sectionLabel}</span>
+                            <span style={{ flex: 1, fontWeight: 600, fontSize: 12 }}>{g.scope} · {g.sectionLabel}</span>
                             <span style={{ fontSize: 11, color: g.scopeColor, fontWeight: 700 }}>{g.photos.length} photo{g.photos.length > 1 ? "s" : ""}</span>
                             <span style={{ fontSize: 10, color: MUTED, transform: gOpen ? "rotate(180deg)" : "none", transition: "0.2s" }}>▼</span>
                           </div>
@@ -9653,7 +9864,7 @@ function WCProgressPanel({ data, onClose, onToggleMateriel }) {
                               background: gOpen ? g.scopeColor + "12" : "#f8f8f6",
                               border: "1px solid " + (gOpen ? g.scopeColor + "44" : "#e8e8e4") }}>
                             <span style={{ width: 8, height: 8, borderRadius: "50%", background: g.scopeColor, flexShrink: 0 }} />
-                            <span style={{ flex: 1, fontWeight: 600, fontSize: 12 }}>{g.scope} — {g.sectionLabel}</span>
+                            <span style={{ flex: 1, fontWeight: 600, fontSize: 12 }}>{g.scope} · {g.sectionLabel}</span>
                             <span style={{ fontSize: 11, color: g.scopeColor, fontWeight: 700 }}>{g.photos.length} photo{g.photos.length > 1 ? "s" : ""}</span>
                             <span style={{ fontSize: 10, color: MUTED, transform: gOpen ? "rotate(180deg)" : "none", transition: "0.2s" }}>▼</span>
                           </div>
@@ -9943,7 +10154,7 @@ function CloturJourneeBlock({ journees, setJournees, currentUser, onLogged, refC
                       background: isOpen ? "#fffbf0" : "#fff", userSelect: "none" }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontWeight: 700, fontSize: 12, color: "#856404", textTransform: "capitalize" }}>
-                        📅 {fmtDate(j.date)} {j.heure ? "— " + j.heure : ""}
+                        📅 {fmtDate(j.date)} {j.heure ? "· " + j.heure : ""}
                       </div>
                       <div style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>
                         👤 {j.auteur}
@@ -10001,7 +10212,7 @@ function CloturJourneeBlock({ journees, setJournees, currentUser, onLogged, refC
   );
 }
 
-/* ── Notification WhatsApp au PM — message de clôture + lien du rapport ── */
+/* ── Notification WhatsApp au PM · message de clôture + lien du rapport ── */
 function WCWhatsAppNotify({ data, refChantier, journeeDuJour }) {
   var [copied, setCopied] = useState(false);
   var [showPreview, setShowPreview] = useState(false);
@@ -10016,9 +10227,9 @@ function WCWhatsAppNotify({ data, refChantier, journeeDuJour }) {
   var typeStr = [
     data.typeChantier && data.typeChantier.facade ? "Façade" : null,
     data.typeChantier && data.typeChantier.toiture ? "Toiture" + (((data.toitures||[]).length>1) ? " ×" + data.toitures.length : "") : null
-  ].filter(Boolean).join(" + ") || "—";
+  ].filter(Boolean).join(" + ") || "·";
 
-  var msgLines = ["Rapport We Cover — " + refChantier, "Client : " + client];
+  var msgLines = ["Rapport We Cover · " + refChantier, "Client : " + client];
   if (adresse) msgLines.push("Adresse : " + adresse);
   if (pm) msgLines.push("PM : " + pm);
   msgLines.push("Type : " + typeStr);
@@ -10053,7 +10264,7 @@ function WCWhatsAppNotify({ data, refChantier, journeeDuJour }) {
       <div style={{ fontWeight: 700, fontSize: 13, color: GREEN, marginBottom: 10,
         display: "flex", alignItems: "center", gap: 8 }}>
         <span style={{ fontSize: 18 }}>📤</span>
-        Notifier le PM — {journeeDuJour ? "journée clôturée" : "message rapport"}
+        Notifier le PM · {journeeDuJour ? "journée clôturée" : "message rapport"}
       </div>
 
       <button onClick={function(){ setShowPreview(function(v){ return !v; }); }}
@@ -10079,7 +10290,7 @@ function WCWhatsAppNotify({ data, refChantier, journeeDuJour }) {
               padding: "10px 18px", background: "#25D366", color: WHITE,
               borderRadius: 8, fontSize: 13, fontWeight: 700,
               textDecoration: "none", whiteSpace: "nowrap" }}>
-            💬 PM — {pm.split(" ")[0]}
+            💬 PM · {pm.split(" ")[0]}
           </a>
         ) : (
           <div style={{ fontSize: 11, color: "#856404", background: "#fff8e1",
@@ -10128,7 +10339,7 @@ function HistoryPanel({ refChantier, onRestore, onClose, currentUser }) {
   }
 
   function fmtDate(iso) {
-    if (!iso) return "—";
+    if (!iso) return "·";
     try {
       var d = new Date(iso);
       return d.toLocaleString("fr-BE", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
@@ -10164,7 +10375,7 @@ function HistoryPanel({ refChantier, onRestore, onClose, currentUser }) {
                   <div key={v.id} style={{ background: BG, border: "1px solid " + BORDER, borderRadius: 8, padding: "10px 12px", marginBottom: 8, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                     <div style={{ flex: 1, minWidth: 200 }}>
                       <div style={{ fontWeight: 600, fontSize: 13 }}>{fmtDate(v.created_at)}</div>
-                      <div style={{ fontSize: 11, color: MUTED }}>{v.author || "—"} {v.label ? "· " + v.label : ""}</div>
+                      <div style={{ fontSize: 11, color: MUTED }}>{v.author || "·"} {v.label ? "· " + v.label : ""}</div>
                       <div style={{ fontSize: 11, color: MUTED }}>{v.passages_count || 0} jour{(v.passages_count||0)>1?"s":""} actif{(v.passages_count||0)>1?"s":""} · {v.photos_count || 0} photo{(v.photos_count||0)>1?"s":""}</div>
                     </div>
                     <button onClick={function(){ restore(v.id); }} style={{ background: GREEN, color: WHITE, border: "none", borderRadius: 6, padding: "6px 12px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>↺ Restaurer</button>
@@ -10207,6 +10418,17 @@ function App() {
   var [saveStatus, setSaveStatus] = useState("");
   var [showPreview, setShowPreview] = useState(false);
   var [showAvancement, setShowAvancement] = useState(false);
+  var [showSearch, setShowSearch] = useState(false);
+  useEffect(function(){
+    function onK(e) {
+      if ((e.metaKey || e.ctrlKey) && (e.key === "k" || e.key === "K")) {
+        var u = null; try { u = JSON.parse(localStorage.getItem("wge_user") || "null"); } catch(_) {}
+        if (u && (u.type === "wge" || isWGEEmail(u.email))) { e.preventDefault(); setShowSearch(true); }
+      }
+    }
+    window.addEventListener("keydown", onK);
+    return function(){ window.removeEventListener("keydown", onK); };
+  }, []);
   var [briefingInfo, setBriefingInfo] = useState(null);
   var [showHistory, setShowHistory] = useState(false);
   var [lastSnapshotAt, setLastSnapshotAt] = useState(0); // pour throttle auto-snapshot
@@ -10439,7 +10661,7 @@ function App() {
     }
   }
 
-  /* Autosave debounce court (1.2s) — réactif pour limiter la fenêtre de risque
+  /* Autosave debounce court (1.2s) · réactif pour limiter la fenêtre de risque
      si l'app passe en arrière-plan juste après une modification. */
   useEffect(function(){
     if (!ref || !loaded) return;
@@ -10451,7 +10673,7 @@ function App() {
   }, [data, ref, loaded]);
 
   /* Filet de sécurité : force la sauvegarde dès que l'onglet passe en arrière-plan,
-     se décharge, ou avant fermeture — évite la perte de photo sur chantier. */
+     se décharge, ou avant fermeture · évite la perte de photo sur chantier. */
   useEffect(function(){
     function onVisibilityChange() {
       if (document.visibilityState === "hidden") flushSave();
@@ -10637,11 +10859,14 @@ function App() {
 
       {!showPreview && (
       <div id="no-print">
+        {showSearch && user && (user.type === "wge" || isWGEEmail(user.email)) && (
+          <SearchRapports currentRef={ref} onClose={function(){ setShowSearch(false); }} />
+        )}
         {/* Header sticky */}
         <div style={{ position: "sticky", top: 0, zIndex: 100, background: WHITE, borderBottom: "1px solid " + BORDER, boxShadow: "0 1px 6px rgba(0,0,0,0.04)" }}>
           {/* Ligne complète : masquée sur mobile une fois qu'on a scrollé, pour laisser la place aux sections */}
           {!(isMobileView && scrolled) && (
-            <div style={{ maxWidth: 920, margin: "0 auto", padding: isMobileView ? "8px 10px" : "10px 14px", display: "flex", alignItems: "center", gap: isMobileView ? 8 : 12, flexWrap: "wrap" }}>
+            <div style={{ maxWidth: 920, margin: "0 auto", padding: isMobileView ? "8px 10px" : "10px 14px", display: "flex", alignItems: "center", gap: isMobileView ? 6 : 12, flexWrap: "wrap" }}>
               <img src={LOGO_SRC} style={{ height: isMobileView ? 24 : 34 }} alt="We Cover" />
               <div style={{ lineHeight: 1.1 }}>
                 <div style={{ fontWeight: 700, color: GREEN, fontSize: isMobileView ? 13 : 15 }}>We Cover</div>
@@ -10649,11 +10874,13 @@ function App() {
               </div>
               {!isMobileView && <span style={{ fontSize: 11, fontWeight: 700, color: "#2980b9", background: "#eaf4fb", border: "1px solid #cfe6f7", padding: "2px 8px", borderRadius: 20 }}>📋 Suivi d'avancement</span>}
               <div style={{ flex: 1 }} />
+              {user && (user.type === "wge" || isWGEEmail(user.email)) && <button onClick={function(){ setShowSearch(true); }} title="Rechercher un rapport (Ctrl+K / ⌘K)"
+                style={{ background: WHITE, color: TEXT, border: "1px solid " + BORDER, borderRadius: 8, padding: isMobileView ? "6px 10px" : "8px 12px", fontWeight: 600, fontSize: isMobileView ? 12 : 13 }}>🔍{isMobileView ? "" : " Rechercher"}</button>}
               {ref && <button onClick={function(){ setShowAvancement(true); }} title="Voir l'avancement par jour / par intervenant"
-                style={{ background: "#eaf4fb", color: "#2980b9", border: "1px solid #cfe6f7", borderRadius: 8, padding: isMobileView ? "6px 10px" : "8px 12px", fontWeight: 600, fontSize: isMobileView ? 12 : 13 }}>📊 Avancement</button>}
+                style={{ background: "#eaf4fb", color: "#2980b9", border: "1px solid #cfe6f7", borderRadius: 8, padding: isMobileView ? "6px 10px" : "8px 12px", fontWeight: 600, fontSize: isMobileView ? 12 : 13 }}>📊{isMobileView ? "" : " Avancement"}</button>}
               {ref && <button onClick={function(){ setShowHistory(true); }} title="Voir l'historique"
                 style={{ background: WHITE, color: MUTED, border: "1px solid " + BORDER, borderRadius: 8, padding: isMobileView ? "6px 9px" : "8px 10px", fontSize: 13 }}>🕓</button>}
-              <button onClick={doPrint} style={{ background: GREEN, color: WHITE, border: "none", borderRadius: 8, padding: isMobileView ? "6px 10px" : "8px 12px", fontWeight: 600, fontSize: isMobileView ? 12 : 13 }}>🖨 {isMobileView ? "PDF" : "Aperçu / PDF"}</button>
+              <button onClick={doPrint} style={{ background: GREEN, color: WHITE, border: "none", borderRadius: 8, padding: isMobileView ? "6px 10px" : "8px 12px", fontWeight: 600, fontSize: isMobileView ? 12 : 13 }}>🖨{isMobileView ? "" : " Aperçu / PDF"}</button>
               {user && !isMobileView && (
                 <span title={user.email || user.name} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: TEXT, background: BG, border: "1px solid " + BORDER, borderRadius: 20, padding: "4px 10px" }}>
                   {user.type === "contractor" ? "🔧" : "👤"} <span style={{ maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{user.name || user.email}</span>
@@ -10663,7 +10890,7 @@ function App() {
             </div>
           )}
 
-          {/* Bouton Sauvegarde + statut (avec heure) — toujours visible, même en mode compact mobile */}
+          {/* Bouton Sauvegarde + statut (avec heure) · toujours visible, même en mode compact mobile */}
           {ref && (
             <div style={{ maxWidth: 920, margin: "0 auto", padding: isMobileView && scrolled ? "8px 10px" : "0 14px 10px",
               display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 2 }}>
@@ -10690,7 +10917,7 @@ function App() {
               <div style={{ flex: 1, minWidth: 200 }}>
                 <label style={LBL}>Référence chantier (Odoo)</label>
                 {ref ? (
-                  <input value={ref} readOnly title="Référence du bon de commande — fixe, non modifiable dans le rapport"
+                  <input value={ref} readOnly title="Référence du bon de commande · fixe, non modifiable dans le rapport"
                     style={{ width: "100%", background: "#f4f4f0", color: "#555", cursor: "default" }} />
                 ) : (
                   <input value={refInput} onChange={function(e){ setRefInput(e.target.value); }}
@@ -10711,7 +10938,7 @@ function App() {
           <div>
             {briefingInfo && (
               <div style={{ background: "#eaf4fb", border: "1px solid #cfe6f7", borderRadius: 8, padding: "10px 12px", marginBottom: 14, fontSize: 13, color: "#1a4a6e" }}>
-                ✨ Briefing trouvé pour ce chantier{briefingInfo.client ? " (client : " + briefingInfo.client + ")" : ""}{briefingInfo.nbToitures ? " · " + briefingInfo.nbToitures + " toiture" + (briefingInfo.nbToitures>1?"s":"") + " pré-remplie" + (briefingInfo.nbToitures>1?"s":"") : ""}. Les sections sont initialisées en conséquence — vous pouvez ajouter, renommer ou supprimer librement.
+                ✨ Briefing trouvé pour ce chantier{briefingInfo.client ? " (client : " + briefingInfo.client + ")" : ""}{briefingInfo.nbToitures ? " · " + briefingInfo.nbToitures + " toiture" + (briefingInfo.nbToitures>1?"s":"") + " pré-remplie" + (briefingInfo.nbToitures>1?"s":"") : ""}. Les sections sont initialisées en conséquence · vous pouvez ajouter, renommer ou supprimer librement.
               </div>
             )}
 
@@ -10745,7 +10972,7 @@ function App() {
                 <div>
                   <label style={LBL}>Project Manager</label>
                   <select value={data.meta.pm} onChange={function(e){ upd(["meta","pm"], e.target.value); }} style={{ width: "100%" }}>
-                    <option value="">— Sélectionner —</option>
+                    <option value="">Sélectionner</option>
                     {Object.keys(PM_DATA).map(function(n){ return <option key={n} value={n}>{n}</option>; })}
                   </select>
                   {(pm.tel || pm.email) && <div style={{ fontSize: 11, color: MUTED, marginTop: 4 }}>{[pm.tel, pm.email].filter(Boolean).join(" · ")}</div>}
@@ -10781,7 +11008,7 @@ function App() {
                   </div>
                 )}
 
-                {/* Toiture inclinée / plate — l'ajout crée directement une première toiture de ce type */}
+                {/* Toiture inclinée / plate · l'ajout crée directement une première toiture de ce type */}
                 <button onClick={function(){ addRoof("pente"); }}
                   style={{ background: WHITE, color: GREEN, border: "1.5px solid " + GREEN, borderRadius: 20, padding: "7px 14px", fontWeight: 600, fontSize: 13, cursor: "pointer" }}>
                   + 🏠 Toiture inclinée
@@ -10794,7 +11021,7 @@ function App() {
 
               {data.typeChantier.toiture && (data.toitures || []).length > 0 && (
                 <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                  <span style={{ fontSize: 12, color: MUTED }}>{(data.toitures || []).length} toiture{(data.toitures||[]).length>1?"s":""} active{(data.toitures||[]).length>1?"s":""} — chaque toiture se supprime individuellement ci-dessous.</span>
+                  <span style={{ fontSize: 12, color: MUTED }}>{(data.toitures || []).length} toiture{(data.toitures||[]).length>1?"s":""} active{(data.toitures||[]).length>1?"s":""} · chaque toiture se supprime individuellement ci-dessous.</span>
                 </div>
               )}
 
@@ -10871,7 +11098,7 @@ function App() {
               }}
             />
 
-            {/* Notifier le PM — toujours visible dès qu'un rapport est chargé,
+            {/* Notifier le PM · toujours visible dès qu'un rapport est chargé,
                 utilise la clôture la plus récente (peu importe sa date) si elle existe */}
             {ref && (function(){
               var journees = data.journeesCloturees || [];
@@ -10985,6 +11212,17 @@ function App() {
   var [showHistory, setShowHistory] = useState(false);
   var [showChantier, setShowChantier] = useState(false);
   var [showProgress, setShowProgress] = useState(false);
+  var [showSearch, setShowSearch] = useState(false);
+  useEffect(function(){
+    function onK(e) {
+      if ((e.metaKey || e.ctrlKey) && (e.key === "k" || e.key === "K")) {
+        var u = null; try { u = JSON.parse(localStorage.getItem("wge_user") || "null"); } catch(_) {}
+        if (u && (u.type === "wge" || isWGEEmail(u.email))) { e.preventDefault(); setShowSearch(true); }
+      }
+    }
+    window.addEventListener("keydown", onK);
+    return function(){ window.removeEventListener("keydown", onK); };
+  }, []);
   var saveTimerRef       = useRef(null);
   var isSavingRef        = useRef(false);   // mutex : empêche deux sauvegardes simultanées
   var pendingSaveRef     = useRef(false);   // une modification est arrivée pendant une sauvegarde
@@ -11353,7 +11591,7 @@ function App() {
     setSaveStatus("saving");
     saveTimerRef.current = setTimeout(doSave, 800);
     return function() { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
-  }, [data]); // surveille TOUT — texte ET photos
+  }, [data]); // surveille TOUT · texte ET photos
 
   // Avertissement navigateur si modifications non sauvegardées + sauvegarde en quittant
   useEffect(function() {
@@ -11390,7 +11628,7 @@ function App() {
     };
   }, [pendingChanges]);
 
-  // Load from Supabase — charge la feuille la plus récente pour ce ref
+  // Load from Supabase · charge la feuille la plus récente pour ce ref
   async function loadData(ref, urlTask) {
     if (!ref) return;
     var taskName = urlTask || (data && data.meta && data.meta.nom_tache) || "";
@@ -11406,7 +11644,7 @@ function App() {
       if (row && row.data) {
         setData(function(prev) {
           var merged = deepMerge(makeDefaultData(), row.data);
-          // Préserver nom_tache depuis l'URL — Supabase ne le stocke pas
+          // Préserver nom_tache depuis l'URL · Supabase ne le stocke pas
           merged.meta = Object.assign({}, merged.meta, { nom_tache: taskName || prev.meta.nom_tache || "" });
           return merged;
         });
@@ -11460,7 +11698,7 @@ function App() {
           });
           return n;
         });
-        setPrefillMsg("✅ Pré-rempli depuis le Briefing — " + (client.nom || ref));
+        setPrefillMsg("✅ Pré-rempli depuis le Briefing · " + (client.nom || ref));
         setTimeout(function(){ setPrefillMsg(""); }, 5000);
       }
     }
@@ -11540,7 +11778,7 @@ function App() {
         var newNames = {}, newPVCounts = {};
         briefingStrings.forEach(function(s, i){
           var orientLabel = s.orient === "Libre" ? (s.orientLibre || "") : (s.orient || "");
-          newNames[i] = ["Ond. " + (s.onduleur || "?"), orientLabel].filter(Boolean).join(" — ");
+          newNames[i] = ["Ond. " + (s.onduleur || "?"), orientLabel].filter(Boolean).join(" · ");
           newPVCounts[i] = s.count || "";
         });
         next.dc = Object.assign({}, next.dc, {
@@ -11554,7 +11792,7 @@ function App() {
       }
       return next;
     });
-    setPrefillMsg("✅ Importé depuis le Briefing — " + (client.nom||ref) + stringsMsg);
+    setPrefillMsg("✅ Importé depuis le Briefing · " + (client.nom||ref) + stringsMsg);
     setTimeout(function(){ setPrefillMsg(""); }, 5000);
   }
 
@@ -11575,7 +11813,7 @@ function App() {
             {data.meta.nom_tache ? data.meta.nom_tache : "Rapport de Chantier"}
           </div>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        <div className="wge-hdr-actions" style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           {/* ── Photos en attente d'envoi (réseau) ── */}
           {unsentCount > 0 && (
             <div style={{ position:"fixed", top:0, left:0, right:0, zIndex:99998,
@@ -11653,7 +11891,7 @@ function App() {
             </div>
           )}
           {user && (
-            <div style={{ display: "flex", alignItems: "center", gap: 5, padding: "3px 9px", background: user.type === "contractor" ? "#fff8f0" : "rgba(255,255,255,0.15)", border: "1px solid "+(user.type === "contractor" ? "#e8c080" : "rgba(255,255,255,0.3)"), borderRadius: 20 }}>
+            <div className="wge-hdr-userpill" style={{ display: "flex", alignItems: "center", gap: 5, padding: "3px 9px", background: user.type === "contractor" ? "#fff8f0" : "rgba(255,255,255,0.15)", border: "1px solid "+(user.type === "contractor" ? "#e8c080" : "rgba(255,255,255,0.3)"), borderRadius: 20 }}>
               {user.type === "contractor" && <span style={{ fontSize: 11 }}>🔧</span>}
               {user.type !== "contractor" && <span style={{ fontSize: 11 }}>🌿</span>}
               <span style={{ fontSize: 11, fontWeight: 600, color: user.type === "contractor" ? "#7a4800" : WHITE, maxWidth: 100, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{user.name}</span>
@@ -11668,6 +11906,12 @@ function App() {
               opacity: currentSheetId ? 1 : 0.45 }}>
             🔄 Historique
           </button>
+          {user && (user.type === "wge" || isWGEEmail(user.email)) && (
+            <button onClick={function(){ setShowSearch(true); }} title="Rechercher un rapport (Ctrl+K / ⌘K)"
+              style={{ background:"rgba(255,255,255,0.2)", border:"none", color:WHITE, borderRadius:6, padding:"5px 10px", fontSize:12, cursor:"pointer" }}>
+              🔍 Rechercher
+            </button>
+          )}
           {data.meta.ref && (
             <button onClick={function(){ setShowChantier(function(v){ return !v; }); }}
               style={{ background:showChantier?"rgba(255,255,255,0.35)":"rgba(255,255,255,0.2)", border:"none", color:WHITE, borderRadius:6, padding:"5px 10px", fontSize:12, cursor:"pointer" }}>
@@ -11729,6 +11973,10 @@ function App() {
         </div>
       </div>
 
+      {showSearch && user && (user.type === "wge" || isWGEEmail(user.email)) && (
+        <SearchRapports currentRef={data.meta.ref} onClose={function(){ setShowSearch(false); }} />
+      )}
+
       {/* Common header */}
       <HeaderSection data={data} setData={setData} onLoad={loadData} onPrefill={prefillFromChantier} prefillMsg={prefillMsg} loading={loading} />
 
@@ -11766,7 +12014,7 @@ function App() {
         var hasSAVOrMaint = (data.sav||[]).length > 0 || (data.maintenanceVisites||[]).length > 0;
         var showExtraTabs = bothLocked || hasSAVOrMaint;
         var isUserWGE = user && (user.type === "wge" || isWGEEmail(user.email));
-        var showAdmin = isUserWGE || bothLocked; // WGE : toujours visible — sous-traitants : seulement si verrouillé
+        var showAdmin = isUserWGE || bothLocked; // WGE : toujours visible · sous-traitants : seulement si verrouillé
         var adminDocCount = (function(){
           var a = data.admin||{}; var secs = a.sections||{};
           var n = Object.values(secs).reduce(function(acc,s){ return acc + (s&&s.docs?s.docs.length:0); }, 0);
@@ -11925,7 +12173,7 @@ function App() {
 /* ─────────────────────────────────────────────────────────────────────────
    ROUTER : détecte l'entité (We Green par défaut, We Cover si la référence
    commence par WC-) et monte l'App appropriée. We Green prod reste l'app
-   par défaut — aucun chemin existant ne change pour les utilisateurs WG.
+   par défaut · aucun chemin existant ne change pour les utilisateurs WG.
    ─────────────────────────────────────────────────────────────────────── */
 function detectEntity() {
   try {
