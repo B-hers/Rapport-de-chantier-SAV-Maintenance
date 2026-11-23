@@ -8439,7 +8439,27 @@ function rsGroup(rows) {
   });
 }
 var RS_TEXT = "#1a1a1a";
+// Entités : le périmètre de la recherche suit le préfixe de la référence du rapport ouvert.
+var RS_ENTITIES = {
+  wge:      { label: "We Green Energy",        flag: "🇧🇪", color: "#1B6B3A" },
+  wgbdx:    { label: "We Green Bordeaux",      flag: "🇫🇷", color: "#8e44ad" },
+  wgies:    { label: "We Green Île-de-France", flag: "🇫🇷", color: "#2980b9" },
+  wgghana:  { label: "We Green Ghana",         flag: "🇬🇭", color: "#d35400" },
+  wginvest: { label: "We Green Invest",        flag: "💼", color: "#16a085" },
+  wcover:   { label: "We Cover",               flag: "🏠", color: "#2980b9" }
+};
+function rsEntity(ref) {
+  var r = String(ref || "").trim().toUpperCase();
+  if (r.indexOf("WG-BDX-") === 0) return "wgbdx";
+  if (r.indexOf("WG-IDF-") === 0) return "wgies";
+  if (r.indexOf("WG-GH-") === 0)  return "wgghana";
+  if (r.indexOf("WG-INV-") === 0) return "wginvest";
+  if (/^WC[-_]/.test(r))          return "wcover";
+  return "wge";
+}
 function SearchRapports({ onClose, currentRef }) {
+  var ent = rsEntity(currentRef);
+  var [allEnt, setAllEnt] = useState(false);
   var [q, setQ] = useState("");
   var [rows, setRows] = useState(function(){ return _rapportsCache || rsIdxRead(); });
   var [loading, setLoading] = useState(true);
@@ -8519,7 +8539,8 @@ function SearchRapports({ onClose, currentRef }) {
     return function(){ cancelled = true; };
   }, []);
 
-  var all = rsGroup(rows);
+  var allRows = rsGroup(rows);
+  var all = allEnt ? allRows : allRows.filter(function(r){ return rsEntity(r.ref) === ent; });
   // Filtrage local instantané : chaque mot tapé doit apparaître (sans accents ni majuscules)
   var words = rsNorm(q).split(/\s+/).filter(Boolean);
   var results = words.length === 0 ? all.slice(0, 30) : all.filter(function(r){
@@ -8567,8 +8588,20 @@ function SearchRapports({ onClose, currentRef }) {
             style={{ background: "none", border: "none", color: MUTED, cursor: "pointer", fontSize: 22, lineHeight: 1, padding: "0 4px", minWidth: 32, minHeight: 32, flexShrink: 0 }}>×</button>
         </div>
         <div style={{ padding: "6px 14px", fontSize: 11, color: MUTED, borderBottom: "1px solid #f0efe9", display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
-          <span>{all.length + " chantier" + (all.length > 1 ? "s" : "")}{progress ? " · indexation " + progress.done + "/" + progress.total : (loading && !all.length ? " · chargement…" : "")}{error ? " · ⚠ " + error : ""}</span>
-          <span>{words.length ? results.length + (results.length === 50 ? "+" : "") + " résultat" + (results.length > 1 ? "s" : "") : "Récents"}</span>
+          <span style={{ minWidth: 0 }}>
+            {allEnt
+              ? <b style={{ color: RS_TEXT }}>Toutes les entités</b>
+              : <b style={{ color: RS_ENTITIES[ent].color }}>{RS_ENTITIES[ent].flag} {RS_ENTITIES[ent].label}</b>}
+            {" · " + all.length + " chantier" + (all.length > 1 ? "s" : "")}{progress ? " · indexation " + progress.done + "/" + progress.total : (loading && !all.length ? " · chargement…" : "")}{error ? " · ⚠ " + error : ""}
+          </span>
+          <span style={{ display: "inline-flex", gap: 10, alignItems: "center", flexShrink: 0 }}>
+            <span>{words.length ? results.length + (results.length === 50 ? "+" : "") + " résultat" + (results.length > 1 ? "s" : "") : "Récents"}</span>
+            <button type="button" onClick={function(){ setAllEnt(!allEnt); setActive(0); if (inputRef.current) inputRef.current.focus(); }}
+              title={allEnt ? "Limiter à l'entité du rapport ouvert" : "Chercher aussi dans les autres entités"}
+              style={{ border: "none", background: "none", padding: "4px 0", minHeight: 28, color: GREEN, fontSize: 11, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
+              {allEnt ? "Uniquement " + RS_ENTITIES[ent].label : "Toutes les entités"}
+            </button>
+          </span>
         </div>
         <div ref={listRef} style={{ overflow: "auto", flex: 1, WebkitOverflowScrolling: "touch" }}>
           {results.length === 0 && !loading && (
@@ -8593,7 +8626,7 @@ function SearchRapports({ onClose, currentRef }) {
                   {r.task && <div style={{ fontSize: 12, color: MUTED, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>🧾 {r.task}</div>}
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3, flexShrink: 0 }}>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: col, border: "1px solid " + col + "55", background: col + "12", borderRadius: 5, padding: "1px 7px", whiteSpace: "nowrap" }}>{r.ref}</span>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: col, border: "1px solid " + col + "55", background: col + "12", borderRadius: 5, padding: "1px 7px", whiteSpace: "nowrap" }}>{allEnt ? RS_ENTITIES[rsEntity(r.ref)].flag + " " : ""}{r.ref}</span>
                   <span style={{ fontSize: 10, color: "#999", whiteSpace: "nowrap" }}>{isCur ? "ouvert · " : ""}{r.n > 1 ? r.n + " feuilles · " : ""}{fmtDate(r.updated_at)}</span>
                 </div>
               </div>
