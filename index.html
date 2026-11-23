@@ -4018,7 +4018,66 @@ function makeDefaultSAV() {
   };
 }
 
-function SAVCard({ sav, idx, onChange, onDelete, photos, setPhotos, refChantier }) {
+// ── Export PDF d'une intervention SAV (à partager avec le client) ─────────────
+function exportSavPdf(sav, idx, meta, photos) {
+  function esc(v) { return String(v == null ? "" : v).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+  function nl(v) { return esc(v).replace(/\n/g,"<br>"); }
+  meta = meta || {}; photos = photos || {};
+  var avant = (photos["sav_avant_" + sav.id] || []).filter(function(p){ return p && p.url && !p.isVideo; });
+  var apres = (photos["sav_apres_" + sav.id] || []).filter(function(p){ return p && p.url && !p.isVideo; });
+  var statutLabel = sav.statut === "Escaladé WGE" ? "Transmis au service technique" : (sav.statut || "");
+  var dateTxt = sav.date ? new Date(sav.date + "T12:00:00").toLocaleDateString("fr-BE") : "";
+  function row(label, val) {
+    if (!val) return "";
+    return '<tr><td style="padding:5px 14px 5px 0;width:150px;font-size:11px;color:#666;font-weight:600;white-space:nowrap;vertical-align:top">' + label + '</td>'
+      + '<td style="padding:5px 0;font-size:12px">' + val + '</td></tr>';
+  }
+  function block(title, txt) {
+    if (!txt || !String(txt).trim()) return "";
+    return '<div style="margin-top:16px;page-break-inside:avoid"><div style="font-size:12px;font-weight:700;color:#1B6B3A;margin-bottom:5px;padding-bottom:3px;border-bottom:1px solid #d4ead9">' + title + '</div>'
+      + '<div style="font-size:12.5px;line-height:1.55">' + nl(txt) + '</div></div>';
+  }
+  function grid(title, list) {
+    if (!list.length) return "";
+    return '<div style="margin-top:18px"><div style="font-size:12px;font-weight:700;color:#1B6B3A;margin-bottom:8px;padding-bottom:3px;border-bottom:1px solid #d4ead9">' + title + '</div>'
+      + '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px">'
+      + list.map(function(p){
+          return '<div style="page-break-inside:avoid;break-inside:avoid"><img src="' + esc(p.url) + '" style="width:100%;height:auto;max-height:260px;object-fit:contain;background:#f4f4f0;border-radius:6px;border:1px solid #ddd;display:block" /></div>';
+        }).join("")
+      + '</div></div>';
+  }
+  var html = '<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
+    + '<title>Intervention SAV ' + esc(meta.ref || "") + (dateTxt ? " " + esc(dateTxt) : "") + '</title>'
+    + '<style>body{margin:0;font-family:Arial,Helvetica,sans-serif;color:#1a1a1a;background:#fff}'
+    + '.page{max-width:210mm;margin:0 auto;padding:14mm 16mm;box-sizing:border-box}'
+    + '@media print{.no-print{display:none!important}@page{size:A4;margin:10mm}.page{padding:0}}</style></head><body><div class="page">'
+    + '<div style="display:flex;align-items:center;justify-content:space-between;gap:16px;border-bottom:2px solid #1B6B3A;padding-bottom:12px">'
+    + '<img src="' + LOGO_SRC + '" style="height:46px;object-fit:contain" />'
+    + '<div style="text-align:right"><div style="font-size:18px;font-weight:700;color:#1B6B3A">Rapport d\'intervention SAV</div>'
+    + '<div style="font-size:11px;color:#666">Intervention ' + (idx + 1) + (dateTxt ? " · " + esc(dateTxt) : "") + '</div></div></div>'
+    + '<table style="border-collapse:collapse;margin-top:14px;width:100%">'
+    + row("Référence", esc(meta.ref)) + row("Client", esc(meta.client)) + row("Adresse", esc(meta.adresse))
+    + row("Date", esc(dateTxt)) + row("Intervenant", esc(sav.intervenant)) + row("Type de problème", esc(sav.type))
+    + row("Statut", esc(statutLabel)) + row("Durée d'intervention", esc(fmtDuree(sav.dureeMin)))
+    + '</table>'
+    + block("Description du problème", sav.description)
+    + block("Actions effectuées", sav.actionsEffectuees)
+    + block("Pièces remplacées", sav.piecesRemplacees)
+    + grid("Photos avant intervention", avant)
+    + grid("Photos après intervention", apres)
+    + '<div style="margin-top:28px;font-size:10px;color:#999;border-top:1px solid #eee;padding-top:8px">We Green Energy · Document généré le ' + new Date().toLocaleDateString("fr-BE") + '</div>'
+    + '</div>'
+    + '<div class="no-print" style="position:fixed;bottom:16px;right:16px;display:flex;gap:10px;z-index:9999">'
+    + '<button onclick="window.print()" style="background:#1B6B3A;color:#fff;border:none;border-radius:8px;padding:12px 20px;font-size:14px;font-weight:700;cursor:pointer;box-shadow:0 2px 12px rgba(0,0,0,0.2)">Enregistrer / Imprimer PDF</button>'
+    + '<button onclick="window.close()" style="background:#888;color:#fff;border:none;border-radius:8px;padding:12px 16px;font-size:14px;cursor:pointer">Fermer</button>'
+    + '</div></body></html>';
+  var win = window.open("", "_blank");
+  if (!win) { alert("Veuillez autoriser les popups pour générer le PDF."); return; }
+  win.document.write(html);
+  win.document.close();
+}
+
+function SAVCard({ sav, idx, onChange, onDelete, photos, setPhotos, refChantier, meta }) {
   var [open, setOpen] = useState(true);
 
   var statutColors = {
@@ -4073,6 +4132,12 @@ function SAVCard({ sav, idx, onChange, onDelete, photos, setPhotos, refChantier 
         {sav.dureeMin
           ? <span style={{ fontSize: 11, background: GREEN_LIGHT, border: "1px solid " + GREEN_MID, borderRadius: 5, padding: "1px 8px", color: GREEN, fontWeight: 600 }}>⏱ {fmtDuree(sav.dureeMin)}</span>
           : <span style={{ fontSize: 11, background: "#fdecea", border: "1px solid #f1948a", borderRadius: 5, padding: "1px 8px", color: "#c0392b", fontWeight: 700 }}>⏱ durée manquante</span>}
+        <button title="Exporter cette intervention en PDF pour le client"
+          onClick={function(e){ e.stopPropagation(); exportSavPdf(sav, idx, meta, photos); }}
+          style={{ background: WHITE, border: "1px solid " + BORDER, color: "#1a1a1a", borderRadius: 999,
+            padding: "4px 12px", minHeight: 32, fontSize: 12, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}>
+          📄 PDF
+        </button>
         <span style={{ color: MUTED, fontSize: 12 }}>{open ? "▲" : "▼"}</span>
       </div>
 
@@ -4533,7 +4598,7 @@ function SAVTab({ data, setData }) {
             onChange={function(updated){ setSavList(function(l){ return l.map(function(s,j){ return j===i?updated:s; }); }); }}
             onDelete={function(){ setSavList(function(l){ return l.filter(function(_,j){ return j!==i; }); }); }}
             photos={savPhotos} setPhotos={setSavPhotos}
-            refChantier={data.meta.ref}
+            refChantier={data.meta.ref} meta={data.meta}
           />
         );
       })}
