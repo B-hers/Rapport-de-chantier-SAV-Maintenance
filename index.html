@@ -11310,6 +11310,7 @@ function App() {
   var [showHistory, setShowHistory] = useState(false);
   var [showChantier, setShowChantier] = useState(false);
   var [showProgress, setShowProgress] = useState(false);
+  var [showDocs, setShowDocs] = useState(false);
   var [showSearch, setShowSearch] = useState(false);
   useEffect(function(){
     function onK(e) {
@@ -12059,6 +12060,14 @@ function App() {
                   <div style={{ fontSize:12, fontWeight:700, color:"#1a1a1a" }}>{user.name}</div>
                   <div style={{ fontSize:11, color:MUTED }}>{user.email}</div>
                 </div>
+                {data.meta.ref && (
+                  <button onClick={function(e){ e.currentTarget.parentNode.style.display="none"; setShowDocs(true); }}
+                    style={{ width:"100%", padding:"10px 14px", background:"none", border:"none", borderBottom:"1px solid #f0f0ec",
+                      textAlign:"left", fontSize:13, color:"#1a1a1a", cursor:"pointer",
+                      display:"flex", alignItems:"center", gap:8, fontFamily:"inherit" }}>
+                    📁 Documents
+                  </button>
+                )}
                 <button onClick={function(){ window.wgeSignOut(); }}
                   style={{ width:"100%", padding:"10px 14px", background:"none", border:"none",
                     textAlign:"left", fontSize:13, color:"#c0392b", cursor:"pointer",
@@ -12253,6 +12262,10 @@ function App() {
         </>
       )}
 
+      {showDocs && data.meta.ref && (
+        <RapportDocsPanel refChantier={data.meta.ref} sheetLabel={currentSheetLabel} user={user} isContractor={user && user.type === "contractor"} onClose={function(){ setShowDocs(false); }} />
+      )}
+
       {/* Progress panel */}
       {showProgress && data.meta.ref && (
         <>
@@ -12265,6 +12278,191 @@ function App() {
         </>
       )}
     </div>
+  );
+}
+
+/* ── Documents du rapport (registre partagé avec le briefing, stockage Supabase) ── */
+var RD_BUCKET = "chantier-documents";
+var RD_MAX = 50 * 1024 * 1024;
+var RD_CATS = ["Installation PV", "Schémas unifilaires", "Rapport de conformité", "Fiches techniques", "Plans et calepinage", "Borne de recharge", "Administratif", "Autre"];
+function rdNorm(s) { return String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, ""); }
+function rdExt(n) { var m = String(n || "").toLowerCase().match(/\.([a-z0-9]+)$/); return m ? m[1] : ""; }
+function rdCat(name) {
+  var n = rdNorm(name);
+  if (/unifilaire|schema/.test(n)) return "Schémas unifilaires";
+  if (/conformit|rgie|controle|vincotte|aib|btv|rce-/.test(n)) return "Rapport de conformité";
+  if (/fiche|datasheet|notice|manuel/.test(n)) return "Fiches techniques";
+  if (/plan|calepin|layout|implantation/.test(n)) return "Plans et calepinage";
+  if (/borne|wallbox|recharge/.test(n)) return "Borne de recharge";
+  if (/facture|devis|contrat|bdc|bon de commande|offre/.test(n)) return "Administratif";
+  return "Installation PV";
+}
+function rdType(name, mime) {
+  var e = rdExt(name);
+  if ((mime || "").indexOf("image/") === 0 || ["jpg","jpeg","png","heic","webp","gif"].indexOf(e) !== -1) return "Photo";
+  if (e === "pdf") return "PDF";
+  if (["xls","xlsx","csv","ods"].indexOf(e) !== -1) return "Excel";
+  if (["doc","docx","odt","rtf"].indexOf(e) !== -1) return "Word";
+  if (["dwg","dxf","skp"].indexOf(e) !== -1) return "Plan";
+  return "Autre";
+}
+function rdSize(b) { if (!b && b !== 0) return ""; return b < 1048576 ? (b / 1024).toFixed(1).replace(".", ",") + " Ko" : (b / 1048576).toFixed(1).replace(".", ",") + " Mo"; }
+function rdDate(iso) { if (!iso) return ""; var d = new Date(iso); return d.toLocaleDateString("fr-BE", { day: "2-digit", month: "2-digit", year: "numeric" }); }
+function rdSafe(n) { return (String(n || "document").normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^A-Za-z0-9._-]+/g, "_").replace(/_+/g, "_").slice(-120)) || "document"; }
+function rdApi(method, query, body) {
+  return fetch(BRIEFING_URL + "/rest/v1/briefing_documents" + (query || ""), {
+    method: method,
+    headers: { "apikey": BRIEFING_KEY, "Authorization": "Bearer " + BRIEFING_KEY, "Content-Type": "application/json", "Prefer": "return=representation" },
+    body: body ? JSON.stringify(body) : undefined
+  }).then(function(r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); });
+}
+function rdUpload(path, file, onProgress) {
+  return new Promise(function(resolve, reject) {
+    var xhr = new XMLHttpRequest();
+    xhr.open("POST", BRIEFING_URL + "/storage/v1/object/" + RD_BUCKET + "/" + path.split("/").map(encodeURIComponent).join("/"));
+    xhr.setRequestHeader("apikey", BRIEFING_KEY);
+    xhr.setRequestHeader("Authorization", "Bearer " + BRIEFING_KEY);
+    xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
+    xhr.setRequestHeader("x-upsert", "false");
+    xhr.upload.onprogress = function(e) { if (e.lengthComputable) onProgress(e.loaded / e.total); };
+    xhr.onload = function() { if (xhr.status >= 200 && xhr.status < 300) resolve(); else reject(new Error("envoi refusé (HTTP " + xhr.status + ")")); };
+    xhr.onerror = function() { reject(new Error("problème de connexion")); };
+    xhr.send(file);
+  });
+}
+function RapportDocsPanel({ refChantier, sheetLabel, user, isContractor, onClose }) {
+  var [docs, setDocs] = useState([]);
+  var [loading, setLoading] = useState(true);
+  var [err, setErr] = useState("");
+  var [queue, setQueue] = useState([]);
+  var [cat, setCat] = useState("");
+  var [drag, setDrag] = useState(false);
+  var inputRef = useRef(null);
+  function reload() {
+    setLoading(true);
+    rdApi("GET", "?ref=eq." + encodeURIComponent(refChantier) + "&deleted_at=is.null&order=created_at.desc&select=*")
+      .then(function(rows) { setDocs(Array.isArray(rows) ? rows : []); setErr(""); })
+      .catch(function(e) { setErr("Documents indisponibles (" + e.message + ")"); })
+      .then(function() { setLoading(false); });
+  }
+  useEffect(reload, [refChantier]);
+  function addFiles(list) {
+    Array.prototype.slice.call(list || []).forEach(function(file) {
+      var qid = Math.random().toString(36).slice(2);
+      setQueue(function(p) { return p.concat([{ id: qid, name: file.name, progress: 0 }]); });
+      function fail(msg) { setQueue(function(p) { return p.map(function(x) { return x.id === qid ? Object.assign({}, x, { error: msg }) : x; }); }); }
+      if (file.size > RD_MAX) { fail("fichier trop lourd (50 Mo max)"); return; }
+      var d = new Date();
+      var stamp = d.getFullYear() + String(d.getMonth() + 1).padStart(2, "0") + String(d.getDate()).padStart(2, "0") + "-" + qid.slice(0, 6);
+      var path = "rapport/" + rdSafe(refChantier) + "/" + stamp + "-" + rdSafe(file.name);
+      var category = rdCat(file.name);
+      rdUpload(path, file, function(pr) {
+        setQueue(function(p) { return p.map(function(x) { return x.id === qid ? Object.assign({}, x, { progress: pr }) : x; }); });
+      }).then(function() {
+        var url = BRIEFING_URL + "/storage/v1/object/public/" + RD_BUCKET + "/" + path.split("/").map(encodeURIComponent).join("/");
+        return rdApi("POST", "", {
+          ref: refChantier, name: file.name, category: category, doc_type: rdType(file.name, file.type),
+          mime: file.type || null, size_bytes: file.size, storage_path: path, url: url, bucket: RD_BUCKET,
+          source: "rapport", sheet_label: sheetLabel || null,
+          uploaded_by: user ? user.email : null, uploaded_by_name: user ? user.name : null
+        });
+      }).then(function(rows) {
+        if (rows && rows[0]) setDocs(function(p) { return [rows[0]].concat(p); });
+        setQueue(function(p) { return p.filter(function(x) { return x.id !== qid; }); });
+      }).catch(function(e) { fail(e.message); });
+    });
+  }
+  function patch(doc, fields) {
+    var prev = doc;
+    setDocs(function(p) { return p.map(function(x) { return x.id === doc.id ? Object.assign({}, x, fields) : x; }); });
+    rdApi("PATCH", "?id=eq." + doc.id, fields).catch(function(e) {
+      setDocs(function(p) { return p.map(function(x) { return x.id === doc.id ? prev : x; }); });
+      window.alert("Modification non enregistrée : " + e.message);
+    });
+  }
+  function remove(doc) {
+    if (!window.confirm("Retirer « " + doc.name + " » des documents ?\n\nLe fichier est conservé et peut être restauré.")) return;
+    patch(doc, { deleted_at: new Date().toISOString(), deleted_by: user ? user.email : null });
+    setDocs(function(p) { return p.filter(function(x) { return x.id !== doc.id; }); });
+  }
+  var counts = {};
+  docs.forEach(function(d) { var c = d.category || "Autre"; counts[c] = (counts[c] || 0) + 1; });
+  var list = docs.filter(function(d) { return !cat || (d.category || "Autre") === cat; });
+  var icon = function(t) { return t === "PDF" ? "📄" : t === "Excel" ? "📊" : t === "Word" ? "📝" : t === "Photo" ? "🖼️" : t === "Plan" ? "📐" : "📎"; };
+  var srcLabel = function(d) { return d.source === "rapport" ? "Rapport" : d.source === "odoo" ? "Odoo" : "Briefing"; };
+  return (
+    <>
+      <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.25)", zIndex: 9989 }} />
+      <div onDragOver={function(e){ e.preventDefault(); setDrag(true); }} onDragLeave={function(e){ if (e.currentTarget === e.target) setDrag(false); }}
+        onDrop={function(e){ e.preventDefault(); setDrag(false); if (e.dataTransfer && e.dataTransfer.files.length) addFiles(e.dataTransfer.files); }}
+        style={{ position: "fixed", top: 0, right: 0, bottom: 0, width: "min(520px, 100vw)", background: WHITE, zIndex: 9990, display: "flex", flexDirection: "column", boxShadow: "-4px 0 24px rgba(0,0,0,0.15)", outline: drag ? "2px dashed " + GREEN : "none", outlineOffset: -6 }}>
+        <div style={{ background: GREEN, color: WHITE, padding: "12px 16px", display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontWeight: 700, fontSize: 15 }}>📁 Documents · {refChantier}</div>
+            <div style={{ fontSize: 11, opacity: 0.8 }}>Partagés avec le briefing de chantier et Odoo</div>
+          </div>
+          <button onClick={function(){ if (inputRef.current) inputRef.current.click(); }} style={{ background: WHITE, color: GREEN, border: "none", borderRadius: 999, padding: "6px 13px", fontSize: 12, fontWeight: 700, cursor: "pointer", minHeight: 0 }}>＋ Ajouter</button>
+          <button onClick={onClose} aria-label="Fermer" style={{ background: "none", border: "none", color: WHITE, fontSize: 18, cursor: "pointer", minHeight: 0, padding: "0 4px" }}>✕</button>
+          <input ref={inputRef} type="file" multiple style={{ display: "none" }} onChange={function(e){ addFiles(e.target.files); e.target.value = ""; }} />
+        </div>
+        <div style={{ flex: 1, overflowY: "auto", padding: 14 }}>
+          {queue.length > 0 && (
+            <div style={{ display: "grid", gap: 6, marginBottom: 12 }}>
+              {queue.map(function(x) {
+                return (
+                  <div key={x.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, background: x.error ? "#fdecea" : "#f6f5f1", borderRadius: 8, padding: "7px 10px" }}>
+                    <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{x.error ? "⚠ " : "⏳ "}{x.name}</span>
+                    {x.error ? <><span style={{ color: "#b42a2a" }}>{x.error}</span><button onClick={function(){ setQueue(function(p){ return p.filter(function(y){ return y.id !== x.id; }); }); }} style={{ border: "none", background: "none", cursor: "pointer", minHeight: 0, padding: 0 }}>✕</button></>
+                      : <span style={{ width: 90, height: 6, background: "#e6e3da", borderRadius: 9, overflow: "hidden" }}><span style={{ display: "block", height: "100%", width: Math.round(x.progress * 100) + "%", background: GREEN }} /></span>}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          {err && <div style={{ fontSize: 12, color: "#b42a2a", background: "#fdecea", borderRadius: 8, padding: "7px 10px", marginBottom: 10 }}>⚠ {err} <button onClick={reload} style={{ border: "none", background: "none", color: GREEN, fontWeight: 700, cursor: "pointer", minHeight: 0, padding: 0 }}>Réessayer</button></div>}
+          {loading && !docs.length && <div style={{ fontSize: 13, color: MUTED }}>⏳ Chargement…</div>}
+          {!loading && !err && docs.length === 0 && queue.length === 0 && (
+            <div style={{ textAlign: "center", padding: "28px 8px", color: MUTED, fontSize: 13 }}>
+              <div style={{ fontSize: 26, marginBottom: 4 }}>📎</div>
+              <b style={{ color: "#1b1b19" }}>Aucun document pour l'instant</b>
+              <div>Glissez des fichiers ici ou cliquez sur Ajouter : schémas, rapports de conformité, fiches techniques, plans.</div>
+              <div style={{ fontSize: 11, marginTop: 6 }}>Les photos de chantier restent dans les onglets DC et AC.</div>
+            </div>
+          )}
+          {docs.length > 0 && (
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
+              {[["", "Tous", docs.length]].concat(RD_CATS.filter(function(c){ return counts[c]; }).map(function(c){ return [c, c, counts[c]]; })).map(function(f) {
+                var on = cat === f[0];
+                return <button key={f[0] || "all"} onClick={function(){ setCat(f[0]); }} style={{ border: "1px solid " + (on ? GREEN : "#e6e3da"), background: on ? GREEN : WHITE, color: on ? WHITE : "#1b1b19", borderRadius: 999, padding: "4px 11px", fontSize: 12, cursor: "pointer", minHeight: 0 }}>{f[1]} <span style={{ opacity: 0.7 }}>{f[2]}</span></button>;
+              })}
+            </div>
+          )}
+          <div style={{ display: "grid", gap: 8 }}>
+            {list.map(function(d) {
+              return (
+                <div key={d.id} style={{ border: "1px solid #e6e3da", borderRadius: 10, padding: "9px 11px", display: "flex", alignItems: "center", gap: 10 }}>
+                  {d.doc_type === "Photo" ? <img src={d.url} alt="" loading="lazy" style={{ width: 36, height: 36, borderRadius: 6, objectFit: "cover", flexShrink: 0 }} />
+                    : <span style={{ width: 36, height: 36, borderRadius: 6, background: "#f3f1eb", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>{icon(d.doc_type)}</span>}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <a href={d.url} target="_blank" rel="noopener" style={{ display: "block", fontSize: 13, fontWeight: 600, color: "#1b1b19", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textDecoration: "none" }}>{d.name}</a>
+                    <div style={{ fontSize: 11, color: MUTED, marginTop: 2, display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                      <span style={{ background: "#f0eee8", borderRadius: 999, padding: "1px 8px" }}>{srcLabel(d)}</span>
+                      {isContractor ? <span>{d.category || "Autre"}</span> :
+                        <select value={d.category || "Autre"} onChange={function(e){ patch(d, { category: e.target.value }); }} style={{ width: "auto", maxWidth: 150, border: "1px solid #e6e3da", borderRadius: 999, padding: "1px 6px", fontSize: 11, background: WHITE }}>
+                          {RD_CATS.concat(d.category && RD_CATS.indexOf(d.category) === -1 ? [d.category] : []).map(function(c){ return <option key={c} value={c}>{c}</option>; })}
+                        </select>}
+                      <span>{rdDate(d.created_at)} · {rdSize(d.size_bytes)}{d.uploaded_by_name ? " · " + d.uploaded_by_name : ""}</span>
+                    </div>
+                  </div>
+                  <a href={d.url + "?download=" + encodeURIComponent(d.name)} title="Télécharger" style={{ textDecoration: "none", fontSize: 15, color: "#1b1b19" }}>⬇</a>
+                  {!isContractor && <button onClick={function(){ remove(d); }} title="Retirer" style={{ border: "none", background: "none", cursor: "pointer", fontSize: 14, minHeight: 0, padding: 0 }}>🗑</button>}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    </>
   );
 }
 
