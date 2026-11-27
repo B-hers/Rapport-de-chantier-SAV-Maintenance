@@ -12263,7 +12263,7 @@ function App() {
       )}
 
       {showDocs && data.meta.ref && (
-        <RapportDocsPanel refChantier={data.meta.ref} sheetLabel={currentSheetLabel} user={user} isContractor={user && user.type === "contractor"} onClose={function(){ setShowDocs(false); }} />
+        <RapportDocsPanel refChantier={data.meta.ref} sheetId={currentSheetId} sheetLabel={currentSheetLabel} user={user} isContractor={user && user.type === "contractor"} onClose={function(){ setShowDocs(false); }} />
       )}
 
       {/* Progress panel */}
@@ -12330,7 +12330,7 @@ function rdUpload(path, file, onProgress) {
     xhr.send(file);
   });
 }
-function RapportDocsPanel({ refChantier, sheetLabel, user, isContractor, onClose }) {
+function RapportDocsPanel({ refChantier, sheetId, sheetLabel, user, isContractor, onClose }) {
   var [docs, setDocs] = useState([]);
   var [loading, setLoading] = useState(true);
   var [err, setErr] = useState("");
@@ -12338,12 +12338,22 @@ function RapportDocsPanel({ refChantier, sheetLabel, user, isContractor, onClose
   var [cat, setCat] = useState("");
   var [drag, setDrag] = useState(false);
   var inputRef = useRef(null);
+  var [legacy, setLegacy] = useState([]);
+  var [scope, setScope] = useState(sheetId ? "sheet" : "all");
+  var [q, setQ] = useState("");
   function reload() {
     setLoading(true);
-    rdApi("GET", "?ref=eq." + encodeURIComponent(refChantier) + "&deleted_at=is.null&order=created_at.desc&select=*")
+    var p1 = rdApi("GET", "?ref=eq." + encodeURIComponent(refChantier) + "&deleted_at=is.null&order=created_at.desc&select=*")
       .then(function(rows) { setDocs(Array.isArray(rows) ? rows : []); setErr(""); })
-      .catch(function(e) { setErr("Documents indisponibles (" + e.message + ")"); })
-      .then(function() { setLoading(false); });
+      .catch(function(e) { setErr("Documents indisponibles (" + e.message + ")"); });
+    // Documents déposés dans l'onglet Admin de chaque feuille (RGIE, GRD, stabilité...)
+    var p2 = fetch(SUPA_URL + "/rest/v1/rpc/rapport_admin_docs", {
+      method: "POST", headers: { "apikey": SUPA_KEY, "Authorization": "Bearer " + SUPA_KEY, "Content-Type": "application/json" },
+      body: JSON.stringify({ p_ref: refChantier })
+    }).then(function(r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+      .then(function(rows) { setLegacy(Array.isArray(rows) ? rows : []); })
+      .catch(function(e) { setErr("Documents des feuilles indisponibles (" + e.message + ")"); });
+    Promise.all([p1, p2]).then(function() { setLoading(false); });
   }
   useEffect(reload, [refChantier]);
   function addFiles(list) {
@@ -12385,11 +12395,32 @@ function RapportDocsPanel({ refChantier, sheetLabel, user, isContractor, onClose
     patch(doc, { deleted_at: new Date().toISOString(), deleted_by: user ? user.email : null });
     setDocs(function(p) { return p.filter(function(x) { return x.id !== doc.id; }); });
   }
+  // Liste unifiée : documents du registre (panneau, briefing) + documents des onglets Admin des feuilles
+  var secLabel = function(k) { var d = ADMIN_SECTIONS_DEF.filter(function(x){ return x.key === k; })[0]; return d ? d.label.replace(/^\S+\s/, "") : k; };
+  var admCat = function(k) { return k === "rgie" ? "Rapport de conformité" : k === "fiches" ? "Fiches techniques" : k === "schemas" ? "Schémas unifilaires" : k === "asbuilt" ? "Installation PV" : "Administratif"; };
+  var items = docs.map(function(d) {
+    return { key: "r" + d.id, row: d, name: d.name, url: d.url, doc_type: d.doc_type, category: d.category || "Autre", size: d.size_bytes,
+      date: d.created_at, by: d.uploaded_by_name, sheetId: null, sheetLabel: d.sheet_label || "", origin: d.source === "rapport" ? "Rapport" : d.source === "odoo" ? "Odoo" : "Briefing", editable: true };
+  }).concat(legacy.map(function(d) {
+    return { key: "a" + d.sheet_id + "-" + d.doc_id, row: null, name: d.name, url: d.url, doc_type: rdType(d.name, d.mime), category: admCat(d.section), size: d.size,
+      date: d.added_at, by: d.uploaded_by, sheetId: d.sheet_id, sheetLabel: d.sheet_label || "", origin: "Admin · " + secLabel(d.section), editable: false };
+  }));
+  items.sort(function(a, b) { return String(b.date || "").localeCompare(String(a.date || "")); });
+  // « Cette feuille » : documents de la feuille ouverte + documents généraux (sans feuille)
+  var inScope = items.filter(function(it) {
+    if (scope !== "sheet" || !sheetId) return true;
+    if (it.sheetId) return String(it.sheetId) === String(sheetId);
+    return !it.sheetLabel || it.sheetLabel === sheetLabel;
+  });
   var counts = {};
-  docs.forEach(function(d) { var c = d.category || "Autre"; counts[c] = (counts[c] || 0) + 1; });
-  var list = docs.filter(function(d) { return !cat || (d.category || "Autre") === cat; });
+  inScope.forEach(function(d) { counts[d.category] = (counts[d.category] || 0) + 1; });
+  var words = rdNorm(q).split(/\s+/).filter(Boolean);
+  var list = inScope.filter(function(d) {
+    if (cat && d.category !== cat) return false;
+    var hay = rdNorm(d.name + " " + d.sheetLabel + " " + d.origin + " " + (d.by || ""));
+    return words.every(function(w) { return hay.indexOf(w) !== -1; });
+  });
   var icon = function(t) { return t === "PDF" ? "📄" : t === "Excel" ? "📊" : t === "Word" ? "📝" : t === "Photo" ? "🖼️" : t === "Plan" ? "📐" : "📎"; };
-  var srcLabel = function(d) { return d.source === "rapport" ? "Rapport" : d.source === "odoo" ? "Odoo" : "Briefing"; };
   return (
     <>
       <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.25)", zIndex: 9989 }} />
@@ -12399,13 +12430,13 @@ function RapportDocsPanel({ refChantier, sheetLabel, user, isContractor, onClose
         <div style={{ background: GREEN, color: WHITE, padding: "12px 16px", display: "flex", alignItems: "center", gap: 10 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontWeight: 700, fontSize: 15 }}>📁 Documents · {refChantier}</div>
-            <div style={{ fontSize: 11, opacity: 0.8 }}>Partagés avec le briefing de chantier et Odoo</div>
+            <div style={{ fontSize: 11, opacity: 0.8 }}>Toutes les feuilles du chantier, le briefing et Odoo</div>
           </div>
           <button onClick={function(){ if (inputRef.current) inputRef.current.click(); }} style={{ background: WHITE, color: GREEN, border: "none", borderRadius: 999, padding: "6px 13px", fontSize: 12, fontWeight: 700, cursor: "pointer", minHeight: 0 }}>＋ Ajouter</button>
           <button onClick={onClose} aria-label="Fermer" style={{ background: "none", border: "none", color: WHITE, fontSize: 18, cursor: "pointer", minHeight: 0, padding: "0 4px" }}>✕</button>
           <input ref={inputRef} type="file" multiple style={{ display: "none" }} onChange={function(e){ addFiles(e.target.files); e.target.value = ""; }} />
         </div>
-        <div style={{ flex: 1, overflowY: "auto", padding: 14 }}>
+        <div style={{ flex: 1, overflowY: "auto", overflowX: "hidden", padding: 14 }}>
           {queue.length > 0 && (
             <div style={{ display: "grid", gap: 6, marginBottom: 12 }}>
               {queue.map(function(x) {
@@ -12420,42 +12451,54 @@ function RapportDocsPanel({ refChantier, sheetLabel, user, isContractor, onClose
             </div>
           )}
           {err && <div style={{ fontSize: 12, color: "#b42a2a", background: "#fdecea", borderRadius: 8, padding: "7px 10px", marginBottom: 10 }}>⚠ {err} <button onClick={reload} style={{ border: "none", background: "none", color: GREEN, fontWeight: 700, cursor: "pointer", minHeight: 0, padding: 0 }}>Réessayer</button></div>}
-          {loading && !docs.length && <div style={{ fontSize: 13, color: MUTED }}>⏳ Chargement…</div>}
-          {!loading && !err && docs.length === 0 && queue.length === 0 && (
-            <div style={{ textAlign: "center", padding: "28px 8px", color: MUTED, fontSize: 13 }}>
-              <div style={{ fontSize: 26, marginBottom: 4 }}>📎</div>
-              <b style={{ color: "#1b1b19" }}>Aucun document pour l'instant</b>
-              <div>Glissez des fichiers ici ou cliquez sur Ajouter : schémas, rapports de conformité, fiches techniques, plans.</div>
-              <div style={{ fontSize: 11, marginTop: 6 }}>Les photos de chantier restent dans les onglets DC et AC.</div>
-            </div>
-          )}
-          {docs.length > 0 && (
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
-              {[["", "Tous", docs.length]].concat(RD_CATS.filter(function(c){ return counts[c]; }).map(function(c){ return [c, c, counts[c]]; })).map(function(f) {
-                var on = cat === f[0];
-                return <button key={f[0] || "all"} onClick={function(){ setCat(f[0]); }} style={{ border: "1px solid " + (on ? GREEN : "#e6e3da"), background: on ? GREEN : WHITE, color: on ? WHITE : "#1b1b19", borderRadius: 999, padding: "4px 11px", fontSize: 12, cursor: "pointer", minHeight: 0 }}>{f[1]} <span style={{ opacity: 0.7 }}>{f[2]}</span></button>;
+          {loading && !items.length && <div style={{ fontSize: 13, color: MUTED }}>⏳ Chargement…</div>}
+          {sheetId && (
+            <div style={{ display: "inline-flex", border: "1px solid #e6e3da", borderRadius: 999, padding: 2, marginBottom: 10, background: "#f6f5f1" }}>
+              {[["sheet", "Cette feuille"], ["all", "Toutes les feuilles"]].map(function(o) {
+                var on = scope === o[0];
+                return <button key={o[0]} onClick={function(){ setScope(o[0]); setCat(""); }} style={{ border: "none", background: on ? GREEN : "transparent", color: on ? WHITE : "#1b1b19", borderRadius: 999, padding: "5px 13px", fontSize: 12, fontWeight: on ? 700 : 500, cursor: "pointer", minHeight: 0 }}>{o[1]}</button>;
               })}
             </div>
           )}
-          <div style={{ display: "grid", gap: 8 }}>
+          {sheetId && scope === "sheet" && sheetLabel && <div style={{ fontSize: 12, color: MUTED, margin: "-4px 0 10px" }}>Feuille : <b style={{ color: "#1b1b19" }}>{sheetLabel}</b>, plus les documents généraux du chantier</div>}
+          {!loading && !err && inScope.length === 0 && queue.length === 0 && (
+            <div style={{ textAlign: "center", padding: "28px 8px", color: MUTED, fontSize: 13 }}>
+              <div style={{ fontSize: 26, marginBottom: 4 }}>📎</div>
+              <b style={{ color: "#1b1b19" }}>Aucun document {scope === "sheet" && sheetId ? "pour cette feuille" : "pour l'instant"}</b>
+              <div>{scope === "sheet" && sheetId && items.length ? "Passez sur « Toutes les feuilles » pour voir ceux du chantier." : "Glissez des fichiers ici ou cliquez sur Ajouter : schémas, rapports de conformité, fiches techniques, plans."}</div>
+              <div style={{ fontSize: 11, marginTop: 6 }}>Les photos de chantier restent dans les onglets DC et AC.</div>
+            </div>
+          )}
+          {inScope.length > 0 && (
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10, alignItems: "center" }}>
+              {[["", "Tous", inScope.length]].concat(RD_CATS.filter(function(c){ return counts[c]; }).map(function(c){ return [c, c, counts[c]]; })).map(function(f) {
+                var on = cat === f[0];
+                return <button key={f[0] || "all"} onClick={function(){ setCat(f[0]); }} style={{ border: "1px solid " + (on ? GREEN : "#e6e3da"), background: on ? GREEN : WHITE, color: on ? WHITE : "#1b1b19", borderRadius: 999, padding: "4px 11px", fontSize: 12, cursor: "pointer", minHeight: 0 }}>{f[1]} <span style={{ opacity: 0.7 }}>{f[2]}</span></button>;
+              })}
+              {inScope.length > 6 && <input value={q} onChange={function(e){ setQ(e.target.value); }} placeholder="🔍 Filtrer…" style={{ marginLeft: "auto", width: 150, maxWidth: "100%", borderRadius: 999, padding: "4px 12px", fontSize: 12, border: "1px solid #e6e3da" }} />}
+            </div>
+          )}
+          <div style={{ display: "grid", gap: 8, gridTemplateColumns: "minmax(0, 1fr)" }}>
             {list.map(function(d) {
               return (
-                <div key={d.id} style={{ border: "1px solid #e6e3da", borderRadius: 10, padding: "9px 11px", display: "flex", alignItems: "center", gap: 10 }}>
+                <div key={d.key} style={{ border: "1px solid #e6e3da", borderRadius: 10, padding: "9px 11px", display: "flex", alignItems: "center", gap: 10 }}>
                   {d.doc_type === "Photo" ? <img src={d.url} alt="" loading="lazy" style={{ width: 36, height: 36, borderRadius: 6, objectFit: "cover", flexShrink: 0 }} />
                     : <span style={{ width: 36, height: 36, borderRadius: 6, background: "#f3f1eb", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>{icon(d.doc_type)}</span>}
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <a href={d.url} target="_blank" rel="noopener" style={{ display: "block", fontSize: 13, fontWeight: 600, color: "#1b1b19", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textDecoration: "none" }}>{d.name}</a>
                     <div style={{ fontSize: 11, color: MUTED, marginTop: 2, display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-                      <span style={{ background: "#f0eee8", borderRadius: 999, padding: "1px 8px" }}>{srcLabel(d)}</span>
-                      {isContractor ? <span>{d.category || "Autre"}</span> :
-                        <select value={d.category || "Autre"} onChange={function(e){ patch(d, { category: e.target.value }); }} style={{ width: "auto", maxWidth: 150, border: "1px solid #e6e3da", borderRadius: 999, padding: "1px 6px", fontSize: 11, background: WHITE }}>
-                          {RD_CATS.concat(d.category && RD_CATS.indexOf(d.category) === -1 ? [d.category] : []).map(function(c){ return <option key={c} value={c}>{c}</option>; })}
-                        </select>}
-                      <span>{rdDate(d.created_at)} · {rdSize(d.size_bytes)}{d.uploaded_by_name ? " · " + d.uploaded_by_name : ""}</span>
+                      <span style={{ background: "#f0eee8", borderRadius: 999, padding: "1px 8px" }}>{d.origin}</span>
+                      {scope === "all" && d.sheetLabel && <span style={{ background: "#e3f1e9", color: GREEN, borderRadius: 999, padding: "1px 8px" }}>{d.sheetLabel}</span>}
+                      {d.editable && !isContractor
+                        ? <select value={d.category} onChange={function(e){ patch(d.row, { category: e.target.value }); }} style={{ width: "auto", maxWidth: 150, border: "1px solid #e6e3da", borderRadius: 999, padding: "1px 6px", fontSize: 11, background: WHITE }}>
+                            {RD_CATS.concat(RD_CATS.indexOf(d.category) === -1 ? [d.category] : []).map(function(c){ return <option key={c} value={c}>{c}</option>; })}
+                          </select>
+                        : <span>{d.category}</span>}
+                      <span>{rdDate(d.date)} · {rdSize(d.size)}{d.by ? " · " + d.by : ""}</span>
                     </div>
                   </div>
-                  <a href={d.url + "?download=" + encodeURIComponent(d.name)} title="Télécharger" style={{ textDecoration: "none", fontSize: 15, color: "#1b1b19" }}>⬇</a>
-                  {!isContractor && <button onClick={function(){ remove(d); }} title="Retirer" style={{ border: "none", background: "none", cursor: "pointer", fontSize: 14, minHeight: 0, padding: 0 }}>🗑</button>}
+                  <a href={d.url} download={d.name} target="_blank" rel="noopener" title="Télécharger" style={{ textDecoration: "none", fontSize: 15, color: "#1b1b19" }}>⬇</a>
+                  {d.editable && !isContractor && <button onClick={function(){ remove(d.row); }} title="Retirer" style={{ border: "none", background: "none", cursor: "pointer", fontSize: 14, minHeight: 0, padding: 0 }}>🗑</button>}
                 </div>
               );
             })}
